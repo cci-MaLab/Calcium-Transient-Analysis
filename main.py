@@ -1,5 +1,4 @@
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox)
-from PyQt6.QtGui import (QAction)
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox, QAction)
 from threads import Worker
 import sys
 sys.path.insert(0, ".")

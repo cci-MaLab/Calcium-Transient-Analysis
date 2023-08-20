@@ -1,4 +1,4 @@
-from PyQt6.QtCore import (QObject, pyqtSignal, pyqtSlot, QRunnable)
+from PyQt5.QtCore import (QObject, pyqtSignal, pyqtSlot, QRunnable)
 import traceback, sys
 
 class WorkerSignals(QObject):
