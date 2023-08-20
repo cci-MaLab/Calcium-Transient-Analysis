@@ -1,7 +1,9 @@
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox)
 from PyQt6.QtGui import (QAction)
 from threads import Worker
-
+import sys
+sys.path.insert(0, ".")
+from backend import open_minian
 
 class MainWindow(QMainWindow):
 
@@ -51,6 +53,8 @@ class MainWindow(QMainWindow):
         
         # Over here Haoying you should call your load_data function from backend.py using the Worker class
         # Something like this:
+
+        worker = Worker(open_minian, fname)
         '''
         worker = Worker(load_data, fname)
         self.threadpool.start(worker)
