@@ -1,5 +1,5 @@
-from PyQt6.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout)
-from PyQt6.QtGui import QIntValidator
+from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout)
+from PyQt5.QtGui import QIntValidator
 
 class ParamDialog(QDialog):
     def __init__(self, parent=None):

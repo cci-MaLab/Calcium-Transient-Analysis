@@ -10,6 +10,7 @@ from os.path import isdir, isfile
 from os.path import join as pjoin
 from os import listdir
 from typing import Callable, List, Optional, Union
+import os
 
 def open_minian(
     dpath: str, post_process: Optional[Callable] = None, return_dict=False

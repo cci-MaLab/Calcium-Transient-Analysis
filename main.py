@@ -53,7 +53,9 @@ class MainWindow(QMainWindow):
         # Over here Haoying you should call your load_data function from backend.py using the Worker class
         # Something like this:
 
-        worker = Worker(open_minian, fname)
+        #worker = Worker(open_minian, fname)
+        something = open_minian(fname)
+        print("hello")
         '''
         worker = Worker(load_data, fname)
         self.threadpool.start(worker)
