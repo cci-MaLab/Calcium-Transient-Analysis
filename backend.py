@@ -79,10 +79,3 @@ def open_minian(
     if (not return_dict) and post_process:
         ds = post_process(ds, dpath)
     return ds
-
-def load_data(path, **kwargs):
-    # Load the data in as necessary
-    
-    # Load in kwargs
-    day = kwargs.get('day', None)
-    group = kwargs.get('group', None)
