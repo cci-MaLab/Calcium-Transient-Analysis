@@ -155,8 +155,10 @@ class SessionFeature:
         self,
         dpath: str,
     ):        
-        self.mouseID, self.day, self.session = match_information(dpath)
-        # mouse_path, video_path = match_path(dpath)
+        self.mouseID : str
+        self.day : str
+        self.session: str
+        self.data:dict # Original data, key:'RNFS', 'ALP', 'IALP', 'Time Stamp (ms)','unit_ids'
         self.ALPlist:List[xr.DataArray]
         self.IALPlist:List[xr.DataArray]
         self.RNFSlist:List[xr.DataArray]
@@ -165,7 +167,95 @@ class SessionFeature:
         self.RNFS: bool
         self.value: dict #key is the unit_id,value is the numpy array
         self.A: dict    #key is unit_id,value is A. Just keep same uniform with self.value
+        self.load_data(dpath=dpath)
 
+    def load_data(self,dpath):
+        mouseID, day, session = match_information(dpath)
+        mouse_path, video_path = match_path(dpath)
+        self.mouseID = mouseID
+        self.day = day
+        self.session = session
+        if (session is None):
+            behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + "behavior_ms.csv"),sep=',')
+        else:
+            behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + session + "_" + "behavior_ms.csv"),sep=',')
+        data_types = ['RNFS', 'ALP', 'IALP', 'Time Stamp (ms)']
+        self.data = {}
+        for dt in data_types:            
+            if dt in behavior_data:
+                self.data[dt] = behavior_data[dt]
+            else:
+                print("No %s data found in minian file" % (dt))
+                self.data[dt] = None
+
+        minian_path = os.path.join(dpath, "minian")
+        data = open_minian(minian_path)
+        data_types = ['A', 'C', 'S', 'E']
+        for dt in data_types:            
+            if dt in data:
+                self.data[dt] = data[dt]
+            else:
+                print("No %s data found in minian file" % (dt))
+                self.data[dt] = None
+        
+        self.data['unit_ids'] = self.data['C'].coords['unit_id'].values
+        self.dpath = dpath
+
+        neurons = self.data['unit_ids']
+        self.A = {}
+        for i in neurons:
+            self.A[i] = self.data['A'].sel(unit_id = i)
+
+        output_dpath = "/N/project/Cortical_Calcium_Image/analysis"
+        if session is None:
+            self.output_path = os.path.join(output_dpath, mouseID,day)
+        else:
+            self.output_path = os.path.join(output_dpath, mouseID,day,session)
+
+        if(os.path.exists(self.output_path) == False):
+            os.makedirs(self.output_path)
+        
+    
+    def get_timestep(self, type: str):
+        """
+        Return a list that contains contains the a list of the frames where
+        the ALP occurs
+        """
+        return np.flatnonzero(self.data[type])
+
+    
+    def get_section(self, starting_frame: int, duration: float, delay: float = 0.0, include_prior: bool = False, type: str = "C") -> xr.Dataset:
+        """
+        Return the selection of the data that is within the given time frame.
+        duration indicates the number of frames.
+        """
+        # duration is in seconds convert to ms
+        duration *= 1000
+        delay *= 1000
+        start = self.data['Time Stamp (ms)'][starting_frame]
+        max_length = len(self.data['Time Stamp (ms)'])
+        if delay > 0:
+            frame_gap = 1
+            while self.data['Time Stamp (ms)'][starting_frame + frame_gap] - self.data['Time Stamp (ms)'][starting_frame] < delay:
+                frame_gap += 1
+            starting_frame += frame_gap
+        if include_prior:
+            frame_gap = -1
+            while self.data['Time Stamp (ms)'][starting_frame] - self.data['Time Stamp (ms)'][starting_frame + frame_gap] < duration and starting_frame + frame_gap > 0:
+                frame_gap -= 1
+            starting_frame += frame_gap
+            duration *= 2
+        frame_gap = 1
+        while self.data['Time Stamp (ms)'][starting_frame + frame_gap] - self.data['Time Stamp (ms)'][starting_frame] < duration and starting_frame + frame_gap < max_length:
+            frame_gap += 1
+
+
+        if type in self.data:
+            return self.data[type].sel(frame=slice(starting_frame, starting_frame+frame_gap))
+        else:
+            print("No %s data found in minian file" % (type))
+            return None
+        
 
 
 class FeatureExploration:
