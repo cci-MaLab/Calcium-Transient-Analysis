@@ -149,83 +149,30 @@ def match_path(dpath):# Add by HF
     return mouse_path, video_path
 
 
-class SessionFeature:
-   
+class Event:
     def __init__(
         self,
-        dpath: str,
-    ):        
-        self.mouseID : str
-        self.day : str
-        self.session: str
-        self.data:dict # Original data, key:'RNFS', 'ALP', 'IALP', 'Time Stamp (ms)','unit_ids'
-        self.ALPlist:List[xr.DataArray]
-        self.IALPlist:List[xr.DataArray]
-        self.RNFSlist:List[xr.DataArray]
-        self.ALP:bool
-        self.IALP: bool
-        self.RNFS: bool
-        self.value: dict #key is the unit_id,value is the numpy array
-        self.A: dict    #key is unit_id,value is A. Just keep same uniform with self.value
-        self.load_data(dpath=dpath)
-
-    def load_data(self,dpath):
-        mouseID, day, session = match_information(dpath)
-        mouse_path, video_path = match_path(dpath)
-        self.mouseID = mouseID
-        self.day = day
-        self.session = session
-        if (session is None):
-            behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + "behavior_ms.csv"),sep=',')
-        else:
-            behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + session + "_" + "behavior_ms.csv"),sep=',')
-        data_types = ['RNFS', 'ALP', 'IALP', 'Time Stamp (ms)']
-        self.data = {}
-        for dt in data_types:            
-            if dt in behavior_data:
-                self.data[dt] = behavior_data[dt]
-            else:
-                print("No %s data found in minian file" % (dt))
-                self.data[dt] = None
-
-        minian_path = os.path.join(dpath, "minian")
-        data = open_minian(minian_path)
-        data_types = ['A', 'C', 'S', 'E']
-        for dt in data_types:            
-            if dt in data:
-                self.data[dt] = data[dt]
-            else:
-                print("No %s data found in minian file" % (dt))
-                self.data[dt] = None
+        event_type:str,
+        data:xr.DataArray,
+        timesteps:List[int]
         
-        self.data['unit_ids'] = self.data['C'].coords['unit_id'].values
-        self.dpath = dpath
+    ):  
+        self.data = data
+        self.event_type = event_type
+        self.delay: float 
+        self.duration: float
+        self.switch = True
+        self.timesteps = timesteps
+        self.event_list:List[xr.DataArray]
 
-        neurons = self.data['unit_ids']
-        self.A = {}
-        for i in neurons:
-            self.A[i] = self.data['A'].sel(unit_id = i)
+    def set_delay_and_duration(self, delay:float, duration:float):
+        self.delay = delay
+        self.duration = duration
 
-        output_dpath = "/N/project/Cortical_Calcium_Image/analysis"
-        if session is None:
-            self.output_path = os.path.join(output_dpath, mouseID,day)
-        else:
-            self.output_path = os.path.join(output_dpath, mouseID,day,session)
-
-        if(os.path.exists(self.output_path) == False):
-            os.makedirs(self.output_path)
-        
-    def set
+    def set_switch(self, switch : bool = True):
+        self.switch = switch
 
 
-    def get_timestep(self, type: str):
-        """
-        Return a list that contains contains the a list of the frames where
-        the ALP occurs
-        """
-        return np.flatnonzero(self.data[type])
-
-    
     def get_section(self, event_frame: int, duration: float, delay: float = 0.0, type: str = "C") -> xr.Dataset:
         """
         Return the selection of the data that is within the given time frame.
@@ -263,8 +210,97 @@ class SessionFeature:
         else:
             print("No %s data found in minian file" % (type))
             return None
+
+
+    def set_list(self):
+        event_list=[]
+        if self.switch == False:
+            self.event_list=event_list
+        else:
+            for i in self.timesteps:
+                event_list.append(self.get_section(i,self.duration,self.delay))
+        self.event_list = event_list
+                
+
+
+class SessionFeature:
+   
+    def __init__(
+        self,
+        dpath: str,
+    ):        
+        self.mouseID : str
+        self.day : str
+        self.session: str
+        self.data:dict # Original data, key:'A', 'C', 'S','unit_ids'
+        self.events:dict
+        self.value: dict #key is the unit_id,value is the numpy array
+        self.A: dict    #key is unit_id,value is A. Just keep same uniform with self.value
+        self.load_data(dpath=dpath)
+        self.load_events()
+
+    def load_data(self,dpath):
+        mouseID, day, session = match_information(dpath)
+        mouse_path, video_path = match_path(dpath)
+        self.mouseID = mouseID
+        self.day = day
+        self.session = session
+        if (session is None):
+            behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + "behavior_ms.csv"),sep=',')
+        else:
+            behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + session + "_" + "behavior_ms.csv"),sep=',')
+        data_types = ['RNFS', 'ALP', 'IALP', 'Time Stamp (ms)']
+        self.data = {}
+        for dt in data_types:            
+            if dt in behavior_data:
+                self.data[dt] = behavior_data[dt]
+            else:
+                print("No %s data found in minian file" % (dt))
+                self.data[dt] = None
+
+        minian_path = os.path.join(dpath, "minian")
+        data = open_minian(minian_path)
+        data_types = ['A', 'C', 'S']
+        for dt in data_types:            
+            if dt in data:
+                self.data[dt] = data[dt]
+            else:
+                print("No %s data found in minian file" % (dt))
+                self.data[dt] = None
+        
+        self.data['unit_ids'] = self.data['C'].coords['unit_id'].values
+        self.dpath = dpath
+
+        neurons = self.data['unit_ids']
+        self.A = {}
+        for i in neurons:
+            self.A[i] = self.data['A'].sel(unit_id = i)
+
+        output_dpath = "/N/project/Cortical_Calcium_Image/analysis"
+        if session is None:
+            self.output_path = os.path.join(output_dpath, mouseID,day)
+        else:
+            self.output_path = os.path.join(output_dpath, mouseID,day,session)
+
+        if(os.path.exists(self.output_path) == False):
+            os.makedirs(self.output_path)
         
 
+    def get_timestep(self, type: str):
+        """
+        Return a list that contains contains the a list of the frames where
+        the ALP occurs
+        """
+        return np.flatnonzero(self.data[type])
+
+    
+    def load_events(self):
+        events = {}
+        events['ALP'] = Event('ALP',self.data,self.get_timestep('ALP'))
+        events['IALP'] = Event('IALP',self.data,self.get_timestep('IALP'))
+        events['RNFS'] = Event('RNFS',self.data,self.get_timestep('RNFS'))
+        self.events = events
+    
 
 class FeatureExploration:
     """
