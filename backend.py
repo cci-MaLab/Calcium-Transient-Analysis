@@ -215,7 +215,9 @@ class SessionFeature:
         if(os.path.exists(self.output_path) == False):
             os.makedirs(self.output_path)
         
-    
+    def set
+
+
     def get_timestep(self, type: str):
         """
         Return a list that contains contains the a list of the frames where
@@ -224,34 +226,40 @@ class SessionFeature:
         return np.flatnonzero(self.data[type])
 
     
-    def get_section(self, starting_frame: int, duration: float, delay: float = 0.0, include_prior: bool = False, type: str = "C") -> xr.Dataset:
+    def get_section(self, event_frame: int, duration: float, delay: float = 0.0, type: str = "C") -> xr.Dataset:
         """
         Return the selection of the data that is within the given time frame.
         duration indicates the number of frames.
+
+        Parameter
+        ------------------
+        event_frame: int, event time stamp
+        duration : float, last time (seconds)
+        delay: float, before or after (seconds)
         """
         # duration is in seconds convert to ms
         duration *= 1000
         delay *= 1000
-        start = self.data['Time Stamp (ms)'][starting_frame]
+        start = self.data['Time Stamp (ms)'][event_frame]
         max_length = len(self.data['Time Stamp (ms)'])
         if delay > 0:
             frame_gap = 1
-            while self.data['Time Stamp (ms)'][starting_frame + frame_gap] - self.data['Time Stamp (ms)'][starting_frame] < delay:
+            while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < delay:
                 frame_gap += 1
-            starting_frame += frame_gap
-        if include_prior:
+            event_frame += frame_gap
+        elif delay < 0:
             frame_gap = -1
-            while self.data['Time Stamp (ms)'][starting_frame] - self.data['Time Stamp (ms)'][starting_frame + frame_gap] < duration and starting_frame + frame_gap > 0:
+            while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] > delay and event_frame + frame_gap > 0:
                 frame_gap -= 1
-            starting_frame += frame_gap
-            duration *= 2
+            event_frame += frame_gap
+
         frame_gap = 1
-        while self.data['Time Stamp (ms)'][starting_frame + frame_gap] - self.data['Time Stamp (ms)'][starting_frame] < duration and starting_frame + frame_gap < max_length:
+        while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < duration and event_frame + frame_gap < max_length:
             frame_gap += 1
 
 
         if type in self.data:
-            return self.data[type].sel(frame=slice(starting_frame, starting_frame+frame_gap))
+            return self.data[type].sel(frame=slice(event_frame, event_frame+frame_gap))
         else:
             print("No %s data found in minian file" % (type))
             return None
