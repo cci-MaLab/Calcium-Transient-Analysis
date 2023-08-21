@@ -43,3 +43,14 @@ class ParamDialog(QDialog):
         self.setLayout(self.layout)
 
         
+
+class LoadingDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle("STATUS")
+
+        self.layout = QVBoxLayout()
+        message = QLabel("LOADING DATA")
+        self.layout.addWidget(message)
+        self.setLayout(self.layout)

@@ -13,16 +13,9 @@ class WorkerSignals(QObject):
     error
         tuple (exctype, value, traceback.format_exc() )
 
-    result
-        object data returned from processing, anything
-
-    progress
-        int indicating % progress
-
     '''
     finished = pyqtSignal()
     error = pyqtSignal(tuple)
-    result = pyqtSignal(object)
 
 
 class Worker(QRunnable):
@@ -62,6 +55,4 @@ class Worker(QRunnable):
             exctype, value = sys.exc_info()[:2]
             self.signals.error.emit((exctype, (value, self.args), traceback.format_exc()))
         else:
-            self.signals.result.emit(result)  # Return the result of the processing
-        finally:
-            self.signals.finished.emit()  # Done
+            self.signals.finished.emit()  # Return the result of the processing

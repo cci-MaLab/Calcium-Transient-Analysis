@@ -1,5 +1,7 @@
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox, QAction)
-from threads import Worker
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox, QAction, QDialog,
+                            QLabel)
+from PyQt5.QtCore import (QThreadPool)
+from custom_widgets import LoadingDialog
 import sys
 sys.path.insert(0, ".")
 from backend import open_minian
@@ -9,8 +11,11 @@ class MainWindow(QMainWindow):
 
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__(*args, **kwargs)
-        self.setWindowTitle("Cell CLustering Tool")
+        self.setWindowTitle("Cell Clustering Tool")
         self.setMinimumSize(600, 400)
+
+        # Threading
+        self.threadpool = QThreadPool()
 
         # Data stuff
         self.data = []
@@ -37,11 +42,10 @@ class MainWindow(QMainWindow):
         dlg.setIcon(QMessageBox.Icon.Critical)
         dlg.exec()
 
-    def threadComplete(self):
-        print("THREAD COMPLETE!")
 
-    def addData(self, data):
-        self.data.append(data)
+    def addData(self):
+        #self.data.append(data)
+        print("finished")
 
 
     def onMyToolBarButtonClick(self, s):
@@ -49,23 +53,25 @@ class MainWindow(QMainWindow):
             self,
             "Open File",
         )
-        
-        # Over here Haoying you should call your load_data function from backend.py using the Worker class
-        # Something like this:
 
-        #worker = Worker(open_minian, fname)
-        something = open_minian(fname)
-        print("hello")
+        # Cannot do the stuff below as it segfaults :(
         '''
-        worker = Worker(load_data, fname)
+        worker = Worker(open_minian, fname, self.data)
         self.threadpool.start(worker)
         worker.signals.error.connect(self.printError)
-        worker.signals.result.connect(self.print_output)
-        worker.signals.finished.connect(self.threadComplete)
+        worker.signals.finished.connect(self.addData)
 
         # Execute
         self.threadpool.start(worker)
         '''
+        self.setWindowTitle("Loading...")
+
+        self.data.append(open_minian(fname))
+
+        self.setWindowTitle("Cell Clustering Tool")
+
+
+
         
 
 
