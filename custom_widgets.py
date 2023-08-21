@@ -48,9 +48,16 @@ class LoadingDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle("STATUS")
+        self.setWindowTitle("Load Data")
+
+        QBtn = QDialogButtonBox.StandardButton.Yes | QDialogButtonBox.StandardButton.No
+
+        self.buttonBox = QDialogButtonBox(QBtn)
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
 
         self.layout = QVBoxLayout()
-        message = QLabel("LOADING DATA")
+        message = QLabel("Detected paths.txt in your directory. Do you want to load the files?")
         self.layout.addWidget(message)
+        self.layout.addWidget(self.buttonBox)
         self.setLayout(self.layout)
