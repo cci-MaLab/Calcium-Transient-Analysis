@@ -149,6 +149,86 @@ def match_path(dpath):# Add by HF
     return mouse_path, video_path
 
 
+class Event:
+    '''
+    Tips:
+    1. Use function set_delay_and_duration to set a delay value and a duration value (seconds)
+    2. Call function set_switch to set up True or False
+    3. Call set_list to pick up the part we want to analysis( Maybe use it on a 'OK' button, or if you want me to change it as automatically, let me know)
+    '''
+    def __init__(
+        self,
+        event_type:str,  # ALP, IALP, RNFS
+        data:xr.DataArray,
+        timesteps:List[int]
+        
+    ):  
+        self.data = data
+        self.event_type = event_type
+        self.delay: float 
+        self.duration: float
+        self.switch = True
+        self.timesteps = timesteps
+        self.event_list:List[xr.DataArray]
+
+    def set_delay_and_duration(self, delay:float, duration:float):
+        self.delay = delay
+        self.duration = duration
+
+    def set_switch(self, switch : bool = True):
+        self.switch = switch
+
+
+    def get_section(self, event_frame: int, duration: float, delay: float = 0.0, type: str = "C") -> xr.Dataset:
+        """
+        Return the selection of the data that is within the given time frame.
+        duration indicates the number of frames.
+
+        Parameter
+        ------------------
+        event_frame: int, event time stamp
+        duration : float, last time (seconds)
+        delay: float, before or after (seconds)
+        """
+        # duration is in seconds convert to ms
+        duration *= 1000
+        delay *= 1000
+        start = self.data['Time Stamp (ms)'][event_frame]
+        max_length = len(self.data['Time Stamp (ms)'])
+        if delay > 0:
+            frame_gap = 1
+            while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < delay:
+                frame_gap += 1
+            event_frame += frame_gap
+        elif delay < 0:
+            frame_gap = -1
+            while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] > delay and event_frame + frame_gap > 0:
+                frame_gap -= 1
+            event_frame += frame_gap
+
+        frame_gap = 1
+        while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < duration and event_frame + frame_gap < max_length:
+            frame_gap += 1
+
+
+        if type in self.data:
+            return self.data[type].sel(frame=slice(event_frame, event_frame+frame_gap))
+        else:
+            print("No %s data found in minian file" % (type))
+            return None
+
+
+    def set_list(self):
+        event_list=[]
+        if self.switch == False:
+            self.event_list=event_list
+        else:
+            for i in self.timesteps:
+                event_list.append(self.get_section(i,self.duration,self.delay))
+        self.event_list = event_list
+                
+
+
 class SessionFeature:
    
     def __init__(
@@ -158,16 +238,12 @@ class SessionFeature:
         self.mouseID : str
         self.day : str
         self.session: str
-        self.data:dict # Original data, key:'RNFS', 'ALP', 'IALP', 'Time Stamp (ms)','unit_ids'
-        self.ALPlist:List[xr.DataArray]
-        self.IALPlist:List[xr.DataArray]
-        self.RNFSlist:List[xr.DataArray]
-        self.ALP:bool
-        self.IALP: bool
-        self.RNFS: bool
+        self.data:dict # Original data, key:'A', 'C', 'S','unit_ids'
+        self.events:dict # {"ALP": Event, "IALP" : Event, "RNFS": Event}
         self.value: dict #key is the unit_id,value is the numpy array
         self.A: dict    #key is unit_id,value is A. Just keep same uniform with self.value
         self.load_data(dpath=dpath)
+        self.load_events()
 
     def load_data(self,dpath):
         mouseID, day, session = match_information(dpath)
@@ -190,7 +266,7 @@ class SessionFeature:
 
         minian_path = os.path.join(dpath, "minian")
         data = open_minian(minian_path)
-        data_types = ['A', 'C', 'S', 'E']
+        data_types = ['A', 'C', 'S']
         for dt in data_types:            
             if dt in data:
                 self.data[dt] = data[dt]
@@ -215,7 +291,7 @@ class SessionFeature:
         if(os.path.exists(self.output_path) == False):
             os.makedirs(self.output_path)
         
-    
+
     def get_timestep(self, type: str):
         """
         Return a list that contains contains the a list of the frames where
@@ -224,39 +300,13 @@ class SessionFeature:
         return np.flatnonzero(self.data[type])
 
     
-    def get_section(self, starting_frame: int, duration: float, delay: float = 0.0, include_prior: bool = False, type: str = "C") -> xr.Dataset:
-        """
-        Return the selection of the data that is within the given time frame.
-        duration indicates the number of frames.
-        """
-        # duration is in seconds convert to ms
-        duration *= 1000
-        delay *= 1000
-        start = self.data['Time Stamp (ms)'][starting_frame]
-        max_length = len(self.data['Time Stamp (ms)'])
-        if delay > 0:
-            frame_gap = 1
-            while self.data['Time Stamp (ms)'][starting_frame + frame_gap] - self.data['Time Stamp (ms)'][starting_frame] < delay:
-                frame_gap += 1
-            starting_frame += frame_gap
-        if include_prior:
-            frame_gap = -1
-            while self.data['Time Stamp (ms)'][starting_frame] - self.data['Time Stamp (ms)'][starting_frame + frame_gap] < duration and starting_frame + frame_gap > 0:
-                frame_gap -= 1
-            starting_frame += frame_gap
-            duration *= 2
-        frame_gap = 1
-        while self.data['Time Stamp (ms)'][starting_frame + frame_gap] - self.data['Time Stamp (ms)'][starting_frame] < duration and starting_frame + frame_gap < max_length:
-            frame_gap += 1
-
-
-        if type in self.data:
-            return self.data[type].sel(frame=slice(starting_frame, starting_frame+frame_gap))
-        else:
-            print("No %s data found in minian file" % (type))
-            return None
-        
-
+    def load_events(self):
+        events = {}
+        events['ALP'] = Event('ALP',self.data,self.get_timestep('ALP'))
+        events['IALP'] = Event('IALP',self.data,self.get_timestep('IALP'))
+        events['RNFS'] = Event('RNFS',self.data,self.get_timestep('RNFS'))
+        self.events = events
+    
 
 class FeatureExploration:
     """
