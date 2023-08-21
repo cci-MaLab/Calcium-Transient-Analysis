@@ -150,9 +150,15 @@ def match_path(dpath):# Add by HF
 
 
 class Event:
+    '''
+    Tips:
+    1. Use function set_delay_and_duration to set a delay value and a duration value (seconds)
+    2. Call function set_switch to set up True or False
+    3. Call set_list to pick up the part we want to analysis( Maybe use it on a 'OK' button, or if you want me to change it as automatically, let me know)
+    '''
     def __init__(
         self,
-        event_type:str,
+        event_type:str,  # ALP, IALP, RNFS
         data:xr.DataArray,
         timesteps:List[int]
         
@@ -233,7 +239,7 @@ class SessionFeature:
         self.day : str
         self.session: str
         self.data:dict # Original data, key:'A', 'C', 'S','unit_ids'
-        self.events:dict
+        self.events:dict # {"ALP": Event, "IALP" : Event, "RNFS": Event}
         self.value: dict #key is the unit_id,value is the numpy array
         self.A: dict    #key is unit_id,value is A. Just keep same uniform with self.value
         self.load_data(dpath=dpath)
