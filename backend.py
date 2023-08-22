@@ -154,7 +154,7 @@ class Event:
     Tips:
     1. Use function set_delay_and_duration to set a delay value and a duration value (seconds)
     2. Call function set_switch to set up True or False
-    3. Call set_list to pick up the part we want to analysis( Maybe use it on a 'OK' button, or if you want me to change it as automatically, let me know)
+    3. Call set_values to pick up the part we want to analysis( Maybe use it on a 'OK' button, or if you want me to change it as automatically, let me know)
     '''
     def __init__(
         self,
@@ -169,7 +169,7 @@ class Event:
         self.duration: float
         self.switch = True
         self.timesteps = timesteps
-        self.event_list:List[xr.DataArray]
+        self.values:dict
 
     def set_delay_and_duration(self, delay:float, duration:float):
         self.delay = delay
@@ -205,12 +205,9 @@ class Event:
             while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] > delay and event_frame + frame_gap > 0:
                 frame_gap -= 1
             event_frame += frame_gap
-
         frame_gap = 1
         while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < duration and event_frame + frame_gap < max_length:
             frame_gap += 1
-
-
         if type in self.data:
             return self.data[type].sel(frame=slice(event_frame, event_frame+frame_gap))
         else:
@@ -218,19 +215,31 @@ class Event:
             return None
 
 
-    def set_list(self):
-        event_list=[]
+    def set_values(self):
+        values={}
+        event_list= []
         if self.switch == False:
-            self.event_list=event_list
+            self.values=values
+            return
         else:
             for i in self.timesteps:
                 event_list.append(self.get_section(i,self.duration,self.delay))
-        self.event_list = event_list
-                
+        for i in self.data['unit_ids']:
+            values[i] = np.array([])
+        for i in event_list:
+                for j in i.coords['unit_id'].values:
+                    values[j] = np.r_['-1', values[j], np.array(i.sel(unit_id=j).values)]
+        self.values = values
 
 
 class SessionFeature:
-   
+    '''
+        Tips:
+        1. load_data and load_events will be automatically excuted.
+        2. You may call function set_vector,each time you change the switch of the events.
+        3. After you set vectors, call the function compute_clustering, self.linkage_data will be updated. Then you can draw the dendrogram.
+        4. Footprint in A. A is a dict. the key is the neuron ID.
+    '''
     def __init__(
         self,
         dpath: str,
@@ -240,8 +249,9 @@ class SessionFeature:
         self.session: str
         self.data:dict # Original data, key:'A', 'C', 'S','unit_ids'
         self.events:dict # {"ALP": Event, "IALP" : Event, "RNFS": Event}
-        self.value: dict #key is the unit_id,value is the numpy array
         self.A: dict    #key is unit_id,value is A. Just keep same uniform with self.value
+        self.value: dict #key is the unit_id,value is the numpy array
+        # self.linkage_data:
         self.load_data(dpath=dpath)
         self.load_events()
 
@@ -306,482 +316,32 @@ class SessionFeature:
         events['IALP'] = Event('IALP',self.data,self.get_timestep('IALP'))
         events['RNFS'] = Event('RNFS',self.data,self.get_timestep('RNFS'))
         self.events = events
-    
 
-class FeatureExploration:
-    """
-    The purpose of this class is to explore potential features that can be used
-    for the clustering of cells.
-    """
-    def __init__(
-        self,
-        dpath: str,
-    ):        
-        mouseID, day, session = match_information(dpath)
-        mouse_path, video_path = match_path(dpath)
-        print(session)
-        if (session is None):
-            behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + "behavior_ms.csv"),sep=',')
-        else:
-            behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + session + "_" + "behavior_ms.csv"),sep=',')
-        data_types = ['RNFS', 'ALP', 'IALP', 'Time Stamp (ms)']
-        self.data = {}
-        for dt in data_types:            
-            if dt in behavior_data:
-                self.data[dt] = behavior_data[dt]
-            else:
-                print("No %s data found in minian file" % (dt))
-                self.data[dt] = None
-
-        minian_path = os.path.join(dpath, "minian")
-        data = open_minian(minian_path)
-        data_types = ['A', 'C', 'S', 'E']
-        for dt in data_types:            
-            if dt in data:
-                self.data[dt] = data[dt]
-            else:
-                print("No %s data found in minian file" % (dt))
-                self.data[dt] = None
-        
-        self.data['unit_ids'] = self.data['C'].coords['unit_id'].values
-        self.dpath = dpath
-        self.data['collapsed_E'] = None
-
-        output_dpath = "/N/project/Cortical_Calcium_Image/analysis"
-        if session is None:
-            self.output_path = os.path.join(output_dpath, mouseID,day)
-        else:
-            self.output_path = os.path.join(output_dpath, mouseID,day,session)
-
-        if(os.path.exists(self.output_path) == False):
-            os.makedirs(self.output_path)
-
-    def total_calcium_events(self, unit: int):
-        """
-        Calculate the total number of calcium events for a given unit.
-        """
-        return self.data['E'].sel(unit_id=unit).max().values.item()
-
-    def get_timestep(self, type: str):
-        """
-        Return a list that contains contains the a list of the frames where
-        the ALP occurs
-        """
-        return np.flatnonzero(self.data[type])
-
-    def get_section(self, starting_frame: int, duration: float, delay: float = 0.0, include_prior: bool = False, type: str = "C") -> xr.Dataset:
-        """
-        Return the selection of the data that is within the given time frame.
-        duration indicates the number of frames.
-        """
-        # duration is in seconds convert to ms
-        duration *= 1000
-        delay *= 1000
-        start = self.data['Time Stamp (ms)'][starting_frame]
-        max_length = len(self.data['Time Stamp (ms)'])
-        if delay > 0:
-            frame_gap = 1
-            while self.data['Time Stamp (ms)'][starting_frame + frame_gap] - self.data['Time Stamp (ms)'][starting_frame] < delay:
-                frame_gap += 1
-            starting_frame += frame_gap
-        if include_prior:
-            frame_gap = -1
-            while self.data['Time Stamp (ms)'][starting_frame] - self.data['Time Stamp (ms)'][starting_frame + frame_gap] < duration and starting_frame + frame_gap > 0:
-                frame_gap -= 1
-            starting_frame += frame_gap
-            duration *= 2
-        frame_gap = 1
-        while self.data['Time Stamp (ms)'][starting_frame + frame_gap] - self.data['Time Stamp (ms)'][starting_frame] < duration and starting_frame + frame_gap < max_length:
-            frame_gap += 1
-
-
-        if type in self.data:
-            return self.data[type].sel(frame=slice(starting_frame, starting_frame+frame_gap))
-        else:
-            print("No %s data found in minian file" % (type))
-            return None
-    
-    def get_AUC(self, section: xr.Dataset, section_event: xr.Dataset):
-        """
-        Calculate the area under the curve for a given section. Across all cells
-        """
-        if section.name != "S":
-            print("Invalid section type. Please use S not %s" % (section.name))
-            return None
-
-        amplitudes = self.get_amplitude(section, section_event)
-        total_auc = {}
-        for name, cell_events in amplitudes.items():
-            total_auc[name] = 0
-            for event_name, auc in cell_events.items():
-                total_auc[name] += auc
-
-        return total_auc
-    
-    def get_amplitude(self, section_signal: xr.Dataset, section_event: xr.Dataset):
-        """
-        Calculate the amplitude of the calcium event for a given section. Across all cells
-        """
-        if section_signal.name != "S":
-            print("Invalid section type. Please use S not %s" % (section_signal.name))
-            return None
-        if section_event.name != "E":
-            print("Invalid section type. Please use S not %s" % (section_event.name))
-            return None
-
-        all_cell_amplitudes = {}
-
-        for unit_id in self.data['unit_ids']:
-            cell_amplitudes = {}
-            signal = section_signal.sel(unit_id=unit_id).values
-            event = section_event.sel(unit_id=unit_id).values
-            unique_events = np.unique(event)
-            for event_id in unique_events:
-                if event_id == 0:
-                    continue
-                cell_amplitudes[event_id] = np.sum(signal[event == event_id])
-            all_cell_amplitudes[unit_id] = cell_amplitudes
-        
-        return all_cell_amplitudes
-    
-    def get_frequency(self, section: xr.Dataset, time: float):
-        """
-        Calculate the frequency of the calcium events for a given section. Across all cells
-        """
-        if section.name != "E":
-            print("Invalid section type. Please use S not %s" % (section.name))
-            return None
-
-        all_cell_frequency = {}
-
-        for unit_id in self.data['unit_ids']:
-            cell_frequency = {}
-            event = section.sel(unit_id=unit_id).values
-            unique_events = np.unique(event)
-            all_cell_frequency[unit_id] = len(unique_events)-1 / time
-        return all_cell_frequency
-
-    
-    def count_events(self, a: np.ndarray) -> np.ndarray:
-        """
-        count the number of events in a given array.
-        We do -1 to compensate for the 0 in the array
-        """
-        return np.unique(a).size - 1
-
-        
-    def collapse_E_events(self, smoothing="gauss", kwargs=None) -> None:
-        """
-        Collapse the E values by summing up the values.
-        """
-        non_collapsed_E = xr.apply_ufunc(
-            self.normalize_events,
-            self.data['E'].chunk(dict(frame=-1, unit_id="auto")),
-            input_core_dims=[["frame"]],
-            output_core_dims=[["frame"]],
-            dask="parallelized",
-            output_dtypes=[self.data['E'].dtype],
-        )
-
-        self.data['collapsed_E'] = non_collapsed_E.sum(dim='unit_id')
-
-        if smoothing == "gauss":
-            self.data['collapsed_E'] = xr.apply_ufunc(
-                gaussian_filter1d,
-                self.data['collapsed_E'],
-                input_core_dims=[["frame"]],
-                output_core_dims=[["frame"]],
-                dask="parallelized",
-                kwargs=kwargs,
-                output_dtypes=[self.data['E'].dtype]
-            )
-        elif smoothing == "mean":
-            self.data['collapsed_E'] = xr.apply_ufunc(
-                self.moving_average,
-                self.data['collapsed_E'],
-                input_core_dims=[["frame"]],
-                output_core_dims=[["frame"]],
-                dask="parallelized",
-                kwargs=kwargs,
-                output_dtypes=[self.data['E'].dtype]
-            ).compute()
-    
-    def collapse_E_events_AUC(self) -> None:
-        """
-        Collapse the E values by summing up the values.
-        """
-        non_collapsed_E = xr.apply_ufunc(
-            self.normalize_events,
-            self.data['E'].chunk(dict(frame=-1, unit_id="auto")),
-            input_core_dims=[["frame"]],
-            output_core_dims=[["frame"]],
-            dask="parallelized",
-            output_dtypes=[self.data['E'].dtype],
-        )
-
-        non_collapsed_E *= self.data['S']
-
-        self.data['collapsed_E_AUC'] = non_collapsed_E.sum(dim='unit_id')
-
-    def moving_average(self, x, w=100, type='constant'):
-        return np.convolve(x, np.ones(w), type) / w
-
-    def collapse_E_events_peak(self) -> None:
-        '''
-        Get the events' peak
-        '''
-        non_collapsed_E_peak = xr.apply_ufunc(
-            self.derivative,
-            self.data['E'].chunk(dict(frame=-1, unit_id="auto")),
-            input_core_dims=[["frame"]],
-            output_core_dims=[["frame"]],
-            dask="parallelized",
-            output_dtypes=[self.data['E'].dtype],
-        ).compute()
-        self.data['collapsed_E_peak'] = non_collapsed_E_peak.sum(dim='unit_id')
-
-    def derivative(self, a: np.ndarray) -> np.ndarray:
-        a = a.copy()
-        b = np.roll(a, 1, axis=1)
-        # b[:, 0] = 0
-        c = a - b
-        c[c > 0] = 0
-        c[c < 0] = 1
-        c = np.roll(c, -1, axis=1)
-        return c
-
-
-
-    def find_events_peak(self, a: np.ndarray) -> np.ndarray:
-        a = a.copy()
-        print(a.shape)
-        res = np.zeros(np.shape(a))
-        for row,b in enumerate(a):
-            u,i,c=np.unique(b,return_index = True,return_counts = True)
-            for m in range(1,len(u)):                
-                res[row,(i[m]+c[m]-1)]=u[m]
-        return res
-
-
-    def normalize_events(self, a: np.ndarray) -> np.ndarray:
-        """
-        All positive values are converted to 1.
-        """
-        a = a.copy()
-        a[a > 0] = 1
-        return a
-
-    
-    def centroid(self, verbose=False) -> pd.DataFrame:
-        """
-        Compute centroids of spatial footprint of each cell.
-
-        Parameters
-        ----------
-        A : xr.DataArray
-            Input spatial footprints.
-        verbose : bool, optional
-            Whether to print message and progress bar. By default `False`.
-
-        Returns
-        -------
-        cents_df : pd.DataFrame
-            Centroid of spatial footprints for each cell. Has columns "unit_id",
-            "height", "width" and any other additional metadata dimension.
-        """
-        A = self.data['A']
-        def rel_cent(im):
-            im_nan = np.isnan(im)
-            if im_nan.all():
-                return np.array([np.nan, np.nan])
-            if im_nan.any():
-                im = np.nan_to_num(im)
-            cent = np.array(center_of_mass(im))
-            return cent / im.shape
-
-        gu_rel_cent = da.gufunc(
-            rel_cent,
-            signature="(h,w)->(d)",
-            output_dtypes=float,
-            output_sizes=dict(d=2),
-            vectorize=True,
-        )
-        cents = xr.apply_ufunc(
-            gu_rel_cent,
-            A.chunk(dict(height=-1, width=-1)),
-            input_core_dims=[["height", "width"]],
-            output_core_dims=[["dim"]],
-            dask="allowed",
-        ).assign_coords(dim=["height", "width"])
-        if verbose:
-            print("computing centroids")
-            with ProgressBar():
-                cents = cents.compute()
-        cents_df = (
-            cents.rename("cents")
-            .to_series()
-            .dropna()
-            .unstack("dim")
-            .rename_axis(None, axis="columns")
-            .reset_index()
-        )
-        h_rg = (A.coords["height"].min().values, A.coords["height"].max().values)
-        w_rg = (A.coords["width"].min().values, A.coords["width"].max().values)
-        cents_df["height"] = cents_df["height"] * (h_rg[1] - h_rg[0]) + h_rg[0]
-        cents_df["width"] = cents_df["width"] * (w_rg[1] - w_rg[0]) + w_rg[0]
-        return cents_df
-
-    def get_filted_C(self) -> None:
-        non_collapsed_E = xr.apply_ufunc(
-            self.normalize_events,
-            self.data['E'].chunk(dict(frame=-1, unit_id="auto")),
-            input_core_dims=[["frame"]],
-            output_core_dims=[["frame"]],
-            dask="parallelized",
-            output_dtypes=[self.data['E'].dtype],
-        )
-        filted_C = self.data['C'] * non_collapsed_E
-        self.data['filted_C'] = filted_C
-
-    def smoothed_C(self,window_length = 6, n = 3,mode = "savgol",unit_id = []) -> None:
-        self.data['smoothed_C'] = self.data['C']
-        if unit_id is None:
-            unit_id = self.data['unit_ids']
-        if mode =="savgol":
-            smoothed_C = xr.apply_ufunc(
-                savgol_filter,
-                self.data['C'].sel(unit_id=unit_id),
-                window_length,
-                n,
-                input_core_dims=[["frame"],[],[]],
-                output_core_dims=[["frame"]],
-                dask="parallelized",
-                output_dtypes=[self.data['C'].dtype],
-            )
-        elif mode =="gauss":
-            smoothed_C = xr.apply_ufunc(
-                gaussian_filter1d,
-                self.data['C'].sel(unit_id=unit_id),
-                3,
-                input_core_dims=[["frame"],[]],
-                output_core_dims=[["frame"]],
-                dask="parallelized",
-                output_dtypes=[self.data['C'].dtype],
-            )
-        for uid in unit_id:
-            self.data['smoothed_C'].sel(unit_id = uid).values = smoothed_C.sel(unit_id=uid)
-
-    def smoothed_filted_C(self) -> None:
-        non_collapsed_E = xr.apply_ufunc(
-            self.normalize_events,
-            self.data['E'].chunk(dict(frame=-1, unit_id="auto")),
-            input_core_dims=[["frame"]],
-            output_core_dims=[["frame"]],
-            dask="parallelized",
-            output_dtypes=[self.data['E'].dtype],
-        )
-        smoothed_filted_C = self.data['smoothed_C'] * non_collapsed_E
-        self.data['smoothed_filted_C'] = smoothed_filted_C
-
-class Features:
-    '''
-        Parameters
-        ----------
-        ALP
-    '''
-
-    def __init__(self,
-                A: dict,
-                ALP: List[xr.DataArray],
-                IALP: List[xr.DataArray],
-                RNFS: List[xr.DataArray],  
-                events: Optional[List[str]] = None, 
-                description: Optional[str] = None,
-                dist_met: Optional[str] = None, 
-        ):
-        self.A = A
-        self.ALPlist = ALP
-        self.IALPlist = IALP
-        self.RNFSlist = RNFS
-        self.events = events
-        self.dist_met = dist_met
-        self.description = description
-        self.set_vector(self.events)
-
-    
-    def set_timefilter(self):
-        ALP = {}
-        IALP = {}
-        RNFS = {}
-        if self.timefilter is None:
-            for i in self.ALPlist:
-                for j in i.coords['unit_id'].values:
-                    try:
-                        ALP[j]
-                    except:
-                        ALP[j] = np.array([])
-                    ALP[j] = np.r_['-1', ALP[j], np.array(i.sel(unit_id=j).values)]
-            for i in self.IALPlist:
-                for j in i.coords['unit_id'].values:
-                    try:
-                        IALP[j]
-                    except:
-                        IALP[j] = np.array([])
-                    IALP[j] = np.r_['-1', IALP[j], np.array(i.sel(unit_id=j).values)]
-            for i in self.RNFSlist:
-                for j in i.coords['unit_id'].values:
-                    try:
-                        RNFS[j]
-                    except:
-                        RNFS[j] = np.array([])
-                    RNFS[j] = np.r_['-1', RNFS[j], np.array(i.sel(unit_id=j).values)]
-        self.ALP = ALP
-        self.IALP = IALP
-        self.RNFS = RNFS
-        self.set_vector(self.events)
-
-
-    def set_events(self, events:List[str]):
-        self.events = events
-        self.set_vector(self.events)
-
-    def set_vector(self, events:list):
+    def set_vector(self):
         '''
         event :  str, list
             event can be ALP/IALP/RNFS
         '''
-        if events is None:
-            events=['ALP','IALP','RNFS']
         values = {}
-        if 'ALP' in events:
-            for key in self.ALP:
-                try:
-                    values[key]
-                except:
-                    values[key] = np.array([])
-                values[key] = np.r_['-1', values[key], self.ALP[key]]            
-        if 'IALP' in events:
-            for key in self.IALP:
-                try:
-                    values[key]
-                except:
-                    values[key] = np.array([])
-                values[key] = np.r_['-1', values[key], self.IALP[key]]
-        if 'RNFS' in events:
-            for key in self.RNFS:
-                try:
-                    values[key]
-                except:
-                    values[key] = np.array([])
-                values[key] = np.r_['-1', values[key], self.RNFS[key]]
-        self.values = values
-    
-    def set_description(self, content:str):
-        self.description = content
+        for uid in self.data['unit_ids']:
+            values[uid] = np.array([])
 
-    def reset_dataArray(self, a: np.ndarray):
-        a = np.array([])
-        return a
+        if self.events['ALP'].switch == True:
+            for key in self.events['ALP'].values:
+                values[key] = np.r_['-1', values[key], self.events['ALP'].values]            
+        if self.events['IALP'].switch == True:
+            for key in self.events['IALP'].values:
+                values[key] = np.r_['-1', values[key], self.events['IALP'].values[key]]
+        if self.events['RNFS'].switch == True:
+            for key in self.events['RNFS'].values:
+                values[key] = np.r_['-1', values[key], self.events['RNFS'].values[key]]
+        self.values = values
+
+    def compute_clustering(self):
+        cellClustering = CellClustering(self.values,self.A)
+        self.linkage_data = cellClustering.linkage_data
+
+        
 
 class CellClustering:
     """
@@ -848,3 +408,479 @@ class CellClustering:
             final_image += np.stack((self.A[list(self.A.keys())[idx]].values,)*3, axis=-1) * viridis(color_mapping[idx])[:3]
         
         return plt.imshow(final_image)
+
+# class FeatureExploration:
+#     """
+#     The purpose of this class is to explore potential features that can be used
+#     for the clustering of cells.
+#     """
+#     def __init__(
+#         self,
+#         dpath: str,
+#     ):        
+#         mouseID, day, session = match_information(dpath)
+#         mouse_path, video_path = match_path(dpath)
+#         print(session)
+#         if (session is None):
+#             behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + "behavior_ms.csv"),sep=',')
+#         else:
+#             behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + session + "_" + "behavior_ms.csv"),sep=',')
+#         data_types = ['RNFS', 'ALP', 'IALP', 'Time Stamp (ms)']
+#         self.data = {}
+#         for dt in data_types:            
+#             if dt in behavior_data:
+#                 self.data[dt] = behavior_data[dt]
+#             else:
+#                 print("No %s data found in minian file" % (dt))
+#                 self.data[dt] = None
+
+#         minian_path = os.path.join(dpath, "minian")
+#         data = open_minian(minian_path)
+#         data_types = ['A', 'C', 'S', 'E']
+#         for dt in data_types:            
+#             if dt in data:
+#                 self.data[dt] = data[dt]
+#             else:
+#                 print("No %s data found in minian file" % (dt))
+#                 self.data[dt] = None
+        
+#         self.data['unit_ids'] = self.data['C'].coords['unit_id'].values
+#         self.dpath = dpath
+#         self.data['collapsed_E'] = None
+
+#         output_dpath = "/N/project/Cortical_Calcium_Image/analysis"
+#         if session is None:
+#             self.output_path = os.path.join(output_dpath, mouseID,day)
+#         else:
+#             self.output_path = os.path.join(output_dpath, mouseID,day,session)
+
+#         if(os.path.exists(self.output_path) == False):
+#             os.makedirs(self.output_path)
+
+#     def total_calcium_events(self, unit: int):
+#         """
+#         Calculate the total number of calcium events for a given unit.
+#         """
+#         return self.data['E'].sel(unit_id=unit).max().values.item()
+
+#     def get_timestep(self, type: str):
+#         """
+#         Return a list that contains contains the a list of the frames where
+#         the ALP occurs
+#         """
+#         return np.flatnonzero(self.data[type])
+
+#     def get_section(self, starting_frame: int, duration: float, delay: float = 0.0, include_prior: bool = False, type: str = "C") -> xr.Dataset:
+#         """
+#         Return the selection of the data that is within the given time frame.
+#         duration indicates the number of frames.
+#         """
+#         # duration is in seconds convert to ms
+#         duration *= 1000
+#         delay *= 1000
+#         start = self.data['Time Stamp (ms)'][starting_frame]
+#         max_length = len(self.data['Time Stamp (ms)'])
+#         if delay > 0:
+#             frame_gap = 1
+#             while self.data['Time Stamp (ms)'][starting_frame + frame_gap] - self.data['Time Stamp (ms)'][starting_frame] < delay:
+#                 frame_gap += 1
+#             starting_frame += frame_gap
+#         if include_prior:
+#             frame_gap = -1
+#             while self.data['Time Stamp (ms)'][starting_frame] - self.data['Time Stamp (ms)'][starting_frame + frame_gap] < duration and starting_frame + frame_gap > 0:
+#                 frame_gap -= 1
+#             starting_frame += frame_gap
+#             duration *= 2
+#         frame_gap = 1
+#         while self.data['Time Stamp (ms)'][starting_frame + frame_gap] - self.data['Time Stamp (ms)'][starting_frame] < duration and starting_frame + frame_gap < max_length:
+#             frame_gap += 1
+
+
+#         if type in self.data:
+#             return self.data[type].sel(frame=slice(starting_frame, starting_frame+frame_gap))
+#         else:
+#             print("No %s data found in minian file" % (type))
+#             return None
+    
+#     def get_AUC(self, section: xr.Dataset, section_event: xr.Dataset):
+#         """
+#         Calculate the area under the curve for a given section. Across all cells
+#         """
+#         if section.name != "S":
+#             print("Invalid section type. Please use S not %s" % (section.name))
+#             return None
+
+#         amplitudes = self.get_amplitude(section, section_event)
+#         total_auc = {}
+#         for name, cell_events in amplitudes.items():
+#             total_auc[name] = 0
+#             for event_name, auc in cell_events.items():
+#                 total_auc[name] += auc
+
+#         return total_auc
+    
+#     def get_amplitude(self, section_signal: xr.Dataset, section_event: xr.Dataset):
+#         """
+#         Calculate the amplitude of the calcium event for a given section. Across all cells
+#         """
+#         if section_signal.name != "S":
+#             print("Invalid section type. Please use S not %s" % (section_signal.name))
+#             return None
+#         if section_event.name != "E":
+#             print("Invalid section type. Please use S not %s" % (section_event.name))
+#             return None
+
+#         all_cell_amplitudes = {}
+
+#         for unit_id in self.data['unit_ids']:
+#             cell_amplitudes = {}
+#             signal = section_signal.sel(unit_id=unit_id).values
+#             event = section_event.sel(unit_id=unit_id).values
+#             unique_events = np.unique(event)
+#             for event_id in unique_events:
+#                 if event_id == 0:
+#                     continue
+#                 cell_amplitudes[event_id] = np.sum(signal[event == event_id])
+#             all_cell_amplitudes[unit_id] = cell_amplitudes
+        
+#         return all_cell_amplitudes
+    
+#     def get_frequency(self, section: xr.Dataset, time: float):
+#         """
+#         Calculate the frequency of the calcium events for a given section. Across all cells
+#         """
+#         if section.name != "E":
+#             print("Invalid section type. Please use S not %s" % (section.name))
+#             return None
+
+#         all_cell_frequency = {}
+
+#         for unit_id in self.data['unit_ids']:
+#             cell_frequency = {}
+#             event = section.sel(unit_id=unit_id).values
+#             unique_events = np.unique(event)
+#             all_cell_frequency[unit_id] = len(unique_events)-1 / time
+#         return all_cell_frequency
+
+    
+#     def count_events(self, a: np.ndarray) -> np.ndarray:
+#         """
+#         count the number of events in a given array.
+#         We do -1 to compensate for the 0 in the array
+#         """
+#         return np.unique(a).size - 1
+
+        
+#     def collapse_E_events(self, smoothing="gauss", kwargs=None) -> None:
+#         """
+#         Collapse the E values by summing up the values.
+#         """
+#         non_collapsed_E = xr.apply_ufunc(
+#             self.normalize_events,
+#             self.data['E'].chunk(dict(frame=-1, unit_id="auto")),
+#             input_core_dims=[["frame"]],
+#             output_core_dims=[["frame"]],
+#             dask="parallelized",
+#             output_dtypes=[self.data['E'].dtype],
+#         )
+
+#         self.data['collapsed_E'] = non_collapsed_E.sum(dim='unit_id')
+
+#         if smoothing == "gauss":
+#             self.data['collapsed_E'] = xr.apply_ufunc(
+#                 gaussian_filter1d,
+#                 self.data['collapsed_E'],
+#                 input_core_dims=[["frame"]],
+#                 output_core_dims=[["frame"]],
+#                 dask="parallelized",
+#                 kwargs=kwargs,
+#                 output_dtypes=[self.data['E'].dtype]
+#             )
+#         elif smoothing == "mean":
+#             self.data['collapsed_E'] = xr.apply_ufunc(
+#                 self.moving_average,
+#                 self.data['collapsed_E'],
+#                 input_core_dims=[["frame"]],
+#                 output_core_dims=[["frame"]],
+#                 dask="parallelized",
+#                 kwargs=kwargs,
+#                 output_dtypes=[self.data['E'].dtype]
+#             ).compute()
+    
+#     def collapse_E_events_AUC(self) -> None:
+#         """
+#         Collapse the E values by summing up the values.
+#         """
+#         non_collapsed_E = xr.apply_ufunc(
+#             self.normalize_events,
+#             self.data['E'].chunk(dict(frame=-1, unit_id="auto")),
+#             input_core_dims=[["frame"]],
+#             output_core_dims=[["frame"]],
+#             dask="parallelized",
+#             output_dtypes=[self.data['E'].dtype],
+#         )
+
+#         non_collapsed_E *= self.data['S']
+
+#         self.data['collapsed_E_AUC'] = non_collapsed_E.sum(dim='unit_id')
+
+#     def moving_average(self, x, w=100, type='constant'):
+#         return np.convolve(x, np.ones(w), type) / w
+
+#     def collapse_E_events_peak(self) -> None:
+#         '''
+#         Get the events' peak
+#         '''
+#         non_collapsed_E_peak = xr.apply_ufunc(
+#             self.derivative,
+#             self.data['E'].chunk(dict(frame=-1, unit_id="auto")),
+#             input_core_dims=[["frame"]],
+#             output_core_dims=[["frame"]],
+#             dask="parallelized",
+#             output_dtypes=[self.data['E'].dtype],
+#         ).compute()
+#         self.data['collapsed_E_peak'] = non_collapsed_E_peak.sum(dim='unit_id')
+
+#     def derivative(self, a: np.ndarray) -> np.ndarray:
+#         a = a.copy()
+#         b = np.roll(a, 1, axis=1)
+#         # b[:, 0] = 0
+#         c = a - b
+#         c[c > 0] = 0
+#         c[c < 0] = 1
+#         c = np.roll(c, -1, axis=1)
+#         return c
+
+
+
+#     def find_events_peak(self, a: np.ndarray) -> np.ndarray:
+#         a = a.copy()
+#         print(a.shape)
+#         res = np.zeros(np.shape(a))
+#         for row,b in enumerate(a):
+#             u,i,c=np.unique(b,return_index = True,return_counts = True)
+#             for m in range(1,len(u)):                
+#                 res[row,(i[m]+c[m]-1)]=u[m]
+#         return res
+
+
+#     def normalize_events(self, a: np.ndarray) -> np.ndarray:
+#         """
+#         All positive values are converted to 1.
+#         """
+#         a = a.copy()
+#         a[a > 0] = 1
+#         return a
+
+    
+#     def centroid(self, verbose=False) -> pd.DataFrame:
+#         """
+#         Compute centroids of spatial footprint of each cell.
+
+#         Parameters
+#         ----------
+#         A : xr.DataArray
+#             Input spatial footprints.
+#         verbose : bool, optional
+#             Whether to print message and progress bar. By default `False`.
+
+#         Returns
+#         -------
+#         cents_df : pd.DataFrame
+#             Centroid of spatial footprints for each cell. Has columns "unit_id",
+#             "height", "width" and any other additional metadata dimension.
+#         """
+#         A = self.data['A']
+#         def rel_cent(im):
+#             im_nan = np.isnan(im)
+#             if im_nan.all():
+#                 return np.array([np.nan, np.nan])
+#             if im_nan.any():
+#                 im = np.nan_to_num(im)
+#             cent = np.array(center_of_mass(im))
+#             return cent / im.shape
+
+#         gu_rel_cent = da.gufunc(
+#             rel_cent,
+#             signature="(h,w)->(d)",
+#             output_dtypes=float,
+#             output_sizes=dict(d=2),
+#             vectorize=True,
+#         )
+#         cents = xr.apply_ufunc(
+#             gu_rel_cent,
+#             A.chunk(dict(height=-1, width=-1)),
+#             input_core_dims=[["height", "width"]],
+#             output_core_dims=[["dim"]],
+#             dask="allowed",
+#         ).assign_coords(dim=["height", "width"])
+#         if verbose:
+#             print("computing centroids")
+#             with ProgressBar():
+#                 cents = cents.compute()
+#         cents_df = (
+#             cents.rename("cents")
+#             .to_series()
+#             .dropna()
+#             .unstack("dim")
+#             .rename_axis(None, axis="columns")
+#             .reset_index()
+#         )
+#         h_rg = (A.coords["height"].min().values, A.coords["height"].max().values)
+#         w_rg = (A.coords["width"].min().values, A.coords["width"].max().values)
+#         cents_df["height"] = cents_df["height"] * (h_rg[1] - h_rg[0]) + h_rg[0]
+#         cents_df["width"] = cents_df["width"] * (w_rg[1] - w_rg[0]) + w_rg[0]
+#         return cents_df
+
+#     def get_filted_C(self) -> None:
+#         non_collapsed_E = xr.apply_ufunc(
+#             self.normalize_events,
+#             self.data['E'].chunk(dict(frame=-1, unit_id="auto")),
+#             input_core_dims=[["frame"]],
+#             output_core_dims=[["frame"]],
+#             dask="parallelized",
+#             output_dtypes=[self.data['E'].dtype],
+#         )
+#         filted_C = self.data['C'] * non_collapsed_E
+#         self.data['filted_C'] = filted_C
+
+#     def smoothed_C(self,window_length = 6, n = 3,mode = "savgol",unit_id = []) -> None:
+#         self.data['smoothed_C'] = self.data['C']
+#         if unit_id is None:
+#             unit_id = self.data['unit_ids']
+#         if mode =="savgol":
+#             smoothed_C = xr.apply_ufunc(
+#                 savgol_filter,
+#                 self.data['C'].sel(unit_id=unit_id),
+#                 window_length,
+#                 n,
+#                 input_core_dims=[["frame"],[],[]],
+#                 output_core_dims=[["frame"]],
+#                 dask="parallelized",
+#                 output_dtypes=[self.data['C'].dtype],
+#             )
+#         elif mode =="gauss":
+#             smoothed_C = xr.apply_ufunc(
+#                 gaussian_filter1d,
+#                 self.data['C'].sel(unit_id=unit_id),
+#                 3,
+#                 input_core_dims=[["frame"],[]],
+#                 output_core_dims=[["frame"]],
+#                 dask="parallelized",
+#                 output_dtypes=[self.data['C'].dtype],
+#             )
+#         for uid in unit_id:
+#             self.data['smoothed_C'].sel(unit_id = uid).values = smoothed_C.sel(unit_id=uid)
+
+#     def smoothed_filted_C(self) -> None:
+#         non_collapsed_E = xr.apply_ufunc(
+#             self.normalize_events,
+#             self.data['E'].chunk(dict(frame=-1, unit_id="auto")),
+#             input_core_dims=[["frame"]],
+#             output_core_dims=[["frame"]],
+#             dask="parallelized",
+#             output_dtypes=[self.data['E'].dtype],
+#         )
+#         smoothed_filted_C = self.data['smoothed_C'] * non_collapsed_E
+#         self.data['smoothed_filted_C'] = smoothed_filted_C
+
+# class Features:
+#     '''
+#         Parameters
+#         ----------
+#         ALP
+#     '''
+
+#     def __init__(self,
+#                 A: dict,
+#                 ALP: List[xr.DataArray],
+#                 IALP: List[xr.DataArray],
+#                 RNFS: List[xr.DataArray],  
+#                 events: Optional[List[str]] = None, 
+#                 description: Optional[str] = None,
+#                 dist_met: Optional[str] = None, 
+#         ):
+#         self.A = A
+#         self.ALPlist = ALP
+#         self.IALPlist = IALP
+#         self.RNFSlist = RNFS
+#         self.events = events
+#         self.dist_met = dist_met
+#         self.description = description
+#         self.set_vector(self.events)
+
+    
+#     def set_timefilter(self):
+#         ALP = {}
+#         IALP = {}
+#         RNFS = {}
+#         if self.timefilter is None:
+#             for i in self.ALPlist:
+#                 for j in i.coords['unit_id'].values:
+#                     try:
+#                         ALP[j]
+#                     except:
+#                         ALP[j] = np.array([])
+#                     ALP[j] = np.r_['-1', ALP[j], np.array(i.sel(unit_id=j).values)]
+#             for i in self.IALPlist:
+#                 for j in i.coords['unit_id'].values:
+#                     try:
+#                         IALP[j]
+#                     except:
+#                         IALP[j] = np.array([])
+#                     IALP[j] = np.r_['-1', IALP[j], np.array(i.sel(unit_id=j).values)]
+#             for i in self.RNFSlist:
+#                 for j in i.coords['unit_id'].values:
+#                     try:
+#                         RNFS[j]
+#                     except:
+#                         RNFS[j] = np.array([])
+#                     RNFS[j] = np.r_['-1', RNFS[j], np.array(i.sel(unit_id=j).values)]
+#         self.ALP = ALP
+#         self.IALP = IALP
+#         self.RNFS = RNFS
+#         self.set_vector(self.events)
+
+
+#     def set_events(self, events:List[str]):
+#         self.events = events
+#         self.set_vector(self.events)
+
+#     def set_vector(self, events:list):
+#         '''
+#         event :  str, list
+#             event can be ALP/IALP/RNFS
+#         '''
+#         if events is None:
+#             events=['ALP','IALP','RNFS']
+#         values = {}
+#         if 'ALP' in events:
+#             for key in self.ALP:
+#                 try:
+#                     values[key]
+#                 except:
+#                     values[key] = np.array([])
+#                 values[key] = np.r_['-1', values[key], self.ALP[key]]            
+#         if 'IALP' in events:
+#             for key in self.IALP:
+#                 try:
+#                     values[key]
+#                 except:
+#                     values[key] = np.array([])
+#                 values[key] = np.r_['-1', values[key], self.IALP[key]]
+#         if 'RNFS' in events:
+#             for key in self.RNFS:
+#                 try:
+#                     values[key]
+#                 except:
+#                     values[key] = np.array([])
+#                 values[key] = np.r_['-1', values[key], self.RNFS[key]]
+#         self.values = values
+    
+#     def set_description(self, content:str):
+#         self.description = content
+
+#     def reset_dataArray(self, a: np.ndarray):
+#         a = np.array([])
+#         return a
+
