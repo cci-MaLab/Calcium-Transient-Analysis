@@ -335,6 +335,10 @@ class SessionFeature:
         if self.events['RNFS'].switch == True:
             for key in self.events['RNFS'].values:
                 values[key] = np.r_['-1', values[key], self.events['RNFS'].values[key]]
+        # If no events in this period 
+        for uid in self.data['unit_ids']:
+            if values[uid] == np.array([]):
+                values[uid] = self.data['C']
         self.values = values
 
 
