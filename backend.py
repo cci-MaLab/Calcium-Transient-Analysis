@@ -328,7 +328,7 @@ class SessionFeature:
 
         if self.events['ALP'].switch == True:
             for key in self.events['ALP'].values:
-                values[key] = np.r_['-1', values[key], self.events['ALP'].values]            
+                values[key] = np.r_['-1', values[key], self.events['ALP'].values[key]]            
         if self.events['IALP'].switch == True:
             for key in self.events['IALP'].values:
                 values[key] = np.r_['-1', values[key], self.events['IALP'].values[key]]
@@ -336,6 +336,7 @@ class SessionFeature:
             for key in self.events['RNFS'].values:
                 values[key] = np.r_['-1', values[key], self.events['RNFS'].values[key]]
         self.values = values
+
 
     def compute_clustering(self):
         cellClustering = CellClustering(self.values,self.A)
