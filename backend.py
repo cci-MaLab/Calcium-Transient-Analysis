@@ -168,7 +168,7 @@ class Event:
         self.event_type = event_type
         self.delay: float
         self.duration: float
-        self.switch = True
+        self.switch = False
         self.timesteps = timesteps
         self.values:dict
 
@@ -319,6 +319,7 @@ class SessionFeature:
         events = {}
         for key in keys:
             events[key] = Event(key,self.data,self.get_timestep(key))
+            events[key].switch = True
         self.events = events
 
     def set_vector(self):
