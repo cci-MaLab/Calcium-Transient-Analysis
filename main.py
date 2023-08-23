@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMe
                             QLabel, QVBoxLayout, QHBoxLayout, QGridLayout, QComboBox, QWidget,
                             QFrame)
 from PyQt5.QtCore import (QThreadPool)
-from custom_widgets import LoadingDialog
+from custom_widgets import LoadingDialog, ParamDialog
 from PyQt5 import Qt
 import sys
 import os
@@ -22,7 +22,7 @@ class MainWindow(QMainWindow):
 
         # Data stuff
         self.data = []
-        self.path_list = set()
+        self.path_list = {}
 
         # Menu Bar
         pixmapi = QStyle.StandardPixmap.SP_DirIcon
@@ -113,6 +113,14 @@ class MainWindow(QMainWindow):
             "Open File",
         )
 
+        pdg = ParamDialog()
+        if pdg.exec():
+            result = pdg.get_result()
+        else:
+            return
+
+
+
         # Cannot do the stuff below as it segfaults :(
         '''
         worker = Worker(open_minian, fname, self.data)
@@ -126,14 +134,17 @@ class MainWindow(QMainWindow):
         if fname != '' and fname not in self.path_list:
             self.setWindowTitle("Loading...")
 
-            self.data.append(SessionFeature(fname))
+            session = SessionFeature(fname)
+            for key in result.keys():
+                if key != "group":
+                    delay, window = result[key]["delay"], result[key]["window"]
+                    session.events[key].set_delay_and_duration(delay, window)
+
+            session.set_group(result["group"])
 
             self.setWindowTitle("Cell Clustering Tool")
 
-            self.path_list.add(fname)
-
-            with open('paths.txt', 'a') as f:
-                f.writelines([fname])
+            self.path_list[fname] = result
         
 
 

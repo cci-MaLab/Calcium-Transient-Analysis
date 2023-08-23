@@ -163,9 +163,10 @@ class Event:
         timesteps:List[int]
         
     ):  
+        self.has_param = False
         self.data = data
         self.event_type = event_type
-        self.delay: float 
+        self.delay: float
         self.duration: float
         self.switch = True
         self.timesteps = timesteps
@@ -174,6 +175,7 @@ class Event:
     def set_delay_and_duration(self, delay:float, duration:float):
         self.delay = delay
         self.duration = duration
+        self.has_param = True
 
     def set_switch(self, switch : bool = True):
         self.switch = switch
