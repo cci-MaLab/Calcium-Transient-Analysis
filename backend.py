@@ -342,12 +342,13 @@ class SessionFeature:
                 values[uid] = self.data['C']
         self.values = values
 
-    def set_no_of_clusters(self):
+    def set_no_of_clusters(self, number : int):
+        self.no_of_clusters = number
 
     def compute_clustering(self):
         cellClustering = CellClustering(self.values,self.A)
         self.linkage_data = cellClustering.linkage_data
-        cellClustering.visualize_clusters(self.no_of_clusters)
+        self.clustering_result = cellClustering.visualize_clusters(self.no_of_clusters)
 
         
 
