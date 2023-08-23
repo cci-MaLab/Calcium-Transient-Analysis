@@ -247,6 +247,7 @@ class SessionFeature:
         self.mouseID : str
         self.day : str
         self.session: str
+        self.group: str
         self.data:dict # Original data, key:'A', 'C', 'S','unit_ids'
         self.events:dict # {"ALP": Event, "IALP" : Event, "RNFS": Event}
         self.A: dict    #key is unit_id,value is A. Just keep same uniform with self.value
@@ -341,6 +342,9 @@ class SessionFeature:
             if values[uid] == np.array([]):
                 values[uid] = self.data['C']
         self.values = values
+
+    def set_group(self, group_type: str):
+        self.group = group_type
 
     def set_no_of_clusters(self, number : int):
         self.no_of_clusters = number
