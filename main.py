@@ -1,7 +1,9 @@
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox, QAction,
-                            QLabel, QVBoxLayout)
+                            QLabel, QVBoxLayout, QHBoxLayout, QGridLayout, QComboBox, QWidget,
+                            QFrame)
 from PyQt5.QtCore import (QThreadPool)
 from custom_widgets import LoadingDialog
+from PyQt5 import Qt
 import sys
 import os
 sys.path.insert(0, ".")
@@ -31,9 +33,43 @@ class MainWindow(QMainWindow):
         file_menu = menu.addMenu("&File")
         file_menu.addAction(button_action)
 
+        # Tool Widgets
+        frame = QFrame()
+        frame.setFrameShape(QFrame.StyledPanel)
+        frame.setFrameShadow(QFrame.Raised)
+        label_cluster_select = QLabel(frame)
+        label_cluster_select.setText("Pick number of clusters:")
+        cluster_select = QComboBox(frame)
+        for i in range (2, 20):
+            cluster_select.addItem(str(i))
+        cluster_select.setCurrentIndex(2)
+        cluster_select.setEnabled(False)
+
+
         # Layouts
-        layout_main = QVBoxLayout()
-        
+        layout_central = QHBoxLayout()
+        layout_cluster = QVBoxLayout()
+        layout_tools_sub = QVBoxLayout()
+        layout_tools_sub.addStretch()
+        layout_tools_sub.setDirection(3)
+        layout_tools = QHBoxLayout()
+        layout_tools.addStretch()
+        cluster_viz = QGridLayout()
+
+
+        layout_tools_sub.addWidget(cluster_select)
+        layout_tools_sub.addWidget(label_cluster_select)
+        layout_tools.addLayout(layout_tools_sub)
+        layout_cluster.addLayout(cluster_viz)
+        layout_central.addLayout(layout_cluster)
+        layout_central.addLayout(layout_tools)
+
+        widget = QWidget()
+        widget.setLayout(layout_central)
+        self.setCentralWidget(widget)
+
+
+
 
         self.show()
 
