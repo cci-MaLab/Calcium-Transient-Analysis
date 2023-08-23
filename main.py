@@ -133,14 +133,17 @@ class MainWindow(QMainWindow):
         '''
         if fname != '' and fname not in self.path_list:
             self.setWindowTitle("Loading...")
-
-            session = SessionFeature(fname)
-            for key in result.keys():
-                if key != "group":
-                    delay, window = result[key]["delay"], result[key]["window"]
-                    session.events[key].set_delay_and_duration(delay, window)
+            events = list(result.keys())
+            events.remove("group")
+            session = SessionFeature(fname, events)
+            for event in events:
+                delay, window = result[event]["delay"], result[event]["window"]
+                session.events[event].set_delay_and_duration(delay, window)
+                session.events[event].set_values()
 
             session.set_group(result["group"])
+            session.set_vector()
+            session.compute_clustering()
 
             self.setWindowTitle("Cell Clustering Tool")
 

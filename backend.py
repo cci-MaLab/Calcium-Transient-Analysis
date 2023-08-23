@@ -245,6 +245,7 @@ class SessionFeature:
     def __init__(
         self,
         dpath: str,
+        events: list
     ):        
         self.mouseID : str
         self.day : str
@@ -256,7 +257,7 @@ class SessionFeature:
         self.value: dict #key is the unit_id,value is the numpy array
         # self.linkage_data:
         self.load_data(dpath=dpath)
-        self.load_events()
+        self.load_events(events)
         self.no_of_clusters = 4
 
     def load_data(self,dpath):
@@ -314,11 +315,10 @@ class SessionFeature:
         return np.flatnonzero(self.data[type])
 
     
-    def load_events(self):
+    def load_events(self, keys):
         events = {}
-        events['ALP'] = Event('ALP',self.data,self.get_timestep('ALP'))
-        events['IALP'] = Event('IALP',self.data,self.get_timestep('IALP'))
-        events['RNFS'] = Event('RNFS',self.data,self.get_timestep('RNFS'))
+        for key in keys:
+            events[key] = Event(key,self.data,self.get_timestep(key))
         self.events = events
 
     def set_vector(self):
