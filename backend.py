@@ -254,6 +254,7 @@ class SessionFeature:
         # self.linkage_data:
         self.load_data(dpath=dpath)
         self.load_events()
+        self.no_of_clusters = 4
 
     def load_data(self,dpath):
         mouseID, day, session = match_information(dpath)
@@ -345,6 +346,7 @@ class SessionFeature:
     def compute_clustering(self):
         cellClustering = CellClustering(self.values,self.A)
         self.linkage_data = cellClustering.linkage_data
+        cellClustering.visualize_clusters(self.no_of_clusters)
 
         
 
@@ -385,8 +387,8 @@ class CellClustering:
         self.dendro = dendrogram(self.linkage_data,labels=list(self.signals.keys()), color_threshold=color_threshold, ax=ax)
         return self.dendro
 
-    def visualize_clusters(self, distance):
-        self.cluster_indices = fcluster(self.linkage_data, distance, criterion='distance')
+    def visualize_clusters(self, t):
+        self.cluster_indices = fcluster(self.linkage_data, t=t, criterion='maxclust')
         
         viridis = cm.get_cmap('jet', self.cluster_indices.max()+1)
 
