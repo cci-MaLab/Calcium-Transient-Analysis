@@ -331,13 +331,13 @@ class SessionFeature:
         for uid in self.data['unit_ids']:
             values[uid] = np.array([])
 
-        if self.events['ALP'].switch == True:
+        if 'ALP' in self.events.keys():
             for key in self.events['ALP'].values:
                 values[key] = np.r_['-1', values[key], self.events['ALP'].values[key]]            
-        if self.events['IALP'].switch == True:
+        if 'IALP' in self.events.keys():
             for key in self.events['IALP'].values:
                 values[key] = np.r_['-1', values[key], self.events['IALP'].values[key]]
-        if self.events['RNFS'].switch == True:
+        if 'RNFS' in self.events.keys():
             for key in self.events['RNFS'].values:
                 values[key] = np.r_['-1', values[key], self.events['RNFS'].values[key]]
         # If no events in this period 
