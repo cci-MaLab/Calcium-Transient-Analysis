@@ -343,7 +343,7 @@ class SessionFeature:
         # If no events in this period 
         for uid in self.data['unit_ids']:
             if values[uid] == np.array([]):
-                values[uid] = self.data['C']
+                values[uid] = self.data['C'].sel(uint_id = int(uid)).values
         self.values = values
 
     def set_group(self, group_type: str):
@@ -397,7 +397,7 @@ class CellClustering:
         return self.dendro
 
     def visualize_clusters(self, t):
-        self.cluster_indices = fcluster(self.linkage_data, t=t, criterion='maxclust')
+        self.cluster_indices = fcluster(self.linkage_data, t=t, criterion='maxclust_monocrit')
         
         viridis = cm.get_cmap('jet', self.cluster_indices.max()+1)
 
