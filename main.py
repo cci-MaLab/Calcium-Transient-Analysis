@@ -1,8 +1,8 @@
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox, QAction,
                             QLabel, QVBoxLayout, QHBoxLayout, QGridLayout, QComboBox, QWidget,
-                            QFrame)
+                            QFrame, QCheckBox)
 from PyQt5.QtCore import (QThreadPool)
-from custom_widgets import LoadingDialog, ParamDialog, VisualizeClusterWidget
+from custom_widgets import LoadingDialog, ParamDialog, VisualizeClusterWidget, Viewer, ToolWidget
 from PyQt5 import Qt
 import sys
 import os
@@ -22,7 +22,9 @@ class MainWindow(QMainWindow):
         self.threadpool = QThreadPool()
 
         # Data stuff
-        self.sessions = []
+        self.sessions = {}
+        self.sessions['saline'] = {}
+        self.sessions['cocaine'] = {}
         self.path_list = {}
 
         # Menu Bar
@@ -40,35 +42,22 @@ class MainWindow(QMainWindow):
         file_menu.addAction(button_save)
 
         # Tool Widgets
-        frame = QFrame()
-        frame.setFrameShape(QFrame.StyledPanel)
-        frame.setFrameShadow(QFrame.Raised)
-        label_cluster_select = QLabel(frame)
-        label_cluster_select.setText("Pick number of clusters:")
-        cluster_select = QComboBox(frame)
-        for i in range (2, 20):
-            cluster_select.addItem(str(i))
-        cluster_select.setCurrentIndex(2)
-        cluster_select.setEnabled(False)
+
+        
+        self.current_selection = None
+        self.w_tools = ToolWidget()
+        self.w_tools.setEnabled(False)
 
 
         # Layouts
         layout_central = QHBoxLayout()
         layout_cluster = QVBoxLayout()
-        layout_tools_sub = QVBoxLayout()
-        layout_tools_sub.addStretch()
-        layout_tools_sub.setDirection(3)
-        layout_tools = QHBoxLayout()
-        layout_tools.addStretch()
         self.cluster_viz = VisualizeClusterWidget()
 
 
-        layout_tools_sub.addWidget(cluster_select)
-        layout_tools_sub.addWidget(label_cluster_select)
-        layout_tools.addLayout(layout_tools_sub)
         layout_cluster.addWidget(self.cluster_viz)
         layout_central.addLayout(layout_cluster)
-        layout_central.addLayout(layout_tools)
+        layout_central.addWidget(self.w_tools)
 
         widget = QWidget()
         widget.setLayout(layout_central)
@@ -92,7 +81,57 @@ class MainWindow(QMainWindow):
 
                     self.setWindowTitle("Cell Clustering Tool")
 
+    def activateParams(self, viewer: Viewer):
+        if self.current_selection is None:
+            self.current_selection = viewer
+            self.current_selection.changeToRed()
+            self.w_tools.setEnabled(True)
+            self.updateParams()
+        elif self.current_selection == viewer:
+            if viewer.selected == True:
+                viewer.changeToWhite()
+                self.w_tools.setEnabled(False)
+            else:
+                viewer.selected = True
+                viewer.changeToRed()
+                self.w_tools.setEnabled(True)
+                self.updateParams()
+        else:
+            self.current_selection.changeToWhite()
 
+            self.current_selection = viewer
+            self.current_selection.changeToRed()
+            self.w_tools.setEnabled(True)
+            self.updateParams()
+
+    def updateParams(self):
+        group, x, y, mouseID = self.current_selection.returnInfo()
+        session = self.sessions[group][mouseID][f"{x}:{y}"]
+        result = self.path_list[session.dpath]
+
+        self.w_tools.update(result)
+
+    def updateCluster(self, result):
+        self.setWindowTitle("Loading...")
+        group, x, y, mouseID = self.current_selection.returnInfo()
+        session = self.sessions[group][mouseID][f"{x}:{y}"]
+        old_result = self.path_list[session.dpath]
+        session.load_events(result.keys())
+        for event in result:
+            delay, window = result[event]["delay"], result[event]["window"]
+            session.events[event].set_delay_and_duration(delay, window)
+            session.events[event].set_values()        
+        result["group"] = old_result["group"]
+        session.set_vector()
+        session.compute_clustering()
+        self.path_list[session.dpath] = result
+
+        # Visualisation stuff
+        mouseID, x, y, group, cl_result = session.get_vis_info()
+        self.current_selection.updateVisualization(cl_result)
+        self.setWindowTitle("Cell Clustering Tool")
+        
+        
 
     def printError(self, s):
         dlg = QMessageBox(self)
@@ -157,10 +196,16 @@ class MainWindow(QMainWindow):
         session.compute_clustering()
 
         self.path_list[fname] = result
-        self.sessions.append(session)
-        y = int(session.day[1:])
-        x = 1 if session.session == 'S1' else 2
-        self.cluster_viz.grids[session.group].addVisualization(session.clustering_result, x, y)
+        
+
+        # Visualisation stuff
+        mouseID, x, y, group, cl_result = session.get_vis_info()
+        if session.mouseID not in self.sessions:
+            self.sessions[group][f"{session.mouseID}"] = {}
+            self.cluster_viz.grids[group].addGrid(mouseID)
+        self.sessions[group][f"{session.mouseID}"][f"{x}:{y}"] = session
+        # Generate the Grid
+        self.cluster_viz.grids[group].addVisualization(group, mouseID, cl_result, x, y)
         self.setWindowTitle("Cell Clustering Tool")
 
     
@@ -168,7 +213,6 @@ class MainWindow(QMainWindow):
         if self.path_list:
             with open('paths.json', 'w') as f:
                 json.dump(self.path_list, f)
-
 
 app = QApplication([])
 window = MainWindow()

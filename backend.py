@@ -246,7 +246,8 @@ class SessionFeature:
         self,
         dpath: str,
         events: list
-    ):        
+    ):  
+        self.dpath = dpath  
         self.mouseID : str
         self.day : str
         self.session: str
@@ -356,6 +357,14 @@ class SessionFeature:
         cellClustering = CellClustering(self.values,self.A)
         self.linkage_data = cellClustering.linkage_data
         self.clustering_result = cellClustering.visualize_clusters(self.no_of_clusters)
+
+    def get_vis_info(self):
+        val = int(self.day[1:])
+        y = 1 if val < 4 else 2
+        x = 1 if self.session == 'S1' else 2
+
+        return self.mouseID, x, y, self.group, self.clustering_result
+
 
         
 

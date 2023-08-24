@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout, QWidget,
-                            QCheckBox, QGridLayout, QFrame, QSizePolicy)
-from PyQt5.QtGui import QIntValidator, QImage, QPixmap
+                            QCheckBox, QGridLayout, QFrame, QGraphicsView, QGraphicsScene, QPushButton, 
+                            QComboBox)
+from PyQt5.QtGui import QIntValidator, QImage, QPixmap, QPalette
 from PyQt5.QtCore import Qt
 import pyqtgraph as pg
 import numpy as np
@@ -8,6 +9,7 @@ import matplotlib
 matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
+from PyQt5.QtGui import QPixmap
 
 class ParamDialog(QDialog):
     def __init__(self, parent=None):
@@ -92,6 +94,124 @@ class ParamDialog(QDialog):
         
         return result
 
+class ToolWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        label_cluster_select = QLabel()
+        label_cluster_select.setText("Pick number of clusters:")
+        self.cluster_select = QComboBox()
+        for i in range (2, 20):
+            self.cluster_select.addItem(str(i))
+        self.cluster_select.setCurrentIndex(2)
+
+        self.button = QPushButton("Update")
+        self.button.setEnabled(False)
+        self.button.setFixedWidth(120)
+        self.button.clicked.connect(self.get_result)
+
+        self.setFixedWidth(300)
+
+
+        self.ALP_chkbox = QCheckBox("ALP")
+        self.ALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_chkbox, self.ALP_param))
+        self.ALP_chkbox.stateChanged.connect(self.release_button)
+        self.IALP_chkbox = QCheckBox("IALP")
+        self.IALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.IALP_chkbox, self.IALP_param))
+        self.IALP_chkbox.stateChanged.connect(self.release_button)
+        self.RNFS_chkbox = QCheckBox("RNFS")
+        self.RNFS_chkbox.stateChanged.connect(lambda: hide_unhide(self.RNFS_chkbox, self.RNFS_param))
+        self.RNFS_chkbox.stateChanged.connect(self.release_button)
+
+        self.ALP_param = ParamWidget()
+        self.ALP_param.setEnabled(False)
+        self.IALP_param = ParamWidget()
+        self.IALP_param.setEnabled(False)
+        self.RNFS_param = ParamWidget()
+        self.RNFS_param.setEnabled(False)
+
+        layout_sub = QVBoxLayout()
+        layout_sub.addStretch()
+        layout_sub.setDirection(3)
+        ALP_layout = QVBoxLayout()
+        IALP_layout = QVBoxLayout()
+        RNFS_layout = QVBoxLayout()
+
+        ALP_layout.addWidget(self.ALP_chkbox)
+        ALP_layout.addWidget(self.ALP_param)
+        IALP_layout.addWidget(self.IALP_chkbox)
+        IALP_layout.addWidget(self.IALP_param)
+        RNFS_layout.addWidget(self.RNFS_chkbox)
+        RNFS_layout.addWidget(self.RNFS_param)
+
+
+        layout_sub.addWidget(self.button)
+        layout_sub.addLayout(RNFS_layout)
+        layout_sub.addLayout(IALP_layout)
+        layout_sub.addLayout(ALP_layout)
+        
+        
+        
+
+        layout_tools = QHBoxLayout()
+        layout_tools.addStretch()
+        layout_tools.addLayout(layout_sub)
+
+
+        self.setLayout(layout_tools)
+
+    def release_button(self):
+        if self.ALP_chkbox.isChecked() or self.IALP_chkbox.isChecked() or self.RNFS_chkbox.isChecked():
+            self.button.setEnabled(True)
+        else:
+            self.button.setEnabled(False)
+
+    def get_result(self):
+        result = {}
+        if self.ALP_chkbox.isChecked():
+            result["ALP"] = {}
+            result["ALP"]["window"] = int(self.ALP_param.duration_edit.text())
+            result["ALP"]["delay"] = int(self.ALP_param.delay_edit.text())
+        if self.IALP_chkbox.isChecked():
+            result["IALP"] = {}
+            result["IALP"]["window"] = int(self.IALP_param.duration_edit.text())
+            result["IALP"]["delay"] = int(self.IALP_param.delay_edit.text())
+        if self.RNFS_chkbox.isChecked():
+            result["RNFS"] = {}
+            result["RNFS"]["window"] = int(self.RNFS_param.duration_edit.text())
+            result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
+        
+        
+        root_parent = self.parent().parent()
+        root_parent.updateCluster(result)
+    
+    def update(self, result):
+        if "ALP" in result:
+            self.ALP_chkbox.setChecked(True)
+            self.ALP_param.duration_edit.setText(str(result["ALP"]["window"]))
+            self.ALP_param.delay_edit.setText(str(result["ALP"]["delay"]))
+        else:
+            self.ALP_chkbox.setChecked(False)
+            self.ALP_param.duration_edit.setText("20")
+            self.ALP_param.delay_edit.setText("0")
+        if "IALP" in result:
+            self.IALP_chkbox.setChecked(True)
+            self.IALP_param.duration_edit.setText(str(result["IALP"]["window"]))
+            self.IALP_param.delay_edit.setText(str(result["IALP"]["delay"]))
+        else:
+            self.IALP_chkbox.setChecked(False)
+            self.IALP_param.duration_edit.setText("20")
+            self.IALP_param.delay_edit.setText("0")
+        if "RNFS" in result:
+            self.RNFS_chkbox.setChecked(True)
+            self.RNFS_param.duration_edit.setText(str(result["RNFS"]["window"]))
+            self.RNFS_param.delay_edit.setText(str(result["RNFS"]["delay"]))
+        else:
+            self.RNFS_chkbox.setChecked(False)
+            self.RNFS_param.duration_edit.setText("20")
+            self.RNFS_param.delay_edit.setText("0")
+
+
 
 def hide_unhide(chkbox, param):
     if chkbox.isChecked():
@@ -168,27 +288,98 @@ class VisualizeClusterWidget(QWidget):
         self.setLayout(layout)
 
 class GridLayoutWidget(QWidget):
-    def __init__(self, name:str, parent=None):
+    def __init__(self, type:str, parent=None):
         super().__init__(parent)
+        self.type = type
+        self.layout = QHBoxLayout()
 
-        self.layout = QGridLayout()
-        self.layout.addWidget(GridQLabel(name), 0, 0, Qt.AlignCenter)
-        self.layout.addWidget(GridQLabel("First 15 min"), 1, 0, Qt.AlignCenter)
-        self.layout.addWidget(GridQLabel("Last 15 min"), 2, 0, Qt.AlignCenter)
-        for i in range(1, 9):
-            self.layout.addWidget(GridQLabel(f"Day {i}"), 0, i, Qt.AlignCenter)
-
-        for x in range(1,3):
-            for y in range(1,9):
-                self.layout.addWidget(GridQLabel("No Data"), x, y, Qt.AlignCenter)
+        self.mouse_group = {}
 
         
         self.setLayout(self.layout)
+    
+    def addGrid(self, mouseID: str):
+        layout = QGridLayout()
+        layout.addWidget(GridQLabel(f"{mouseID}/{self.type}"), 0, 0, Qt.AlignCenter)
+        layout.addWidget(GridQLabel("First 15 min"), 1, 0, Qt.AlignCenter)
+        layout.addWidget(GridQLabel("Last 15 min"), 2, 0, Qt.AlignCenter)
+        layout.addWidget(GridQLabel("First Day"), 0, 1, Qt.AlignCenter)
+        layout.addWidget(GridQLabel("Last Day"), 0, 2, Qt.AlignCenter)
 
-    def addVisualization(self, image, x, y):
-        sc = MplCanvas(self, width=5, height=4, dpi=100)
-        sc.axes.imshow(image)
-        self.layout.addWidget(sc, x, y)
+        self.mouse_group[mouseID] = layout
+        self.layout.addLayout(layout)
+        
+
+    def addVisualization(self, group, mouseID, image, x, y):
+        ov = (image*255).astype('uint8')
+        qimg = QImage(ov, ov.shape[1], ov.shape[0], ov.shape[1] * 3, QImage.Format_RGB888)
+        imageViewer = Viewer(group, mouseID, x, y)
+        imageViewer.pixmap = QPixmap.fromImage(qimg)
+        self.mouse_group[mouseID].addWidget(imageViewer, x, y)
+
+
+
+    
+
+
+class Viewer(QGraphicsView):
+    def __init__(self, group, mouseID, x, y, parent=None):
+        super().__init__(parent)
+        self.setScene(QGraphicsScene(self))
+        self.m_pixmapItem = self.scene().addPixmap(QPixmap())
+        self.setAlignment(Qt.AlignCenter)
+
+
+        self.p = self.palette()
+        self.p.setColor(self.backgroundRole(), Qt.white)
+        self.setPalette(self.p)
+        self.selected = False
+
+        self.mouseReleaseEvent=self.updateParams
+        self.group = group
+        self.mouseID = mouseID
+        self.x = x
+        self.y = y
+
+
+    @property
+    def pixmap(self):
+        return self.m_pixmapItem.pixmap()
+
+    @pixmap.setter
+    def pixmap(self, newPixmap):
+        self.m_pixmapItem.setPixmap(newPixmap)
+        self.fitInView(self.m_pixmapItem, Qt.KeepAspectRatio)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.fitInView(self.m_pixmapItem, Qt.KeepAspectRatio)
+
+    def changeToWhite(self):
+        self.p.setColor(self.backgroundRole(), Qt.white)
+        self.setPalette(self.p)
+        self.selected = False
+
+    def changeToRed(self):
+        self.p.setColor(self.backgroundRole(), Qt.red)
+        self.setPalette(self.p)
+        self.selected = True
+
+    def updateParams(self, event):
+        root_parent = self.parent().parent().parent().parent()
+        root_parent.activateParams(self)
+        
+    def updateVisualization(self, image):
+        ov = (image*255).astype('uint8')
+        qimg = QImage(ov, ov.shape[1], ov.shape[0], ov.shape[1] * 3, QImage.Format_RGB888)
+        self.pixmap = QPixmap.fromImage(qimg)
+
+
+    def __eq__(self, other):
+        return (self.group, self.x, self.y, self.mouseID) == (other.group, other.x, other.y, other.mouseID)
+
+    def returnInfo(self):
+        return self.group, self.x, self.y, self.mouseID
 
 
 class MplCanvas(FigureCanvasQTAgg):
@@ -205,5 +396,5 @@ class GridQLabel(QLabel):
 
         self.setFrameStyle(QFrame.Panel | QFrame.Plain)
         self.setBaseSize(300,300)
-        self.setStyleSheet("font-size: 18pt;")
+        self.setStyleSheet("font-size: 14pt;")
         self.setLineWidth(2)
