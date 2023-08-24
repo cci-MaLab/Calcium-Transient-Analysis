@@ -343,8 +343,8 @@ class SessionFeature:
                 values[key] = np.r_['-1', values[key], self.events['RNFS'].values[key]]
         # If no events in this period 
         for uid in self.data['unit_ids']:
-            if values[uid] == np.array([]):
-                values[uid] = self.data['C']
+            if values[uid].size == 0:
+                values[uid] = self.data['C'].sel(unit_id = int(uid)).values
         self.values = values
 
     def set_group(self, group_type: str):
