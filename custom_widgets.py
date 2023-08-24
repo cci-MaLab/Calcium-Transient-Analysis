@@ -1,6 +1,13 @@
 from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout, QWidget,
-                            QCheckBox)
-from PyQt5.QtGui import QIntValidator
+                            QCheckBox, QGridLayout, QFrame, QSizePolicy)
+from PyQt5.QtGui import QIntValidator, QImage, QPixmap
+from PyQt5.QtCore import Qt
+import pyqtgraph as pg
+import numpy as np
+import matplotlib
+matplotlib.use('Qt5Agg')
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
 
 class ParamDialog(QDialog):
     def __init__(self, parent=None):
@@ -22,10 +29,10 @@ class ParamDialog(QDialog):
         self.ALP_chkbox.stateChanged.connect(self.release_button)
         self.IALP_chkbox = QCheckBox("IALP")
         self.IALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.IALP_chkbox, self.IALP_param))
-        self.ALP_chkbox.stateChanged.connect(self.release_button)
+        self.IALP_chkbox.stateChanged.connect(self.release_button)
         self.RNFS_chkbox = QCheckBox("RNFS")
         self.RNFS_chkbox.stateChanged.connect(lambda: hide_unhide(self.RNFS_chkbox, self.RNFS_param))
-        self.ALP_chkbox.stateChanged.connect(self.release_button)
+        self.RNFS_chkbox.stateChanged.connect(self.release_button)
 
         self.ALP_param = ParamWidget()
         self.ALP_param.setEnabled(False)
@@ -144,3 +151,59 @@ class LoadingDialog(QDialog):
         self.layout.addWidget(message)
         self.layout.addWidget(self.buttonBox)
         self.setLayout(self.layout)
+
+
+class VisualizeClusterWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        layout = QVBoxLayout()
+        self.grids = {}
+        self.grids["cocaine"] = GridLayoutWidget("Cocaine")
+        self.grids["saline"] = GridLayoutWidget("Saline")
+
+        layout.addWidget(self.grids["cocaine"])
+        layout.addWidget(self.grids["saline"])
+
+        self.setLayout(layout)
+
+class GridLayoutWidget(QWidget):
+    def __init__(self, name:str, parent=None):
+        super().__init__(parent)
+
+        self.layout = QGridLayout()
+        self.layout.addWidget(GridQLabel(name), 0, 0, Qt.AlignCenter)
+        self.layout.addWidget(GridQLabel("First 15 min"), 1, 0, Qt.AlignCenter)
+        self.layout.addWidget(GridQLabel("Last 15 min"), 2, 0, Qt.AlignCenter)
+        for i in range(1, 9):
+            self.layout.addWidget(GridQLabel(f"Day {i}"), 0, i, Qt.AlignCenter)
+
+        for x in range(1,3):
+            for y in range(1,9):
+                self.layout.addWidget(GridQLabel("No Data"), x, y, Qt.AlignCenter)
+
+        
+        self.setLayout(self.layout)
+
+    def addVisualization(self, image, x, y):
+        sc = MplCanvas(self, width=5, height=4, dpi=100)
+        sc.axes.imshow(image)
+        self.layout.addWidget(sc, x, y)
+
+
+class MplCanvas(FigureCanvasQTAgg):
+
+    def __init__(self, parent=None, width=4, height=4, dpi=100):
+        fig = Figure(figsize=(width, height), dpi=dpi)
+        self.axes = fig.add_subplot(111)
+        self.axes.set_axis_off()
+        super(MplCanvas, self).__init__(fig)
+
+class GridQLabel(QLabel):
+    def __init__(self, parent=None, *args):
+        super().__init__(parent, *args)
+
+        self.setFrameStyle(QFrame.Panel | QFrame.Plain)
+        self.setBaseSize(300,300)
+        self.setStyleSheet("font-size: 18pt;")
+        self.setLineWidth(2)
