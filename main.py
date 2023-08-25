@@ -76,10 +76,11 @@ class MainWindow(QMainWindow):
                 dlg = LoadingDialog()
                 if dlg.exec():
                     self.setWindowTitle("Loading...")
-                    with open('data.json', 'w') as f:
-                        json.dump(self.path_list, f)
+                    with open('paths.json', 'r') as f:
+                        self.path_list = json.load(f)
                     
-                    for fname, results in self.path_list.values():
+                    for fname in self.path_list.keys():
+                        results = self.path_list[fname]
                         self.load_session(fname, results)
 
                     self.setWindowTitle("Cell Clustering Tool")
@@ -200,7 +201,13 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Loading...")
         events = list(result.keys())
         events.remove("group")
+        no_of_clusters = None
+        if "no_of_clusters" in events:
+            no_of_clusters = result["no_of_clusters"]
+            events.remove("no_of_clusters")
         session = SessionFeature(fname, events)
+        if no_of_clusters is not None:
+            session.no_of_clusters = no_of_clusters
         for event in events:
             delay, window = result[event]["delay"], result[event]["window"]
             session.events[event].set_delay_and_duration(delay, window)

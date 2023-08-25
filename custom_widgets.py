@@ -284,7 +284,7 @@ class LoadingDialog(QDialog):
         self.buttonBox.rejected.connect(self.reject)
 
         self.layout = QVBoxLayout()
-        message = QLabel("Detected paths.txt in your directory. Do you want to load the files?")
+        message = QLabel("Detected paths.json in your directory. Do you want to load the files?")
         self.layout.addWidget(message)
         self.layout.addWidget(self.buttonBox)
         self.setLayout(self.layout)
