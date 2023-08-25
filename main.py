@@ -2,7 +2,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMe
                             QLabel, QVBoxLayout, QHBoxLayout, QGridLayout, QComboBox, QWidget,
                             QFrame, QCheckBox)
 from PyQt5.QtCore import (QThreadPool)
-from custom_widgets import LoadingDialog, ParamDialog, VisualizeClusterWidget, Viewer, ToolWidget
+from custom_widgets import (LoadingDialog, ParamDialog, VisualizeClusterWidget, Viewer, ToolWidget,
+                            InspectionWidget)
 from PyQt5 import Qt
 import sys
 import os
@@ -17,9 +18,11 @@ class MainWindow(QMainWindow):
         super(MainWindow, self).__init__(*args, **kwargs)
         self.setWindowTitle("Cell Clustering Tool")
         self.setMinimumSize(600, 400)
+        
+        self.windows = []
 
         # Threading
-        self.threadpool = QThreadPool()
+        #self.threadpool = QThreadPool()
 
         # Data stuff
         self.sessions = {}
@@ -108,10 +111,12 @@ class MainWindow(QMainWindow):
         group, x, y, mouseID = self.current_selection.returnInfo()
         session = self.sessions[group][mouseID][f"{x}:{y}"]
         result = self.path_list[session.dpath]
+        result["no_of_clusters"] = session.no_of_clusters
 
         self.w_tools.update(result)
 
     def updateCluster(self, result):
+        no_of_clusters = result.pop("no_of_clusters")
         self.setWindowTitle("Loading...")
         group, x, y, mouseID = self.current_selection.returnInfo()
         session = self.sessions[group][mouseID][f"{x}:{y}"]
@@ -123,6 +128,7 @@ class MainWindow(QMainWindow):
             session.events[event].set_values()        
         result["group"] = old_result["group"]
         session.set_vector()
+        session.set_no_of_clusters(no_of_clusters)
         session.compute_clustering()
         self.path_list[session.dpath] = result
 
@@ -133,17 +139,13 @@ class MainWindow(QMainWindow):
         
     def startInspection(self, current_selection=None):
         current_selection = self.current_selection if current_selection is None else current_selection
-        dlg = QMessageBox(self)
-        dlg.setWindowTitle("I have a question!")
-        dlg.setText("This is a question dialog")
-        dlg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        dlg.setIcon(QMessageBox.Question)
-        button = dlg.exec()
+        group, x, y, mouseID = self.current_selection.returnInfo()
+        session = self.sessions[group][mouseID][f"{x}:{y}"]
 
-        if button == QMessageBox.Yes:
-            print("Yes!")
-        else:
-            print("No!")
+        wid = InspectionWidget(session)
+        self.windows.append(wid)
+        wid.show()
+
         
 
     def printError(self, s):

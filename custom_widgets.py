@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout, QWidget,
                             QCheckBox, QGridLayout, QFrame, QGraphicsView, QGraphicsScene, QPushButton, 
-                            QComboBox)
+                            QComboBox, QListWidget, QAbstractItemView)
 from PyQt5.QtGui import QIntValidator, QImage, QPixmap, QPalette
 from PyQt5.QtCore import Qt
 import pyqtgraph as pg
@@ -10,6 +10,7 @@ matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from PyQt5.QtGui import QPixmap
+
 
 class ParamDialog(QDialog):
     def __init__(self, parent=None):
@@ -156,6 +157,8 @@ class ToolWidget(QWidget):
         layout_sub.addLayout(RNFS_layout)
         layout_sub.addLayout(IALP_layout)
         layout_sub.addLayout(ALP_layout)
+        layout_sub.addWidget(self.cluster_select)
+        layout_sub.addWidget(label_cluster_select)
         
         
         
@@ -187,6 +190,7 @@ class ToolWidget(QWidget):
             result["RNFS"] = {}
             result["RNFS"]["window"] = int(self.RNFS_param.duration_edit.text())
             result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
+        result["no_of_clusters"] = int(self.cluster_select.currentText())
         
         
         root_parent = self.parent().parent()
@@ -221,6 +225,8 @@ class ToolWidget(QWidget):
             self.RNFS_chkbox.setChecked(False)
             self.RNFS_param.duration_edit.setText("20")
             self.RNFS_param.delay_edit.setText("0")
+        
+        self.cluster_select.setCurrentIndex(result["no_of_clusters"] - 2)
 
 
 
@@ -413,3 +419,80 @@ class GridQLabel(QLabel):
         self.setBaseSize(300,300)
         self.setStyleSheet("font-size: 14pt;")
         self.setLineWidth(2)
+
+
+class InspectionWidget(QWidget):
+    def __init__(self, session, parent=None):
+        super().__init__(parent)
+        self.session = session
+
+        layout = QHBoxLayout()
+        left_layout = QVBoxLayout()
+        right_layout = QVBoxLayout()
+
+
+        # Select Cluster
+        label_cluster_select = QLabel()
+        label_cluster_select.setText("Pick cluster to visualize:")
+        self.cluster_select = QComboBox()
+        self.cluster_select.addItem("Show all")
+        for i in range (1, session.no_of_clusters + 1):
+            self.cluster_select.addItem(f"Cluster {i}")
+        self.cluster_select.setCurrentIndex(0)
+        self.cluster_select.currentIndexChanged.connect(self.indexChanged)
+
+        # Select Cells
+        w_cell_label = QLabel("Pick which cells to visualize (Hold ctrl):")
+        self.w_cell_list = QListWidget()
+        self.w_cell_list.setMaximumSize(200, 200)
+        self.w_cell_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+
+        self.w_cell_button = QPushButton("Visualize Selection")
+        self.w_cell_button.clicked.connect(self.visualizeSignals)
+
+        # Visualize Cluster
+        self.imv = pg.ImageView()
+        self.imv.setImage(self.session.clustering_result['all']['image'])
+        self.imv.setMinimumWidth(800)
+
+        # Visualize Signals
+        self.w_signals = pg.GraphicsLayoutWidget()
+        
+
+        # Layouts
+        left_layout.addWidget(label_cluster_select)
+        left_layout.addWidget(self.cluster_select)
+        left_layout.addWidget(self.imv)
+
+        right_layout.addWidget(w_cell_label)
+        right_layout.addWidget(self.w_cell_list)
+        right_layout.addWidget(self.w_cell_button)
+        right_layout.addWidget(self.w_signals)
+
+        layout.addLayout(left_layout)
+        layout.addLayout(right_layout)
+
+        self.setLayout(layout)
+
+    def indexChanged(self, value):
+        value = "all" if value == 0 else value
+        self.imv.setImage(self.session.clustering_result[value]['image'])
+
+        self.w_cell_list.clear()
+
+        for id in self.session.clustering_result[value]['ids']:
+            self.w_cell_list.addItem(str(id))
+
+    def visualizeSignals(self, event):
+        cell_ids = [int(item.text()) for item in self.w_cell_list.selectedItems()]
+
+        if cell_ids:
+            self.w_signals.clear()
+
+            for i, id in enumerate(cell_ids):
+                p = self.w_signals.addPlot(row=i, col=0)
+                p.plot(self.session.values[id])
+
+    
+            
+
