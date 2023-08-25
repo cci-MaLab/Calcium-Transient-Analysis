@@ -363,7 +363,7 @@ class SessionFeature:
         y = 1 if val < 4 else 2
         x = 1 if self.session == 'S1' else 2
 
-        return self.mouseID, x, y, self.group, self.clustering_result
+        return self.mouseID, x, y, self.group, self.clustering_result['all']['image']
 
 
         
@@ -413,11 +413,25 @@ class CellClustering:
         
         image_shape = self.A[list(self.A.keys())[0]].values.shape
         final_image = np.zeros((image_shape[0], image_shape[1], 3))
-        # print((self.A[list(self.A.keys())[0]].values,)*3)
+        
+        cluster_result = {}
+        cluster_result["all"] = {}
+        cluster_result["all"]["ids"] = []
+        cluster_result["all"]["image"] = final_image.copy()
+        for i in range(t+1):
+            cluster_result[i] = {}
+            cluster_result[i]["ids"] = []
+            cluster_result[i]["image"] = final_image.copy()
+
         for idx, cluster in enumerate(self.cluster_indices):
+            cluster_result[cluster]["ids"].append(list(self.A.keys())[idx])
+            cluster_result["all"]["ids"].append(list(self.A.keys())[idx])
+            cluster_result[cluster]["image"] += np.stack((self.A[list(self.A.keys())[idx]].values,)*3, axis=-1) * viridis(cluster)[:3]
             final_image += np.stack((self.A[list(self.A.keys())[idx]].values,)*3, axis=-1) * viridis(cluster)[:3]
         
-        return final_image
+        cluster_result["all"]["image"] = final_image
+
+        return cluster_result
     
     def visualize_clusters_color(self):
         viridis = cm.get_cmap('viridis', len(np.unique(self.dendro["leaves_color_list"])))
