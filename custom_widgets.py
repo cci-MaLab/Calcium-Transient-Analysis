@@ -110,6 +110,10 @@ class ToolWidget(QWidget):
         self.button.setFixedWidth(120)
         self.button.clicked.connect(self.get_result)
 
+        self.button_inspect = QPushButton("Inspect Cluster")
+        self.button_inspect.setFixedWidth(120)
+        self.button_inspect.clicked.connect(self.inspect)
+
         self.setFixedWidth(300)
 
 
@@ -144,8 +148,11 @@ class ToolWidget(QWidget):
         RNFS_layout.addWidget(self.RNFS_chkbox)
         RNFS_layout.addWidget(self.RNFS_param)
 
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(self.button)
+        button_layout.addWidget(self.button_inspect)
 
-        layout_sub.addWidget(self.button)
+        layout_sub.addLayout(button_layout)
         layout_sub.addLayout(RNFS_layout)
         layout_sub.addLayout(IALP_layout)
         layout_sub.addLayout(ALP_layout)
@@ -184,6 +191,10 @@ class ToolWidget(QWidget):
         
         root_parent = self.parent().parent()
         root_parent.updateCluster(result)
+
+    def inspect(self, event):
+        root_parent = self.parent().parent()
+        root_parent.startInspection()
     
     def update(self, result):
         if "ALP" in result:
@@ -336,6 +347,7 @@ class Viewer(QGraphicsView):
         self.selected = False
 
         self.mouseReleaseEvent=self.updateParams
+        self.mouseDoubleClickEvent=self.inspect
         self.group = group
         self.mouseID = mouseID
         self.x = x
@@ -374,6 +386,9 @@ class Viewer(QGraphicsView):
         qimg = QImage(ov, ov.shape[1], ov.shape[0], ov.shape[1] * 3, QImage.Format_RGB888)
         self.pixmap = QPixmap.fromImage(qimg)
 
+    def inspect(self, event):
+        root_parent = self.parent().parent().parent().parent()
+        root_parent.startInspection(self)
 
     def __eq__(self, other):
         return (self.group, self.x, self.y, self.mouseID) == (other.group, other.x, other.y, other.mouseID)

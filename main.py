@@ -131,6 +131,19 @@ class MainWindow(QMainWindow):
         self.current_selection.updateVisualization(cl_result)
         self.setWindowTitle("Cell Clustering Tool")
         
+    def startInspection(self, current_selection=None):
+        current_selection = self.current_selection if current_selection is None else current_selection
+        dlg = QMessageBox(self)
+        dlg.setWindowTitle("I have a question!")
+        dlg.setText("This is a question dialog")
+        dlg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        dlg.setIcon(QMessageBox.Question)
+        button = dlg.exec()
+
+        if button == QMessageBox.Yes:
+            print("Yes!")
+        else:
+            print("No!")
         
 
     def printError(self, s):
@@ -200,7 +213,7 @@ class MainWindow(QMainWindow):
 
         # Visualisation stuff
         mouseID, x, y, group, cl_result = session.get_vis_info()
-        if session.mouseID not in self.sessions:
+        if session.mouseID not in self.sessions[group]:
             self.sessions[group][f"{session.mouseID}"] = {}
             self.cluster_viz.grids[group].addGrid(mouseID)
         self.sessions[group][f"{session.mouseID}"][f"{x}:{y}"] = session
