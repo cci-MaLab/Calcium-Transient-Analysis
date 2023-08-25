@@ -171,26 +171,12 @@ class MainWindow(QMainWindow):
             self,
             "Open File",
         )
-
-        pdg = ParamDialog()
-        if pdg.exec():
-            result = pdg.get_result()
-        else:
-            return
-
-
-
-        # Cannot do the stuff below as it segfaults :(
-        '''
-        worker = Worker(open_minian, fname, self.data)
-        self.threadpool.start(worker)
-        worker.signals.error.connect(self.printError)
-        worker.signals.finished.connect(self.addData)
-
-        # Execute
-        self.threadpool.start(worker)
-        '''
         if fname != '' and fname not in self.path_list:
+            pdg = ParamDialog()
+            if pdg.exec():
+                result = pdg.get_result()
+            else:
+                return
             self.load_session(fname, result)
             
 

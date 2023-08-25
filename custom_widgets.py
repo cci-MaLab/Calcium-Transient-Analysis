@@ -474,6 +474,9 @@ class InspectionWidget(QWidget):
 
         self.setLayout(layout)
 
+        for id in self.session.clustering_result["all"]['ids']:
+            self.w_cell_list.addItem(str(id))
+
     def indexChanged(self, value):
         value = "all" if value == 0 else value
         self.imv.setImage(self.session.clustering_result[value]['image'])
@@ -492,6 +495,7 @@ class InspectionWidget(QWidget):
             for i, id in enumerate(cell_ids):
                 p = self.w_signals.addPlot(row=i, col=0)
                 p.plot(self.session.values[id])
+                p.setTitle(f"Cell {id}")
 
     
             
