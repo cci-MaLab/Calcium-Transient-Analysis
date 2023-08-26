@@ -354,9 +354,9 @@ class SessionFeature:
         self.no_of_clusters = number
 
     def compute_clustering(self):
-        cellClustering = CellClustering(self.values,self.A)
-        self.linkage_data = cellClustering.linkage_data
-        self.clustering_result = cellClustering.visualize_clusters(self.no_of_clusters)
+        self.cellClustering = CellClustering(self.values,self.A)
+        self.linkage_data = self.cellClustering.linkage_data
+        self.clustering_result = self.cellClustering.visualize_clusters(self.no_of_clusters)
 
     def get_vis_info(self):
         val = int(self.day[1:])
@@ -364,6 +364,10 @@ class SessionFeature:
         x = 1 if self.session == 'S1' else 2
 
         return self.mouseID, x, y, self.group, self.clustering_result['all']['image']
+
+    def get_dendrogram(self, ax):
+        self.cellClustering.visualize_dendrogram(ax=ax)
+
 
 
         

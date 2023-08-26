@@ -408,7 +408,6 @@ class MplCanvas(FigureCanvasQTAgg):
     def __init__(self, parent=None, width=4, height=4, dpi=100):
         fig = Figure(figsize=(width, height), dpi=dpi)
         self.axes = fig.add_subplot(111)
-        self.axes.set_axis_off()
         super(MplCanvas, self).__init__(fig)
 
 class GridQLabel(QLabel):
@@ -429,6 +428,10 @@ class InspectionWidget(QWidget):
         layout = QHBoxLayout()
         left_layout = QVBoxLayout()
         right_layout = QVBoxLayout()
+        mid_layout = QHBoxLayout()
+
+        mid_layout.setDirection(3)
+        mid_layout.addStretch()
 
 
         # Select Cluster
@@ -444,7 +447,7 @@ class InspectionWidget(QWidget):
         # Select Cells
         w_cell_label = QLabel("Pick which cells to visualize (Hold ctrl):")
         self.w_cell_list = QListWidget()
-        self.w_cell_list.setMaximumSize(200, 200)
+        self.w_cell_list.setMaximumSize(250, 600)
         self.w_cell_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
 
         self.w_cell_button = QPushButton("Visualize Selection")
@@ -455,6 +458,10 @@ class InspectionWidget(QWidget):
         self.imv.setImage(self.session.clustering_result['all']['image'])
         self.imv.setMinimumWidth(800)
 
+        # Dendrogram
+        self.w_dendro = MplCanvas()
+        self.session.get_dendrogram(self.w_dendro.axes)
+
         # Visualize Signals
         self.w_signals = pg.GraphicsLayoutWidget()
         
@@ -464,12 +471,15 @@ class InspectionWidget(QWidget):
         left_layout.addWidget(self.cluster_select)
         left_layout.addWidget(self.imv)
 
-        right_layout.addWidget(w_cell_label)
-        right_layout.addWidget(self.w_cell_list)
-        right_layout.addWidget(self.w_cell_button)
+        mid_layout.addWidget(self.w_cell_button)
+        mid_layout.addWidget(self.w_cell_list)
+        mid_layout.addWidget(w_cell_label)
+
+        right_layout.addWidget(self.w_dendro)
         right_layout.addWidget(self.w_signals)
 
         layout.addLayout(left_layout)
+        layout.addLayout(mid_layout)
         layout.addLayout(right_layout)
 
         self.setLayout(layout)
