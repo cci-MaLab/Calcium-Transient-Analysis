@@ -344,7 +344,7 @@ class SessionFeature:
         if 'RNFS' in self.events.keys():
             for key in self.events['RNFS'].values:
                 values[key] = np.r_['-1', values[key], self.events['RNFS'].values[key]]
-        if 'RNFS' in self.events.keys():
+        if 'ALP_Timeout' in self.events.keys():
             for key in self.events['ALP_Timeout'].values:
                 values[key] = np.r_['-1', values[key], self.events['ALP_Timeout'].values[key]]
         # If no events in this period 
