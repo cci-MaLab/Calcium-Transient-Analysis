@@ -274,7 +274,7 @@ class SessionFeature:
             behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + "behavior_ms.csv"),sep=',')
         else:
             behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + session + "_" + "behavior_ms.csv"),sep=',')
-        data_types = ['RNFS', 'ALP', 'IALP', 'Time Stamp (ms)']
+        data_types = ['RNFS', 'ALP', 'IALP', 'ALP_Timeout','Time Stamp (ms)']
         self.data = {}
         for dt in data_types:            
             if dt in behavior_data:
@@ -344,6 +344,9 @@ class SessionFeature:
         if 'RNFS' in self.events.keys():
             for key in self.events['RNFS'].values:
                 values[key] = np.r_['-1', values[key], self.events['RNFS'].values[key]]
+        if 'RNFS' in self.events.keys():
+            for key in self.events['ALP_Timeout'].values:
+                values[key] = np.r_['-1', values[key], self.events['ALP_Timeout'].values[key]]
         # If no events in this period 
         for uid in self.data['unit_ids']:
             if values[uid].size == 0:
