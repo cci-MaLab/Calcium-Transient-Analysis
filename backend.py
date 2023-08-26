@@ -211,7 +211,7 @@ class Event:
         while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < duration and event_frame + frame_gap < max_length:
             frame_gap += 1
         if type in self.data:
-            return self.data[type].sel(frame=slice(event_frame, event_frame+frame_gap))
+            return self.data[type].sel(frame=slice(event_frame, event_frame+frame_gap)) , event_frame,event_frame+frame_gap
         else:
             print("No %s data found in minian file" % (type))
             return None
@@ -220,19 +220,22 @@ class Event:
     def set_values(self):
         values={}
         event_list= []
+        windows = []
         if self.switch == False:
             self.values=values
             return
         else:
             for i in self.timesteps:
-                event_list.append(self.get_section(i,self.duration,self.delay))
+                single_event, start_frame, end_frame = self.get_section(i,self.duration,self.delay)
+                event_list.append(single_event)
+                windows.append([start_frame, end_frame])
         for i in self.data['unit_ids']:
             values[i] = np.array([])
         for i in event_list:
                 for j in i.coords['unit_id'].values:
                     values[j] = np.r_['-1', values[j], np.array(i.sel(unit_id=j).values)]
         self.values = values
-
+        self.windows = windows
 
 class SessionFeature:
     '''
