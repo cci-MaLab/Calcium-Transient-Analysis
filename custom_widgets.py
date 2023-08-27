@@ -36,6 +36,9 @@ class ParamDialog(QDialog):
         self.RNFS_chkbox = QCheckBox("RNFS")
         self.RNFS_chkbox.stateChanged.connect(lambda: hide_unhide(self.RNFS_chkbox, self.RNFS_param))
         self.RNFS_chkbox.stateChanged.connect(self.release_button)
+        self.ALP_Timeout_chkbox = QCheckBox("ALP_Timeout")
+        self.ALP_Timeout_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_Timeout_chkbox, self.ALP_Timeout_param))
+        self.ALP_Timeout_chkbox.stateChanged.connect(self.release_button)
 
         self.ALP_param = ParamWidget()
         self.ALP_param.setEnabled(False)
@@ -43,11 +46,14 @@ class ParamDialog(QDialog):
         self.IALP_param.setEnabled(False)
         self.RNFS_param = ParamWidget()
         self.RNFS_param.setEnabled(False)
+        self.ALP_Timeout_param = ParamWidget()
+        self.ALP_Timeout_param.setEnabled(False)
 
         layout_param = QHBoxLayout()
         ALP_layout = QVBoxLayout()
         IALP_layout = QVBoxLayout()
         RNFS_layout = QVBoxLayout()
+        ALP_Timeout_layout = QVBoxLayout()
 
         ALP_layout.addWidget(self.ALP_chkbox)
         ALP_layout.addWidget(self.ALP_param)
@@ -55,10 +61,13 @@ class ParamDialog(QDialog):
         IALP_layout.addWidget(self.IALP_param)
         RNFS_layout.addWidget(self.RNFS_chkbox)
         RNFS_layout.addWidget(self.RNFS_param)
+        ALP_Timeout_layout.addWidget(self.ALP_Timeout_chkbox)
+        ALP_Timeout_layout.addWidget(self.ALP_Timeout_param)
 
         layout_param.addLayout(ALP_layout)
         layout_param.addLayout(IALP_layout)
         layout_param.addLayout(RNFS_layout)
+        layout_param.addLayout(ALP_Timeout_layout)
         layout_param.addWidget(self.group_chkbox)
 
         layout = QVBoxLayout()
@@ -68,7 +77,7 @@ class ParamDialog(QDialog):
         self.setLayout(layout)
 
     def release_button(self):
-        if self.ALP_chkbox.isChecked() or self.IALP_chkbox.isChecked() or self.RNFS_chkbox.isChecked():
+        if self.ALP_chkbox.isChecked() or self.IALP_chkbox.isChecked() or self.RNFS_chkbox.isChecked() or self.ALP_Timeout_chkbox.isChecked():
             self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
         else:
             self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
@@ -87,6 +96,10 @@ class ParamDialog(QDialog):
             result["RNFS"] = {}
             result["RNFS"]["window"] = int(self.RNFS_param.duration_edit.text())
             result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
+        if self.ALP_Timeout_chkbox.isChecked():
+            result["ALP_Timeout"] = {}
+            result["ALP_Timeout"]["window"] = int(self.RNFS_param.duration_edit.text())
+            result["ALP_Timeout"]["delay"] = int(self.RNFS_param.delay_edit.text())
         
         if self.group_chkbox.isChecked():
             result["group"] = "cocaine"
@@ -127,6 +140,9 @@ class ToolWidget(QWidget):
         self.RNFS_chkbox = QCheckBox("RNFS")
         self.RNFS_chkbox.stateChanged.connect(lambda: hide_unhide(self.RNFS_chkbox, self.RNFS_param))
         self.RNFS_chkbox.stateChanged.connect(self.release_button)
+        self.ALP_Timeout_chkbox = QCheckBox("ALP_Timeout")
+        self.ALP_Timeout_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_Timeout_chkbox, self.ALP_Timeout_param))
+        self.ALP_Timeout_chkbox.stateChanged.connect(self.release_button)
 
         self.ALP_param = ParamWidget()
         self.ALP_param.setEnabled(False)
@@ -134,6 +150,8 @@ class ToolWidget(QWidget):
         self.IALP_param.setEnabled(False)
         self.RNFS_param = ParamWidget()
         self.RNFS_param.setEnabled(False)
+        self.ALP_Timeout_param = ParamWidget()
+        self.ALP_Timeout_param.setEnabled(False)
 
         layout_sub = QVBoxLayout()
         layout_sub.addStretch()
@@ -141,6 +159,7 @@ class ToolWidget(QWidget):
         ALP_layout = QVBoxLayout()
         IALP_layout = QVBoxLayout()
         RNFS_layout = QVBoxLayout()
+        ALP_Timeout_layout = QVBoxLayout()
 
         ALP_layout.addWidget(self.ALP_chkbox)
         ALP_layout.addWidget(self.ALP_param)
@@ -148,12 +167,15 @@ class ToolWidget(QWidget):
         IALP_layout.addWidget(self.IALP_param)
         RNFS_layout.addWidget(self.RNFS_chkbox)
         RNFS_layout.addWidget(self.RNFS_param)
+        ALP_Timeout_layout.addWidget(self.ALP_Timeout_chkbox)
+        ALP_Timeout_layout.addWidget(self.ALP_Timeout_param)
 
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.button)
         button_layout.addWidget(self.button_inspect)
 
         layout_sub.addLayout(button_layout)
+        layout_sub.addLayout(ALP_Timeout_layout)
         layout_sub.addLayout(RNFS_layout)
         layout_sub.addLayout(IALP_layout)
         layout_sub.addLayout(ALP_layout)
@@ -171,7 +193,7 @@ class ToolWidget(QWidget):
         self.setLayout(layout_tools)
 
     def release_button(self):
-        if self.ALP_chkbox.isChecked() or self.IALP_chkbox.isChecked() or self.RNFS_chkbox.isChecked():
+        if self.ALP_chkbox.isChecked() or self.IALP_chkbox.isChecked() or self.RNFS_chkbox.isChecked() or self.ALP_Timeout_chkbox.isChecked():
             self.button.setEnabled(True)
         else:
             self.button.setEnabled(False)
@@ -190,6 +212,10 @@ class ToolWidget(QWidget):
             result["RNFS"] = {}
             result["RNFS"]["window"] = int(self.RNFS_param.duration_edit.text())
             result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
+        if self.ALP_Timeout_chkbox.isChecked():
+            result["ALP_Timeout"] = {}
+            result["ALP_Timeout"]["window"] = int(self.RNFS_param.duration_edit.text())
+            result["ALP_Timeout"]["delay"] = int(self.RNFS_param.delay_edit.text())
         result["no_of_clusters"] = int(self.cluster_select.currentText())
         
         
@@ -225,6 +251,14 @@ class ToolWidget(QWidget):
             self.RNFS_chkbox.setChecked(False)
             self.RNFS_param.duration_edit.setText("20")
             self.RNFS_param.delay_edit.setText("0")
+        if "ALP_Timeout" in result:
+            self.ALP_Timeout_chkbox.setChecked(True)
+            self.ALP_Timeout_param.duration_edit.setText(str(result["ALP_Timeout"]["window"]))
+            self.ALP_Timeout_param.delay_edit.setText(str(result["ALP_Timeout"]["delay"]))
+        else:
+            self.ALP_Timeout_chkbox.setChecked(False)
+            self.ALP_Timeout_param.duration_edit.setText("20")
+            self.ALP_Timeout_param.delay_edit.setText("0")
         
         self.cluster_select.setCurrentIndex(result["no_of_clusters"] - 2)
 
@@ -425,6 +459,18 @@ class InspectionWidget(QWidget):
         super().__init__(parent)
         self.session = session
 
+        # Brushes
+        self.brushes_lines = {"ALP": pg.mkColor(255, 0, 0, 255),
+                   "IALP": pg.mkColor(255, 255, 0, 255),
+                   "RNFS": pg.mkColor(0, 255, 0, 255),
+                   "ALP_Timeout": pg.mkColor(0, 0, 255, 255)
+                   }
+        self.brushes_boxes = {"ALP": pg.mkColor(255, 0, 0, 60),
+                   "IALP": pg.mkColor(255, 255, 0, 60),
+                   "RNFS": pg.mkColor(0, 255, 0, 60),
+                   "ALP_Timeout": pg.mkColor(0, 0, 255, 60)
+                   }
+
         layout = QHBoxLayout()
         left_layout = QVBoxLayout()
         right_layout = QVBoxLayout()
@@ -504,8 +550,29 @@ class InspectionWidget(QWidget):
 
             for i, id in enumerate(cell_ids):
                 p = self.w_signals.addPlot(row=i, col=0)
-                p.plot(self.session.values[id])
+                data = self.session.data['C'].sel(unit_id=id)
+                max_data = data.max()
+                p.plot(data)
                 p.setTitle(f"Cell {id}")
+                if i == 0:
+                    p.addLegend()
+                    event_names = ["ALP", "IALP", "RNFS", "ALP_Timeout"]
+
+                # Add event lines and boxes
+                for event in self.session.events.values():
+                    brush_line = self.brushes_lines[event.event_type]
+                    brush_box = self.brushes_boxes[event.event_type]
+                    for t in event.timesteps:
+                        p.addItem(pg.InfiniteLine(t, pen=brush_line, movable=False, name=f"{event}"))
+                        if i == 0 and event.event_type in event_names:
+                            l = pg.PlotDataItem(pen=brush_line)
+                            p.legend.addItem(l, f"{event.event_type}")
+                            event_names.remove(event.event_type)
+                    
+                    for w in event.windows:
+                        start, end = w
+                        p.addItem(pg.LinearRegionItem((start, end), brush=brush_box, pen=brush_box, movable=False))
+
 
     
             
