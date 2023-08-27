@@ -372,7 +372,7 @@ class SessionFeature:
         return self.mouseID, x, y, self.group, self.clustering_result['all']['image']
 
     def get_dendrogram(self, ax):
-        self.cellClustering.visualize_dendrogram(ax=ax)
+        self.cellClustering.visualize_dendrogram(color_threshold =self.linkage_data[(self.no_of_clusters-1),2] ,ax=ax)
 
 
 
