@@ -372,7 +372,8 @@ class SessionFeature:
         return self.mouseID, x, y, self.group, self.clustering_result['all']['image']
 
     def get_dendrogram(self, ax):
-        self.cellClustering.visualize_dendrogram(color_threshold =self.linkage_data[(self.no_of_clusters-1),2] ,ax=ax)
+        color_threshold = np.sort(self.linkage_data[:,2])[-(self.no_of_clusters-1)]
+        self.cellClustering.visualize_dendrogram(color_threshold=color_threshold,ax=ax)
 
 
 

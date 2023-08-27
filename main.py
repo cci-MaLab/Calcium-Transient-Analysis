@@ -144,6 +144,7 @@ class MainWindow(QMainWindow):
         session = self.sessions[group][mouseID][f"{x}:{y}"]
 
         wid = InspectionWidget(session)
+        wid.setWindowTitle(f"{session.mouseID} {session.day} {session.session}")
         self.windows.append(wid)
         wid.show()
 
