@@ -363,7 +363,7 @@ class SessionFeature:
         self.no_of_clusters = number
 
     def compute_clustering(self):
-        self.cellClustering = CellClustering(self.values,self.A)
+        self.cellClustering = CellClustering(self.values,self.outliers_list,self.A)
         self.linkage_data = self.cellClustering.linkage_data
         self.clustering_result = self.cellClustering.visualize_clusters(self.no_of_clusters)
 
