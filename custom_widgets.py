@@ -459,6 +459,7 @@ class InspectionWidget(QWidget):
     def __init__(self, session, parent=None):
         super().__init__(parent)
         self.session = session
+        self.total_neurons = len(self.session.clustering_result["all"]["ids"])
 
         # Brushes
         self.brushes_lines = {"ALP": pg.mkColor(255, 0, 0, 255),
@@ -500,6 +501,9 @@ class InspectionWidget(QWidget):
         self.w_cell_button = QPushButton("Visualize Selection")
         self.w_cell_button.clicked.connect(self.visualizeSignals)
 
+        self.total_neurons_label = QLabel(f"Looking at {self.total_neurons} out of {self.total_neurons} neurons")
+        self.total_neurons_label.setWordWrap(True)
+
         # Visualize Cluster
         self.imv = pg.ImageView()
         self.imv.setImage(self.session.clustering_result['all']['image'])
@@ -526,6 +530,7 @@ class InspectionWidget(QWidget):
         mid_layout.addWidget(self.w_cell_button)
         mid_layout.addWidget(self.w_cell_list)
         mid_layout.addWidget(w_cell_label)
+        mid_layout.addWidget(self.total_neurons_label)
 
         right_layout.addLayout(layout_mpl)
         right_layout.addWidget(self.w_signals)
@@ -547,6 +552,8 @@ class InspectionWidget(QWidget):
 
         for id in self.session.clustering_result[value]['ids']:
             self.w_cell_list.addItem(str(id))
+        
+        self.total_neurons_label.setText(f"Looking at {len(self.session.clustering_result[value]['ids'])} out of {self.total_neurons} neurons")
 
     def visualizeSignals(self, event):
         cell_ids = [int(item.text()) for item in self.w_cell_list.selectedItems()]
