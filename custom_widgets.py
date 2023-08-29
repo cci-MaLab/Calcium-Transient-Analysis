@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout, QWidget,
                             QCheckBox, QGridLayout, QFrame, QGraphicsView, QGraphicsScene, QPushButton, 
                             QComboBox, QListWidget, QAbstractItemView)
-from PyQt5.QtGui import QIntValidator, QImage, QPixmap, QPalette
+from PyQt5.QtGui import QIntValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush
 from PyQt5.QtCore import Qt
 import pyqtgraph as pg
 import numpy as np
@@ -472,6 +472,11 @@ class InspectionWidget(QWidget):
                    "RNFS": pg.mkColor(0, 255, 0, 60),
                    "ALP_Timeout": pg.mkColor(0, 0, 255, 60)
                    }
+        self.colors = {"ALP": QColor(255, 0, 0, 255),
+                   "IALP": QColor(255, 255, 0, 255),
+                   "RNFS": QColor(0, 255, 0, 255),
+                   "ALP_Timeout": QColor(0, 0, 255, 255)
+                   }
 
         layout = QHBoxLayout()
         left_layout = QVBoxLayout()
@@ -504,6 +509,13 @@ class InspectionWidget(QWidget):
         self.total_neurons_label = QLabel(f"Looking at {self.total_neurons} out of {self.total_neurons} neurons")
         self.total_neurons_label.setWordWrap(True)
 
+        # Legend
+        ALP_label = self.generate_legend_element("ALP")
+        IALP_label = self.generate_legend_element("IALP")
+        RNFS_label = self.generate_legend_element("RNFS")
+        ALP_Timeout_label = self.generate_legend_element("ALP_Timeout")
+
+
         # Visualize Cluster
         self.imv = pg.ImageView()
         self.imv.setImage(self.session.clustering_result['all']['image'])
@@ -527,6 +539,10 @@ class InspectionWidget(QWidget):
         left_layout.addWidget(self.cluster_select)
         left_layout.addWidget(self.imv)
 
+        mid_layout.addWidget(ALP_Timeout_label)
+        mid_layout.addWidget(RNFS_label)
+        mid_layout.addWidget(IALP_label)
+        mid_layout.addWidget(ALP_label)
         mid_layout.addWidget(self.w_cell_button)
         mid_layout.addWidget(self.w_cell_list)
         mid_layout.addWidget(w_cell_label)
@@ -543,6 +559,24 @@ class InspectionWidget(QWidget):
 
         for id in self.session.clustering_result["all"]['ids']:
             self.w_cell_list.addItem(str(id))
+
+    def generate_legend_element(self, name):
+        label = QLabel()
+        if name == "ALP_Timeout":
+            label.setFixedSize(150, 40)
+        else:
+            label.setFixedSize(100, 40)
+        pixmap = QPixmap(label.size())
+        pixmap.fill(Qt.black)
+        qp = QPainter(pixmap)
+        pen = QPen(self.colors[name], 3)
+        qp.setPen(pen)
+        qp.fillRect(10, 10, 20, 20, QBrush(self.colors[name], Qt.SolidPattern))
+        qp.drawText(pixmap.rect(), Qt.AlignCenter, name)
+        qp.end()
+        label.setPixmap(pixmap)
+
+        return label
 
     def indexChanged(self, value):
         value = "all" if value == 0 else value
@@ -567,9 +601,6 @@ class InspectionWidget(QWidget):
                 max_data = data.max()
                 p.plot(data)
                 p.setTitle(f"Cell {id}")
-                if i == 0:
-                    p.addLegend()
-                    event_names = ["ALP", "IALP", "RNFS", "ALP_Timeout"]
 
                 # Add event lines and boxes
                 for event in self.session.events.values():
@@ -577,16 +608,7 @@ class InspectionWidget(QWidget):
                     brush_box = self.brushes_boxes[event.event_type]
                     for t in event.timesteps:
                         p.addItem(pg.InfiniteLine(t, pen=brush_line, movable=False, name=f"{event}"))
-                        if i == 0 and event.event_type in event_names:
-                            l = pg.PlotDataItem(pen=brush_line)
-                            p.legend.addItem(l, f"{event.event_type}")
-                            event_names.remove(event.event_type)
                     
                     for w in event.windows:
                         start, end = w
                         p.addItem(pg.LinearRegionItem((start, end), brush=brush_box, pen=brush_box, movable=False))
-
-
-    
-            
-
