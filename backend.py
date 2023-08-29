@@ -390,12 +390,17 @@ class CellClustering:
     def __init__(
         self,
         section: Optional[dict] = None,
+        outliers_list: List[int] = [],
         A: Optional[xr.DataArray] = None,
         fft: bool = True
     ):
         self.A = A
-        self.signals = section
         self.psd_list = []
+        self.outliers_list = outliers_list
+        self.signals = {}
+        for i in section.keys():
+            if i not in self.outliers_list:
+                self.signals[i] = section[i]
 
         if fft:
             for unit_id in self.signals:
