@@ -7,7 +7,7 @@ import pyqtgraph as pg
 import numpy as np
 import matplotlib
 matplotlib.use('Qt5Agg')
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 from PyQt5.QtGui import QPixmap
 
@@ -40,13 +40,13 @@ class ParamDialog(QDialog):
         self.ALP_Timeout_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_Timeout_chkbox, self.ALP_Timeout_param))
         self.ALP_Timeout_chkbox.stateChanged.connect(self.release_button)
 
-        self.ALP_param = ParamWidget()
+        self.ALP_param = ParamWidget("ALP")
         self.ALP_param.setEnabled(False)
-        self.IALP_param = ParamWidget()
+        self.IALP_param = ParamWidget("IALP")
         self.IALP_param.setEnabled(False)
-        self.RNFS_param = ParamWidget()
+        self.RNFS_param = ParamWidget("RNFS")
         self.RNFS_param.setEnabled(False)
-        self.ALP_Timeout_param = ParamWidget()
+        self.ALP_Timeout_param = ParamWidget("ALP_Timeout")
         self.ALP_Timeout_param.setEnabled(False)
 
         layout_param = QHBoxLayout()
@@ -144,13 +144,13 @@ class ToolWidget(QWidget):
         self.ALP_Timeout_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_Timeout_chkbox, self.ALP_Timeout_param))
         self.ALP_Timeout_chkbox.stateChanged.connect(self.release_button)
 
-        self.ALP_param = ParamWidget()
+        self.ALP_param = ParamWidget("ALP")
         self.ALP_param.setEnabled(False)
-        self.IALP_param = ParamWidget()
+        self.IALP_param = ParamWidget("IALP")
         self.IALP_param.setEnabled(False)
-        self.RNFS_param = ParamWidget()
+        self.RNFS_param = ParamWidget("RNFS")
         self.RNFS_param.setEnabled(False)
-        self.ALP_Timeout_param = ParamWidget()
+        self.ALP_Timeout_param = ParamWidget("ALP_Timeout")
         self.ALP_Timeout_param.setEnabled(False)
 
         layout_sub = QVBoxLayout()
@@ -233,32 +233,32 @@ class ToolWidget(QWidget):
             self.ALP_param.delay_edit.setText(str(result["ALP"]["delay"]))
         else:
             self.ALP_chkbox.setChecked(False)
-            self.ALP_param.duration_edit.setText("20")
-            self.ALP_param.delay_edit.setText("0")
+            self.ALP_param.duration_edit.setText("30")
+            self.ALP_param.delay_edit.setText("-20")
         if "IALP" in result:
             self.IALP_chkbox.setChecked(True)
             self.IALP_param.duration_edit.setText(str(result["IALP"]["window"]))
             self.IALP_param.delay_edit.setText(str(result["IALP"]["delay"]))
         else:
             self.IALP_chkbox.setChecked(False)
-            self.IALP_param.duration_edit.setText("20")
-            self.IALP_param.delay_edit.setText("0")
+            self.IALP_param.duration_edit.setText("30")
+            self.IALP_param.delay_edit.setText("-20")
         if "RNFS" in result:
             self.RNFS_chkbox.setChecked(True)
             self.RNFS_param.duration_edit.setText(str(result["RNFS"]["window"]))
             self.RNFS_param.delay_edit.setText(str(result["RNFS"]["delay"]))
         else:
             self.RNFS_chkbox.setChecked(False)
-            self.RNFS_param.duration_edit.setText("20")
-            self.RNFS_param.delay_edit.setText("0")
+            self.RNFS_param.duration_edit.setText("30")
+            self.RNFS_param.delay_edit.setText("-10")
         if "ALP_Timeout" in result:
             self.ALP_Timeout_chkbox.setChecked(True)
             self.ALP_Timeout_param.duration_edit.setText(str(result["ALP_Timeout"]["window"]))
             self.ALP_Timeout_param.delay_edit.setText(str(result["ALP_Timeout"]["delay"]))
         else:
             self.ALP_Timeout_chkbox.setChecked(False)
-            self.ALP_Timeout_param.duration_edit.setText("20")
-            self.ALP_Timeout_param.delay_edit.setText("0")
+            self.ALP_Timeout_param.duration_edit.setText("30")
+            self.ALP_Timeout_param.delay_edit.setText("-20")
         
         self.cluster_select.setCurrentIndex(result["no_of_clusters"] - 2)
 
@@ -273,19 +273,20 @@ def hide_unhide(chkbox, param):
 
 
 class ParamWidget(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, name, parent=None):
         super().__init__(parent)
         layout = QVBoxLayout()
 
         duration_label = QLabel("Window: ")
         delay_label = QLabel("Delay: ")
 
-        self.duration_edit = QLineEdit("20")
+
+        self.duration_edit = QLineEdit("30")
         onlyInt = QIntValidator()
         onlyInt.setRange(20, 120)
         self.duration_edit.setValidator(onlyInt)
 
-        self.delay_edit = QLineEdit("0")
+        self.delay_edit = QLineEdit("-10") if name == "RNFS" else QLineEdit("-20")
         onlyInt = QIntValidator()
         onlyInt.setRange(-20, 20)
         self.delay_edit.setValidator(onlyInt)
@@ -458,6 +459,7 @@ class InspectionWidget(QWidget):
     def __init__(self, session, parent=None):
         super().__init__(parent)
         self.session = session
+        self.total_neurons = len(self.session.clustering_result["all"]["ids"])
 
         # Brushes
         self.brushes_lines = {"ALP": pg.mkColor(255, 0, 0, 255),
@@ -499,6 +501,9 @@ class InspectionWidget(QWidget):
         self.w_cell_button = QPushButton("Visualize Selection")
         self.w_cell_button.clicked.connect(self.visualizeSignals)
 
+        self.total_neurons_label = QLabel(f"Looking at {self.total_neurons} out of {self.total_neurons} neurons")
+        self.total_neurons_label.setWordWrap(True)
+
         # Visualize Cluster
         self.imv = pg.ImageView()
         self.imv.setImage(self.session.clustering_result['all']['image'])
@@ -507,6 +512,11 @@ class InspectionWidget(QWidget):
         # Dendrogram
         self.w_dendro = MplCanvas()
         self.session.get_dendrogram(self.w_dendro.axes)
+        toolbar = NavigationToolbar(self.w_dendro, self)
+
+        layout_mpl = QVBoxLayout()
+        layout_mpl.addWidget(toolbar)
+        layout_mpl.addWidget(self.w_dendro)
 
         # Visualize Signals
         self.w_signals = pg.GraphicsLayoutWidget()
@@ -520,8 +530,9 @@ class InspectionWidget(QWidget):
         mid_layout.addWidget(self.w_cell_button)
         mid_layout.addWidget(self.w_cell_list)
         mid_layout.addWidget(w_cell_label)
+        mid_layout.addWidget(self.total_neurons_label)
 
-        right_layout.addWidget(self.w_dendro)
+        right_layout.addLayout(layout_mpl)
         right_layout.addWidget(self.w_signals)
 
         layout.addLayout(left_layout)
@@ -541,6 +552,8 @@ class InspectionWidget(QWidget):
 
         for id in self.session.clustering_result[value]['ids']:
             self.w_cell_list.addItem(str(id))
+        
+        self.total_neurons_label.setText(f"Looking at {len(self.session.clustering_result[value]['ids'])} out of {self.total_neurons} neurons")
 
     def visualizeSignals(self, event):
         cell_ids = [int(item.text()) for item in self.w_cell_list.selectedItems()]

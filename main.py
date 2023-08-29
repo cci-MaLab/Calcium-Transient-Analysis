@@ -39,24 +39,25 @@ class MainWindow(QMainWindow):
         button_save = QAction(self.style().standardIcon(pixmapi_save), "&Save", self)
         button_save.setStatusTip("Save current state")
         button_save.triggered.connect(self.save)
+        pixmapi_load = QStyle.StandardPixmap.SP_FileDialogStart
+        button_load = QAction(self.style().standardIcon(pixmapi_load), "&Load Saved State", self)
+        button_load.setStatusTip("Load previously saved state")
+        button_load.triggered.connect(self.load_saved_state)
         menu = self.menuBar()
         file_menu = menu.addMenu("&File")
         file_menu.addAction(button_folder)
         file_menu.addAction(button_save)
+        file_menu.addAction(button_load)
 
-        # Tool Widgets
-
-        
+        # Tool Widgets        
         self.current_selection = None
         self.w_tools = ToolWidget()
         self.w_tools.setEnabled(False)
-
 
         # Layouts
         layout_central = QHBoxLayout()
         layout_cluster = QVBoxLayout()
         self.cluster_viz = VisualizeClusterWidget()
-
 
         layout_cluster.addWidget(self.cluster_viz)
         layout_central.addLayout(layout_cluster)
@@ -66,24 +67,7 @@ class MainWindow(QMainWindow):
         widget.setLayout(layout_central)
         self.setCentralWidget(widget)
 
-
-
-
         self.show()
-
-        if os.path.isfile('paths.json'):
-            if os.path.getsize('paths.json') != 0:
-                dlg = LoadingDialog()
-                if dlg.exec():
-                    self.setWindowTitle("Loading...")
-                    with open('paths.json', 'r') as f:
-                        self.path_list = json.load(f)
-                    
-                    for fname in self.path_list.keys():
-                        results = self.path_list[fname]
-                        self.load_session(fname, results)
-
-                    self.setWindowTitle("Cell Clustering Tool")
 
     def activateParams(self, viewer: Viewer):
         if self.current_selection is None:
@@ -170,7 +154,7 @@ class MainWindow(QMainWindow):
     def onMyToolBarButtonClick(self, s):
         fname = QFileDialog.getExistingDirectory(
             self,
-            "Open File",
+            "Open Folder",
         )
         if fname != '' and fname not in self.path_list:
             pdg = ParamDialog()
@@ -181,7 +165,23 @@ class MainWindow(QMainWindow):
             self.load_session(fname, result)
             
 
-            
+    def load_saved_state(self):
+        fname = QFileDialog.getOpenFileName(
+            self,
+            "Open File",
+        )
+        fname = fname[0]
+        if fname[-4:] == "json":
+            if os.path.getsize(fname) != 0:
+                self.setWindowTitle("Loading...")
+                with open(fname, 'r') as f:
+                    self.path_list = json.load(f)
+                
+                for path in self.path_list.keys():
+                    results = self.path_list[path]
+                    self.load_session(path, results)
+
+                self.setWindowTitle("Cell Clustering Tool")      
         
 
     def load_session(self, fname, result):
@@ -219,8 +219,14 @@ class MainWindow(QMainWindow):
 
     
     def save(self):
+        default_dir = os.getcwd()
+        default_filename = os.path.join(default_dir, "paths.json")
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Save State", default_filename, "JSON Files (*.json)"
+        )
+
         if self.path_list:
-            with open('paths.json', 'w') as f:
+            with open(filename, 'w') as f:
                 json.dump(self.path_list, f)
 
 app = QApplication([])
