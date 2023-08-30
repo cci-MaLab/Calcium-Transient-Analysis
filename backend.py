@@ -266,6 +266,7 @@ class SessionFeature:
         self.load_data(dpath=dpath)
         self.load_events(events)
         self.no_of_clusters = 4
+        self.centroids: dict
 
     def load_data(self,dpath):
         mouseID, day, session = match_information(dpath)
@@ -295,15 +296,19 @@ class SessionFeature:
             else:
                 print("No %s data found in minian file" % (dt))
                 self.data[dt] = None
-        
+
         self.data['unit_ids'] = self.data['C'].coords['unit_id'].values
         self.dpath = dpath
 
         neurons = self.data['unit_ids']
+
+        cent = self.centroid(self.data['A'])
         
         self.A = {}
+        self.centroids = {}
         for i in neurons:
             self.A[i] = self.data['A'].sel(unit_id = i)
+            self.centroids[i] = tuple(cent.loc[cent['unit_id'] == i].values[0][1:])
 
         output_dpath = "/N/project/Cortical_Calcium_Image/analysis"
         if session is None:
@@ -382,7 +387,7 @@ class SessionFeature:
     def get_dendrogram(self, ax):
         self.cellClustering.visualize_dendrogram(color_threshold =self.linkage_data[(self.no_of_clusters-1),2] ,ax=ax)
 
-    def centroid(A: xr.DataArray, verbose=False) -> pd.DataFrame:
+    def centroid(self, A: xr.DataArray, verbose=False) -> pd.DataFrame:
         """
         Compute centroids of spatial footprint of each cell.
 
@@ -409,7 +414,7 @@ class SessionFeature:
             cent = np.array(center_of_mass(im))
             return cent / im.shape
 
-        gu_rel_cent = da.gufunc(
+        gu_rel_cent = darr.gufunc(
             rel_cent,
             signature="(h,w)->(d)",
             output_dtypes=float,

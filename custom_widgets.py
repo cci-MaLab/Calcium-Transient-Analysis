@@ -1,8 +1,8 @@
 from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout, QWidget,
                             QCheckBox, QGridLayout, QFrame, QGraphicsView, QGraphicsScene, QPushButton, 
                             QComboBox, QListWidget, QAbstractItemView)
-from PyQt5.QtGui import (QIntValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush, QKeySequence, QShortcutEvent)
-from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QEvent
+from PyQt5.QtGui import (QIntValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush, QFont)
+from PyQt5.QtCore import Qt
 import pyqtgraph as pg
 from pyqtgraph import PlotItem
 import numpy as np
@@ -506,6 +506,8 @@ class InspectionWidget(QWidget):
         self.total_neurons = len(self.session.clustering_result["all"]["ids"]) - len(self.session.outliers_list)
         self.selected_plot = 0
         self.cell_ids = None
+        self.displaying = "None"
+        self.current_labels = []
 
         # Brushes
         self.brushes_lines = {"ALP": pg.mkColor(255, 0, 0, 255),
@@ -582,6 +584,15 @@ class InspectionWidget(QWidget):
         # Visualize Signals
         self.w_signals = pg.GraphicsLayoutWidget()
         self.w_signals.scene().sigMouseClicked.connect(self.onClick)
+
+        # Show labels
+        show_all_button = QPushButton("Show/Hide All")
+        show_all_button.clicked.connect(lambda: self.show_labels("all"))
+        show_selected_button = QPushButton("Show/Hide Selected")
+        show_selected_button.clicked.connect(lambda: self.show_labels("select"))
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(show_all_button)
+        button_layout.addWidget(show_selected_button)
         
 
         # Layouts
@@ -594,6 +605,7 @@ class InspectionWidget(QWidget):
         mid_layout.addWidget(RNFS_label)
         mid_layout.addWidget(IALP_label)
         mid_layout.addWidget(ALP_label)
+        mid_layout.addLayout(button_layout)
         mid_layout.addWidget(self.w_cell_button)
         mid_layout.addWidget(self.w_cell_list)
         mid_layout.addWidget(w_cell_label)
@@ -611,6 +623,47 @@ class InspectionWidget(QWidget):
         for id in self.session.clustering_result["all"]['ids']:
             if id not in self.session.outliers_list:
                 self.w_cell_list.addItem(str(id))
+
+    def show_labels(self, type):
+        if type == "select":
+            if self.displaying == "select":
+                self.displaying = "None"
+                self.remove_labels()
+            else:                
+                self.displaying = "select"
+                self.remove_labels()
+                selections = [int(item.text()) for item in self.w_cell_list.selectedItems()]
+                if selections:
+                    self.populate_image(selections)
+                else:
+                    self.displaying = None
+        
+        else:
+            if self.displaying == "all":
+                self.displaying = "None"
+                self.remove_labels()
+            else:
+                self.displaying = "all"
+                self.remove_labels()
+                selections = [int(self.w_cell_list.item(x).text()) for x in range(self.w_cell_list.count())]
+                self.populate_image(selections)
+
+    def populate_image(self, selections):
+        self.current_labels = []
+        for sel in selections:
+            x, y = self.session.centroids[sel]
+            text = pg.TextItem(text=str(sel), anchor=(0.4,0.4), color=(255, 255, 255, 255))
+            self.imv.addItem(text)
+            text.setFont(QFont('Times', 7))
+            # Calculate relative position
+            text.setPos(round(x), round(y))
+            self.current_labels.append(text)
+
+    def remove_labels(self):
+        for label in self.current_labels:
+            self.imv.getView().removeItem(label)
+        
+        self.current_labels = []
 
     def set_view(self):
         if self.cell_ids is not None and self.selected_plot is not None:
