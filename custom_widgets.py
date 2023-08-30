@@ -221,6 +221,7 @@ class ToolWidget(QWidget):
 
         if potential_outlier in self.all_cells and potential_outlier not in current_outliers:
             self.outlier_combo_box.addItem(str(potential_outlier))
+            self.outlier_combo_box.setCurrentIndex(self.outlier_combo_box.count()-1)
 
     def remove_outlier(self, click):
         val = self.outlier_combo_box.currentText
@@ -266,6 +267,7 @@ class ToolWidget(QWidget):
     
     def update(self, result, cell_list):
         self.all_cells = cell_list
+        self.outlier_combo_box.clear()
         if "ALP" in result:
             self.ALP_chkbox.setChecked(True)
             self.ALP_param.duration_edit.setText(str(result["ALP"]["window"]))
