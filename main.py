@@ -21,9 +21,6 @@ class MainWindow(QMainWindow):
         
         self.windows = []
 
-        # Threading
-        #self.threadpool = QThreadPool()
-
         # Data stuff
         self.sessions = {}
         self.sessions['saline'] = {}
@@ -98,13 +95,15 @@ class MainWindow(QMainWindow):
         result = self.path_list[session.dpath]
         result["no_of_clusters"] = session.no_of_clusters
 
-        self.w_tools.update(result)
+        self.w_tools.update(result, session.data["unit_ids"])
 
     def updateCluster(self, result):
         no_of_clusters = result.pop("no_of_clusters")
+        outliers = result.pop("outliers")
         self.setWindowTitle("Loading...")
         group, x, y, mouseID = self.current_selection.returnInfo()
         session = self.sessions[group][mouseID][f"{x}:{y}"]
+        session.set_outliers(outliers)
         old_result = self.path_list[session.dpath]
         session.load_events(result.keys())
         for event in result:
@@ -112,6 +111,7 @@ class MainWindow(QMainWindow):
             session.events[event].set_delay_and_duration(delay, window)
             session.events[event].set_values()        
         result["group"] = old_result["group"]
+        result["outliers"] = session.outliers_list
         session.set_vector()
         session.set_no_of_clusters(no_of_clusters)
         session.compute_clustering()
@@ -188,6 +188,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Loading...")
         events = list(result.keys())
         events.remove("group")
+        if "outliers" in result:
+            events.remove("outliers")
         no_of_clusters = None
         if "no_of_clusters" in events:
             no_of_clusters = result["no_of_clusters"]
@@ -201,6 +203,8 @@ class MainWindow(QMainWindow):
             session.events[event].set_values()
 
         session.set_group(result["group"])
+        if "outliers" in result:
+            session.set_outliers(result["outliers"])
         session.set_vector()
         session.compute_clustering()
 

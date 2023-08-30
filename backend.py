@@ -261,7 +261,7 @@ class SessionFeature:
         self.events:dict # {"ALP": Event, "IALP" : Event, "RNFS": Event}
         self.A: dict    #key is unit_id,value is A. Just keep same uniform with self.value
         self.value: dict #key is the unit_id,value is the numpy array
-        self.outliers_list: List[int]
+        self.outliers_list: List[int] = []
         # self.linkage_data:
         self.load_data(dpath=dpath)
         self.load_events(events)
@@ -360,6 +360,9 @@ class SessionFeature:
 
     def set_group(self, group_type: str):
         self.group = group_type
+
+    def set_outliers(self, outliers: List[int]):
+        self.outliers_list = outliers
 
     def set_no_of_clusters(self, number : int):
         self.no_of_clusters = number

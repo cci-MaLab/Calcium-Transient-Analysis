@@ -1,9 +1,10 @@
 from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout, QWidget,
                             QCheckBox, QGridLayout, QFrame, QGraphicsView, QGraphicsScene, QPushButton, 
                             QComboBox, QListWidget, QAbstractItemView)
-from PyQt5.QtGui import QIntValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush
-from PyQt5.QtCore import Qt
+from PyQt5.QtGui import (QIntValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush, QKeySequence, QShortcutEvent)
+from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QEvent
 import pyqtgraph as pg
+from pyqtgraph import PlotItem
 import numpy as np
 import matplotlib
 matplotlib.use('Qt5Agg')
@@ -111,6 +112,7 @@ class ParamDialog(QDialog):
 class ToolWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.all_cells = None
 
         label_cluster_select = QLabel()
         label_cluster_select.setText("Pick number of clusters:")
@@ -119,12 +121,15 @@ class ToolWidget(QWidget):
             self.cluster_select.addItem(str(i))
         self.cluster_select.setCurrentIndex(2)
 
+
         self.button = QPushButton("Update")
+        self.button.setStyleSheet("background-color : green")
         self.button.setEnabled(False)
         self.button.setFixedWidth(120)
         self.button.clicked.connect(self.get_result)
 
         self.button_inspect = QPushButton("Inspect Cluster")
+        self.button_inspect.setStyleSheet("background-color : green")
         self.button_inspect.setFixedWidth(120)
         self.button_inspect.clicked.connect(self.inspect)
 
@@ -153,6 +158,19 @@ class ToolWidget(QWidget):
         self.ALP_Timeout_param = ParamWidget("ALP_Timeout")
         self.ALP_Timeout_param.setEnabled(False)
 
+        self.outlier_input_label = QLabel("Type in outlier to exclude")
+        self.outlier_input = QLineEdit("")
+        onlyInt = QIntValidator()
+        self.outlier_input.setValidator(onlyInt)
+        self.outlier_input.returnPressed.connect(self.add_outlier)
+        self.outlier_input_button = QPushButton("Remove Outlier")
+        self.outlier_input_button.clicked.connect(self.add_outlier)
+        self.outlier_combo_label = QLabel("Current Outliers")
+        self.outlier_combo_box = QComboBox()
+        self.outlier_return_button = QPushButton("Return Outlier")
+        self.outlier_return_button.clicked.connect(self.remove_outlier)
+
+
         layout_sub = QVBoxLayout()
         layout_sub.addStretch()
         layout_sub.setDirection(3)
@@ -175,15 +193,19 @@ class ToolWidget(QWidget):
         button_layout.addWidget(self.button_inspect)
 
         layout_sub.addLayout(button_layout)
+        layout_sub.addWidget(self.outlier_return_button)
+        layout_sub.addWidget(self.outlier_combo_box)
+        layout_sub.addWidget(self.outlier_combo_label)
+        layout_sub.addWidget(self.outlier_input_button)
+        layout_sub.addWidget(self.outlier_input)
+        layout_sub.addWidget(self.outlier_input_label)
         layout_sub.addLayout(ALP_Timeout_layout)
         layout_sub.addLayout(RNFS_layout)
         layout_sub.addLayout(IALP_layout)
         layout_sub.addLayout(ALP_layout)
         layout_sub.addWidget(self.cluster_select)
         layout_sub.addWidget(label_cluster_select)
-        
-        
-        
+
 
         layout_tools = QHBoxLayout()
         layout_tools.addStretch()
@@ -191,6 +213,22 @@ class ToolWidget(QWidget):
 
 
         self.setLayout(layout_tools)
+
+    def add_outlier(self, click=None):
+        potential_outlier = int(self.outlier_input.text())
+        current_outliers = [int(self.outlier_combo_box.itemText(i)) for i in range(self.outlier_combo_box.count())]
+        self.outlier_input.setText("")
+
+        if potential_outlier in self.all_cells and potential_outlier not in current_outliers:
+            self.outlier_combo_box.addItem(str(potential_outlier))
+            self.outlier_combo_box.setCurrentIndex(self.outlier_combo_box.count()-1)
+
+    def remove_outlier(self, click):
+        val = self.outlier_combo_box.currentText
+        if val != "":
+            self.outlier_combo_box.removeItem(self.outlier_combo_box.currentIndex())
+
+
 
     def release_button(self):
         if self.ALP_chkbox.isChecked() or self.IALP_chkbox.isChecked() or self.RNFS_chkbox.isChecked() or self.ALP_Timeout_chkbox.isChecked():
@@ -217,6 +255,7 @@ class ToolWidget(QWidget):
             result["ALP_Timeout"]["window"] = int(self.RNFS_param.duration_edit.text())
             result["ALP_Timeout"]["delay"] = int(self.RNFS_param.delay_edit.text())
         result["no_of_clusters"] = int(self.cluster_select.currentText())
+        result["outliers"] = [int(self.outlier_combo_box.itemText(i)) for i in range(self.outlier_combo_box.count())]
         
         
         root_parent = self.parent().parent()
@@ -226,7 +265,9 @@ class ToolWidget(QWidget):
         root_parent = self.parent().parent()
         root_parent.startInspection()
     
-    def update(self, result):
+    def update(self, result, cell_list):
+        self.all_cells = cell_list
+        self.outlier_combo_box.clear()
         if "ALP" in result:
             self.ALP_chkbox.setChecked(True)
             self.ALP_param.duration_edit.setText(str(result["ALP"]["window"]))
@@ -259,6 +300,9 @@ class ToolWidget(QWidget):
             self.ALP_Timeout_chkbox.setChecked(False)
             self.ALP_Timeout_param.duration_edit.setText("30")
             self.ALP_Timeout_param.delay_edit.setText("-20")
+        if "outliers" in result:
+            for outlier in result["outliers"]:
+                self.outlier_combo_box.addItem(str(outlier))
         
         self.cluster_select.setCurrentIndex(result["no_of_clusters"] - 2)
 
@@ -459,7 +503,9 @@ class InspectionWidget(QWidget):
     def __init__(self, session, parent=None):
         super().__init__(parent)
         self.session = session
-        self.total_neurons = len(self.session.clustering_result["all"]["ids"])
+        self.total_neurons = len(self.session.clustering_result["all"]["ids"]) - len(self.session.outliers_list)
+        self.selected_plot = 0
+        self.cell_ids = None
 
         # Brushes
         self.brushes_lines = {"ALP": pg.mkColor(255, 0, 0, 255),
@@ -515,6 +561,9 @@ class InspectionWidget(QWidget):
         RNFS_label = self.generate_legend_element("RNFS")
         ALP_Timeout_label = self.generate_legend_element("ALP_Timeout")
 
+        # Set View
+        view_button = QPushButton("Set view to last clicked plot")
+        view_button.clicked.connect(self.set_view)
 
         # Visualize Cluster
         self.imv = pg.ImageView()
@@ -532,6 +581,7 @@ class InspectionWidget(QWidget):
 
         # Visualize Signals
         self.w_signals = pg.GraphicsLayoutWidget()
+        self.w_signals.scene().sigMouseClicked.connect(self.onClick)
         
 
         # Layouts
@@ -539,6 +589,7 @@ class InspectionWidget(QWidget):
         left_layout.addWidget(self.cluster_select)
         left_layout.addWidget(self.imv)
 
+        mid_layout.addWidget(view_button)
         mid_layout.addWidget(ALP_Timeout_label)
         mid_layout.addWidget(RNFS_label)
         mid_layout.addWidget(IALP_label)
@@ -558,7 +609,20 @@ class InspectionWidget(QWidget):
         self.setLayout(layout)
 
         for id in self.session.clustering_result["all"]['ids']:
-            self.w_cell_list.addItem(str(id))
+            if id not in self.session.outliers_list:
+                self.w_cell_list.addItem(str(id))
+
+    def set_view(self):
+        if self.cell_ids is not None and self.selected_plot is not None:
+            view = None
+            focus_plot = self.w_signals.getItem(self.selected_plot, 0)
+            view = focus_plot.getViewBox().viewRect()
+            for i in range(len(self.cell_ids)):
+                if i != self.selected_plot:
+                    plot  = self.w_signals.getItem(i, 0)
+                    plot.getViewBox().setRange(view)
+            
+
 
     def generate_legend_element(self, name):
         label = QLabel()
@@ -585,20 +649,22 @@ class InspectionWidget(QWidget):
         self.w_cell_list.clear()
 
         for id in self.session.clustering_result[value]['ids']:
-            self.w_cell_list.addItem(str(id))
+            if id not in self.session.outliers_list:
+                self.w_cell_list.addItem(str(id))
         
         self.total_neurons_label.setText(f"Looking at {len(self.session.clustering_result[value]['ids'])} out of {self.total_neurons} neurons")
 
     def visualizeSignals(self, event):
-        cell_ids = [int(item.text()) for item in self.w_cell_list.selectedItems()]
+        self.cell_ids = [int(item.text()) for item in self.w_cell_list.selectedItems()]
+        self.selected_plot = None
 
-        if cell_ids:
+        if self.cell_ids:
             self.w_signals.clear()
 
-            for i, id in enumerate(cell_ids):
-                p = self.w_signals.addPlot(row=i, col=0)
+            for i, id in enumerate(self.cell_ids):
+                p = MyPlotWidget(id=i)
+                self.w_signals.addItem(p, row=i, col=0)
                 data = self.session.data['C'].sel(unit_id=id)
-                max_data = data.max()
                 p.plot(data)
                 p.setTitle(f"Cell {id}")
 
@@ -612,3 +678,16 @@ class InspectionWidget(QWidget):
                     for w in event.windows:
                         start, end = w
                         p.addItem(pg.LinearRegionItem((start, end), brush=brush_box, pen=brush_box, movable=False))
+
+    def onClick(self, event):
+        # Funky stuff to get the PlotItem clicked
+        current_height = self.w_signals.range.height()
+        click_height = event.scenePos().y()
+        self.selected_plot = round(click_height / current_height * (len(self.cell_ids) - 1))
+        if self.selected_plot > len(self.cell_ids) - 1:
+            self.selected_plot = len(self.cell_ids) - 1
+
+class MyPlotWidget(PlotItem):
+    def __init__(self, id=None, **kwargs):
+        super(MyPlotWidget, self).__init__(**kwargs)
+        self.id = id
