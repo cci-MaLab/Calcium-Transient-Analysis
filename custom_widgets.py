@@ -2,8 +2,9 @@ from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLi
                             QCheckBox, QGridLayout, QFrame, QGraphicsView, QGraphicsScene, QPushButton, 
                             QComboBox, QListWidget, QAbstractItemView)
 from PyQt5.QtGui import QIntValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QEvent
 import pyqtgraph as pg
+from pyqtgraph import PlotItem
 import numpy as np
 import matplotlib
 matplotlib.use('Qt5Agg')
@@ -460,6 +461,8 @@ class InspectionWidget(QWidget):
         super().__init__(parent)
         self.session = session
         self.total_neurons = len(self.session.clustering_result["all"]["ids"])
+        self.selected_plot = 0
+        self.cell_ids = None
 
         # Brushes
         self.brushes_lines = {"ALP": pg.mkColor(255, 0, 0, 255),
@@ -515,6 +518,9 @@ class InspectionWidget(QWidget):
         RNFS_label = self.generate_legend_element("RNFS")
         ALP_Timeout_label = self.generate_legend_element("ALP_Timeout")
 
+        # Set View
+        view_button = QPushButton("Set view to last clicked plot")
+        view_button.clicked.connect(self.set_view)
 
         # Visualize Cluster
         self.imv = pg.ImageView()
@@ -532,6 +538,7 @@ class InspectionWidget(QWidget):
 
         # Visualize Signals
         self.w_signals = pg.GraphicsLayoutWidget()
+        self.w_signals.scene().sigMouseClicked.connect(self.onClick)
         
 
         # Layouts
@@ -539,6 +546,7 @@ class InspectionWidget(QWidget):
         left_layout.addWidget(self.cluster_select)
         left_layout.addWidget(self.imv)
 
+        mid_layout.addWidget(view_button)
         mid_layout.addWidget(ALP_Timeout_label)
         mid_layout.addWidget(RNFS_label)
         mid_layout.addWidget(IALP_label)
@@ -559,6 +567,18 @@ class InspectionWidget(QWidget):
 
         for id in self.session.clustering_result["all"]['ids']:
             self.w_cell_list.addItem(str(id))
+
+    def set_view(self):
+        if self.cell_ids is not None and self.selected_plot is not None:
+            view = None
+            focus_plot = self.w_signals.getItem(self.selected_plot, 0)
+            view = focus_plot.getViewBox().viewRect()
+            for i in range(len(self.cell_ids)):
+                if i != self.selected_plot:
+                    plot  = self.w_signals.getItem(i, 0)
+                    plot.getViewBox().setRange(view)
+            
+
 
     def generate_legend_element(self, name):
         label = QLabel()
@@ -590,15 +610,16 @@ class InspectionWidget(QWidget):
         self.total_neurons_label.setText(f"Looking at {len(self.session.clustering_result[value]['ids'])} out of {self.total_neurons} neurons")
 
     def visualizeSignals(self, event):
-        cell_ids = [int(item.text()) for item in self.w_cell_list.selectedItems()]
+        self.cell_ids = [int(item.text()) for item in self.w_cell_list.selectedItems()]
+        self.selected_plot = None
 
-        if cell_ids:
+        if self.cell_ids:
             self.w_signals.clear()
 
-            for i, id in enumerate(cell_ids):
-                p = self.w_signals.addPlot(row=i, col=0)
+            for i, id in enumerate(self.cell_ids):
+                p = MyPlotWidget(id=i)
+                self.w_signals.addItem(p, row=i, col=0)
                 data = self.session.data['C'].sel(unit_id=id)
-                max_data = data.max()
                 p.plot(data)
                 p.setTitle(f"Cell {id}")
 
@@ -612,3 +633,16 @@ class InspectionWidget(QWidget):
                     for w in event.windows:
                         start, end = w
                         p.addItem(pg.LinearRegionItem((start, end), brush=brush_box, pen=brush_box, movable=False))
+
+    def onClick(self, event):
+        # Funky stuff to get the PlotItem clicked
+        current_height = self.w_signals.range.height()
+        click_height = event.scenePos().y()
+        self.selected_plot = round(click_height / current_height * (len(self.cell_ids) - 1))
+        if self.selected_plot > len(self.cell_ids) - 1:
+            self.selected_plot = len(self.cell_ids) - 1
+
+class MyPlotWidget(PlotItem):
+    def __init__(self, id=None, **kwargs):
+        super(MyPlotWidget, self).__init__(**kwargs)
+        self.id = id
