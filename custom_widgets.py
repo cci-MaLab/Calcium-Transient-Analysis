@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout, QWidget,
                             QCheckBox, QGridLayout, QFrame, QGraphicsView, QGraphicsScene, QPushButton, 
                             QComboBox, QListWidget, QAbstractItemView)
-from PyQt5.QtGui import QIntValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush
+from PyQt5.QtGui import (QIntValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush, QKeySequence, QShortcutEvent)
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QEvent
 import pyqtgraph as pg
 from pyqtgraph import PlotItem
@@ -112,6 +112,7 @@ class ParamDialog(QDialog):
 class ToolWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.all_cells = None
 
         label_cluster_select = QLabel()
         label_cluster_select.setText("Pick number of clusters:")
@@ -120,12 +121,15 @@ class ToolWidget(QWidget):
             self.cluster_select.addItem(str(i))
         self.cluster_select.setCurrentIndex(2)
 
+
         self.button = QPushButton("Update")
+        self.button.setStyleSheet("background-color : green")
         self.button.setEnabled(False)
         self.button.setFixedWidth(120)
         self.button.clicked.connect(self.get_result)
 
         self.button_inspect = QPushButton("Inspect Cluster")
+        self.button_inspect.setStyleSheet("background-color : green")
         self.button_inspect.setFixedWidth(120)
         self.button_inspect.clicked.connect(self.inspect)
 
@@ -154,6 +158,19 @@ class ToolWidget(QWidget):
         self.ALP_Timeout_param = ParamWidget("ALP_Timeout")
         self.ALP_Timeout_param.setEnabled(False)
 
+        self.outlier_input_label = QLabel("Type in outlier to exclude")
+        self.outlier_input = QLineEdit("")
+        onlyInt = QIntValidator()
+        self.outlier_input.setValidator(onlyInt)
+        self.outlier_input.returnPressed.connect(self.add_outlier)
+        self.outlier_input_button = QPushButton("Remove Outlier")
+        self.outlier_input_button.clicked.connect(self.add_outlier)
+        self.outlier_combo_label = QLabel("Current Outliers")
+        self.outlier_combo_box = QComboBox()
+        self.outlier_return_button = QPushButton("Return Outlier")
+        self.outlier_return_button.clicked.connect(self.remove_outlier)
+
+
         layout_sub = QVBoxLayout()
         layout_sub.addStretch()
         layout_sub.setDirection(3)
@@ -176,15 +193,19 @@ class ToolWidget(QWidget):
         button_layout.addWidget(self.button_inspect)
 
         layout_sub.addLayout(button_layout)
+        layout_sub.addWidget(self.outlier_return_button)
+        layout_sub.addWidget(self.outlier_combo_box)
+        layout_sub.addWidget(self.outlier_combo_label)
+        layout_sub.addWidget(self.outlier_input_button)
+        layout_sub.addWidget(self.outlier_input)
+        layout_sub.addWidget(self.outlier_input_label)
         layout_sub.addLayout(ALP_Timeout_layout)
         layout_sub.addLayout(RNFS_layout)
         layout_sub.addLayout(IALP_layout)
         layout_sub.addLayout(ALP_layout)
         layout_sub.addWidget(self.cluster_select)
         layout_sub.addWidget(label_cluster_select)
-        
-        
-        
+
 
         layout_tools = QHBoxLayout()
         layout_tools.addStretch()
@@ -192,6 +213,21 @@ class ToolWidget(QWidget):
 
 
         self.setLayout(layout_tools)
+
+    def add_outlier(self, click=None):
+        potential_outlier = int(self.outlier_input.text())
+        current_outliers = [int(self.outlier_combo_box.itemText(i)) for i in range(self.outlier_combo_box.count())]
+        self.outlier_input.setText("")
+
+        if potential_outlier in self.all_cells and potential_outlier not in current_outliers:
+            self.outlier_combo_box.addItem(str(potential_outlier))
+
+    def remove_outlier(self, click):
+        val = self.outlier_combo_box.currentText
+        if val != "":
+            self.outlier_combo_box.removeItem(self.outlier_combo_box.currentIndex())
+
+
 
     def release_button(self):
         if self.ALP_chkbox.isChecked() or self.IALP_chkbox.isChecked() or self.RNFS_chkbox.isChecked() or self.ALP_Timeout_chkbox.isChecked():
@@ -218,6 +254,7 @@ class ToolWidget(QWidget):
             result["ALP_Timeout"]["window"] = int(self.RNFS_param.duration_edit.text())
             result["ALP_Timeout"]["delay"] = int(self.RNFS_param.delay_edit.text())
         result["no_of_clusters"] = int(self.cluster_select.currentText())
+        result["outliers"] = [int(self.outlier_combo_box.itemText(i)) for i in range(self.outlier_combo_box.count())]
         
         
         root_parent = self.parent().parent()
@@ -227,7 +264,8 @@ class ToolWidget(QWidget):
         root_parent = self.parent().parent()
         root_parent.startInspection()
     
-    def update(self, result):
+    def update(self, result, cell_list):
+        self.all_cells = cell_list
         if "ALP" in result:
             self.ALP_chkbox.setChecked(True)
             self.ALP_param.duration_edit.setText(str(result["ALP"]["window"]))
@@ -260,6 +298,9 @@ class ToolWidget(QWidget):
             self.ALP_Timeout_chkbox.setChecked(False)
             self.ALP_Timeout_param.duration_edit.setText("30")
             self.ALP_Timeout_param.delay_edit.setText("-20")
+        if "outliers" in result:
+            for outlier in result["outliers"]:
+                self.outlier_combo_box.addItem(str(outlier))
         
         self.cluster_select.setCurrentIndex(result["no_of_clusters"] - 2)
 
@@ -566,7 +607,8 @@ class InspectionWidget(QWidget):
         self.setLayout(layout)
 
         for id in self.session.clustering_result["all"]['ids']:
-            self.w_cell_list.addItem(str(id))
+            if id not in self.session.outliers_list:
+                self.w_cell_list.addItem(str(id))
 
     def set_view(self):
         if self.cell_ids is not None and self.selected_plot is not None:
@@ -605,7 +647,8 @@ class InspectionWidget(QWidget):
         self.w_cell_list.clear()
 
         for id in self.session.clustering_result[value]['ids']:
-            self.w_cell_list.addItem(str(id))
+            if id not in self.session.outliers_list:
+                self.w_cell_list.addItem(str(id))
         
         self.total_neurons_label.setText(f"Looking at {len(self.session.clustering_result[value]['ids'])} out of {self.total_neurons} neurons")
 
