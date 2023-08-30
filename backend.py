@@ -259,6 +259,7 @@ class SessionFeature:
         self.events:dict # {"ALP": Event, "IALP" : Event, "RNFS": Event}
         self.A: dict    #key is unit_id,value is A. Just keep same uniform with self.value
         self.value: dict #key is the unit_id,value is the numpy array
+        self.outliers_list: List[int]
         # self.linkage_data:
         self.load_data(dpath=dpath)
         self.load_events(events)
@@ -297,6 +298,7 @@ class SessionFeature:
         self.dpath = dpath
 
         neurons = self.data['unit_ids']
+        
         self.A = {}
         for i in neurons:
             self.A[i] = self.data['A'].sel(unit_id = i)
@@ -353,6 +355,7 @@ class SessionFeature:
                 values[uid] = self.data['C'].sel(unit_id = int(uid)).values
         self.values = values
 
+
     def set_group(self, group_type: str):
         self.group = group_type
 
@@ -360,7 +363,7 @@ class SessionFeature:
         self.no_of_clusters = number
 
     def compute_clustering(self):
-        self.cellClustering = CellClustering(self.values,self.A)
+        self.cellClustering = CellClustering(self.values,self.outliers_list,self.A)
         self.linkage_data = self.cellClustering.linkage_data
         self.clustering_result = self.cellClustering.visualize_clusters(self.no_of_clusters)
 
@@ -372,8 +375,7 @@ class SessionFeature:
         return self.mouseID, x, y, self.group, self.clustering_result['all']['image']
 
     def get_dendrogram(self, ax):
-        color_threshold = np.sort(self.linkage_data[:,2])[-(self.no_of_clusters-1)]
-        self.cellClustering.visualize_dendrogram(color_threshold=color_threshold,ax=ax)
+        self.cellClustering.visualize_dendrogram(color_threshold =self.linkage_data[(self.no_of_clusters-1),2] ,ax=ax)
 
 
 
@@ -388,12 +390,17 @@ class CellClustering:
     def __init__(
         self,
         section: Optional[dict] = None,
+        outliers_list: List[int] = [],
         A: Optional[xr.DataArray] = None,
         fft: bool = True
     ):
         self.A = A
-        self.signals = section
         self.psd_list = []
+        self.outliers_list = outliers_list
+        self.signals = {}
+        for i in section.keys():
+            if i not in self.outliers_list:
+                self.signals[i] = section[i]
 
         if fft:
             for unit_id in self.signals:
