@@ -501,7 +501,7 @@ class InspectionWidget(QWidget):
     def __init__(self, session, parent=None):
         super().__init__(parent)
         self.session = session
-        self.total_neurons = len(self.session.clustering_result["all"]["ids"])
+        self.total_neurons = len(self.session.clustering_result["all"]["ids"]) - len(self.session.outliers_list)
         self.selected_plot = 0
         self.cell_ids = None
 
