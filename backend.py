@@ -12,11 +12,13 @@ from os import listdir
 from typing import Callable, List, Optional, Union
 import os
 import re
+from dask.diagnostics import ProgressBar
 
 from scipy.signal import welch
 from scipy.signal import savgol_filter
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from scipy.ndimage import gaussian_filter1d
+from scipy.ndimage.measurements import center_of_mass
 
 from matplotlib import cm
 from matplotlib import colors 
@@ -377,6 +379,65 @@ class SessionFeature:
     def get_dendrogram(self, ax):
         self.cellClustering.visualize_dendrogram(color_threshold =self.linkage_data[(self.no_of_clusters-1),2] ,ax=ax)
 
+    def centroid(A: xr.DataArray, verbose=False) -> pd.DataFrame:
+        """
+        Compute centroids of spatial footprint of each cell.
+
+        Parameters
+        ----------
+        A : xr.DataArray
+            Input spatial footprints.
+        verbose : bool, optional
+            Whether to print message and progress bar. By default `False`.
+
+        Returns
+        -------
+        cents_df : pd.DataFrame
+            Centroid of spatial footprints for each cell. Has columns "unit_id",
+            "height", "width" and any other additional metadata dimension.
+        """
+
+        def rel_cent(im):
+            im_nan = np.isnan(im)
+            if im_nan.all():
+                return np.array([np.nan, np.nan])
+            if im_nan.any():
+                im = np.nan_to_num(im)
+            cent = np.array(center_of_mass(im))
+            return cent / im.shape
+
+        gu_rel_cent = da.gufunc(
+            rel_cent,
+            signature="(h,w)->(d)",
+            output_dtypes=float,
+            output_sizes=dict(d=2),
+            vectorize=True,
+        )
+        cents = xr.apply_ufunc(
+            gu_rel_cent,
+            A.chunk(dict(height=-1, width=-1)),
+            input_core_dims=[["height", "width"]],
+            output_core_dims=[["dim"]],
+            dask="allowed",
+        ).assign_coords(dim=["height", "width"])
+        if verbose:
+            print("computing centroids")
+            with ProgressBar():
+                cents = cents.compute()
+        cents_df = (
+            cents.rename("cents")
+            .to_series()
+            .dropna()
+            .unstack("dim")
+            .rename_axis(None, axis="columns")
+            .reset_index()
+        )
+        h_rg = (A.coords["height"].min().values, A.coords["height"].max().values)
+        w_rg = (A.coords["width"].min().values, A.coords["width"].max().values)
+        cents_df["height"] = cents_df["height"] * (h_rg[1] - h_rg[0]) + h_rg[0]
+        cents_df["width"] = cents_df["width"] * (w_rg[1] - w_rg[0]) + w_rg[0]
+        return cents_df
+
 
 
         
@@ -465,6 +526,7 @@ class CellClustering:
             final_image += np.stack((self.A[list(self.A.keys())[idx]].values,)*3, axis=-1) * viridis(color_mapping[idx])[:3]
         
         return plt.imshow(final_image)
+
 
 # class FeatureExploration:
 #     """
