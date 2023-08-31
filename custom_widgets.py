@@ -99,8 +99,8 @@ class ParamDialog(QDialog):
             result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
         if self.ALP_Timeout_chkbox.isChecked():
             result["ALP_Timeout"] = {}
-            result["ALP_Timeout"]["window"] = int(self.RNFS_param.duration_edit.text())
-            result["ALP_Timeout"]["delay"] = int(self.RNFS_param.delay_edit.text())
+            result["ALP_Timeout"]["window"] = int(self.ALP_Timeout_param.duration_edit.text())
+            result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
         
         if self.group_chkbox.isChecked():
             result["group"] = "cocaine"
@@ -252,8 +252,8 @@ class ToolWidget(QWidget):
             result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
         if self.ALP_Timeout_chkbox.isChecked():
             result["ALP_Timeout"] = {}
-            result["ALP_Timeout"]["window"] = int(self.RNFS_param.duration_edit.text())
-            result["ALP_Timeout"]["delay"] = int(self.RNFS_param.delay_edit.text())
+            result["ALP_Timeout"]["window"] = int(self.ALP_Timeout_param.duration_edit.text())
+            result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
         result["no_of_clusters"] = int(self.cluster_select.currentText())
         result["outliers"] = [int(self.outlier_combo_box.itemText(i)) for i in range(self.outlier_combo_box.count())]
         
