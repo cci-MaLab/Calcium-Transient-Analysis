@@ -511,10 +511,10 @@ class CellClustering:
             cluster_result[i]["image"] = final_image.copy()
 
         for idx, cluster in enumerate(self.cluster_indices):
-            cluster_result[cluster]["ids"].append(list(self.A.keys())[idx])
-            cluster_result["all"]["ids"].append(list(self.A.keys())[idx])
-            cluster_result[cluster]["image"] += np.stack((self.A[list(self.A.keys())[idx]].values,)*3, axis=-1) * viridis(cluster)[:3]
-            final_image += np.stack((self.A[list(self.A.keys())[idx]].values,)*3, axis=-1) * viridis(cluster)[:3]
+            cluster_result[cluster]["ids"].append(list(self.signals.keys())[idx])
+            cluster_result["all"]["ids"].append(list(self.signals.keys())[idx])
+            cluster_result[cluster]["image"] += np.stack((self.A[list(self.signals.keys())[idx]].values,)*3, axis=-1) * viridis(cluster)[:3]
+            final_image += np.stack((self.A[list(self.signals.keys())[idx]].values,)*3, axis=-1) * viridis(cluster)[:3]
         
         cluster_result["all"]["image"] = final_image
 
