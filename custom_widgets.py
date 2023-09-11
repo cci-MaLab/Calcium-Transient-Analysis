@@ -701,11 +701,13 @@ class InspectionWidget(QWidget):
 
         self.w_cell_list.clear()
 
+        total_in_group = 0
         for id in self.session.clustering_result[value]['ids']:
             if id not in self.session.outliers_list:
                 self.w_cell_list.addItem(str(id))
+                total_in_group += 1
         
-        self.total_neurons_label.setText(f"Looking at {len(self.session.clustering_result[value]['ids'])} out of {self.total_neurons} neurons")
+        self.total_neurons_label.setText(f"Looking at {total_in_group} out of {self.total_neurons} neurons")
 
     def visualizeSignals(self, event):
         self.cell_ids = [int(item.text()) for item in self.w_cell_list.selectedItems()]
