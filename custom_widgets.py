@@ -99,8 +99,8 @@ class ParamDialog(QDialog):
             result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
         if self.ALP_Timeout_chkbox.isChecked():
             result["ALP_Timeout"] = {}
-            result["ALP_Timeout"]["window"] = int(self.RNFS_param.duration_edit.text())
-            result["ALP_Timeout"]["delay"] = int(self.RNFS_param.delay_edit.text())
+            result["ALP_Timeout"]["window"] = int(self.ALP_Timeout_param.duration_edit.text())
+            result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
         
         if self.group_chkbox.isChecked():
             result["group"] = "cocaine"
@@ -252,8 +252,8 @@ class ToolWidget(QWidget):
             result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
         if self.ALP_Timeout_chkbox.isChecked():
             result["ALP_Timeout"] = {}
-            result["ALP_Timeout"]["window"] = int(self.RNFS_param.duration_edit.text())
-            result["ALP_Timeout"]["delay"] = int(self.RNFS_param.delay_edit.text())
+            result["ALP_Timeout"]["window"] = int(self.ALP_Timeout_param.duration_edit.text())
+            result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
         result["no_of_clusters"] = int(self.cluster_select.currentText())
         result["outliers"] = [int(self.outlier_combo_box.itemText(i)) for i in range(self.outlier_combo_box.count())]
         
@@ -701,11 +701,13 @@ class InspectionWidget(QWidget):
 
         self.w_cell_list.clear()
 
+        total_in_group = 0
         for id in self.session.clustering_result[value]['ids']:
             if id not in self.session.outliers_list:
                 self.w_cell_list.addItem(str(id))
+                total_in_group += 1
         
-        self.total_neurons_label.setText(f"Looking at {len(self.session.clustering_result[value]['ids'])} out of {self.total_neurons} neurons")
+        self.total_neurons_label.setText(f"Looking at {total_in_group} out of {self.total_neurons} neurons")
 
     def visualizeSignals(self, event):
         self.cell_ids = [int(item.text()) for item in self.w_cell_list.selectedItems()]
