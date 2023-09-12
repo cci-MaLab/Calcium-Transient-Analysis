@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout, QWidget,
                             QCheckBox, QGridLayout, QFrame, QGraphicsView, QGraphicsScene, QPushButton, 
-                            QComboBox, QListWidget, QAbstractItemView)
+                            QComboBox, QListWidget, QAbstractItemView, QSplitter, QApplication, QStyleFactory)
 from PyQt5.QtGui import (QIntValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush, QFont)
 from PyQt5.QtCore import Qt
 import pyqtgraph as pg
@@ -14,7 +14,7 @@ from PyQt5.QtGui import QPixmap
 
 
 class ParamDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, event_defaults, parent=None):
         super().__init__(parent)
 
         self.setWindowTitle("Specify Parameters")
@@ -41,13 +41,13 @@ class ParamDialog(QDialog):
         self.ALP_Timeout_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_Timeout_chkbox, self.ALP_Timeout_param))
         self.ALP_Timeout_chkbox.stateChanged.connect(self.release_button)
 
-        self.ALP_param = ParamWidget("ALP")
+        self.ALP_param = ParamWidget("ALP", event_defaults)
         self.ALP_param.setEnabled(False)
-        self.IALP_param = ParamWidget("IALP")
+        self.IALP_param = ParamWidget("IALP", event_defaults)
         self.IALP_param.setEnabled(False)
-        self.RNFS_param = ParamWidget("RNFS")
+        self.RNFS_param = ParamWidget("RNFS", event_defaults)
         self.RNFS_param.setEnabled(False)
-        self.ALP_Timeout_param = ParamWidget("ALP_Timeout")
+        self.ALP_Timeout_param = ParamWidget("ALP_Timeout", event_defaults)
         self.ALP_Timeout_param.setEnabled(False)
 
         layout_param = QHBoxLayout()
@@ -109,10 +109,77 @@ class ParamDialog(QDialog):
         
         return result
 
+
+class UpdateDialog(QDialog):
+    def __init__(self, event_defaults, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle("Specify New Defaults")
+
+        QBtn = QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+
+        self.buttonBox = QDialogButtonBox(QBtn)
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
+
+        self.ALP_label = QLabel("ALP")
+        self.IALP_label = QLabel("IALP")
+        self.RNFS_label = QLabel("RNFS")
+        self.ALP_Timeout_label = QLabel("ALP_Timeout")
+
+        self.ALP_param = ParamWidget("ALP", event_defaults)
+        self.IALP_param = ParamWidget("IALP", event_defaults)
+        self.RNFS_param = ParamWidget("RNFS", event_defaults)
+        self.ALP_Timeout_param = ParamWidget("ALP_Timeout", event_defaults)
+
+        layout_param = QHBoxLayout()
+        ALP_layout = QVBoxLayout()
+        IALP_layout = QVBoxLayout()
+        RNFS_layout = QVBoxLayout()
+        ALP_Timeout_layout = QVBoxLayout()
+
+        ALP_layout.addWidget(self.ALP_label)
+        ALP_layout.addWidget(self.ALP_param)
+        IALP_layout.addWidget(self.IALP_label)
+        IALP_layout.addWidget(self.IALP_param)
+        RNFS_layout.addWidget(self.RNFS_label)
+        RNFS_layout.addWidget(self.RNFS_param)
+        ALP_Timeout_layout.addWidget(self.ALP_Timeout_label)
+        ALP_Timeout_layout.addWidget(self.ALP_Timeout_param)
+
+        layout_param.addLayout(ALP_layout)
+        layout_param.addLayout(IALP_layout)
+        layout_param.addLayout(RNFS_layout)
+        layout_param.addLayout(ALP_Timeout_layout)
+
+        layout = QVBoxLayout()
+        layout.addLayout(layout_param)
+        layout.addWidget(self.buttonBox)
+
+        self.setLayout(layout)
+
+    def get_result(self):
+        result = {}
+        result["ALP"] = {}
+        result["ALP"]["window"] = int(self.ALP_param.duration_edit.text())
+        result["ALP"]["delay"] = int(self.ALP_param.delay_edit.text())
+        result["IALP"] = {}
+        result["IALP"]["window"] = int(self.IALP_param.duration_edit.text())
+        result["IALP"]["delay"] = int(self.IALP_param.delay_edit.text())
+        result["RNFS"] = {}
+        result["RNFS"]["window"] = int(self.RNFS_param.duration_edit.text())
+        result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
+        result["ALP_Timeout"] = {}
+        result["ALP_Timeout"]["window"] = int(self.ALP_Timeout_param.duration_edit.text())
+        result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
+        
+        return result
+
 class ToolWidget(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, event_defaults, parent=None):
         super().__init__(parent)
         self.all_cells = None
+        self.event_defaults = event_defaults
 
         label_cluster_select = QLabel()
         label_cluster_select.setText("Pick number of clusters:")
@@ -149,13 +216,13 @@ class ToolWidget(QWidget):
         self.ALP_Timeout_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_Timeout_chkbox, self.ALP_Timeout_param))
         self.ALP_Timeout_chkbox.stateChanged.connect(self.release_button)
 
-        self.ALP_param = ParamWidget("ALP")
+        self.ALP_param = ParamWidget("ALP", self.event_defaults)
         self.ALP_param.setEnabled(False)
-        self.IALP_param = ParamWidget("IALP")
+        self.IALP_param = ParamWidget("IALP", self.event_defaults)
         self.IALP_param.setEnabled(False)
-        self.RNFS_param = ParamWidget("RNFS")
+        self.RNFS_param = ParamWidget("RNFS", self.event_defaults)
         self.RNFS_param.setEnabled(False)
-        self.ALP_Timeout_param = ParamWidget("ALP_Timeout")
+        self.ALP_Timeout_param = ParamWidget("ALP_Timeout", self.event_defaults)
         self.ALP_Timeout_param.setEnabled(False)
 
         self.outlier_input_label = QLabel("Type in outlier to exclude")
@@ -213,6 +280,25 @@ class ToolWidget(QWidget):
 
 
         self.setLayout(layout_tools)
+
+    def update_defaults(self, event_defaults):
+        self.event_defaults = event_defaults
+        if not self.ALP_chkbox.isChecked():
+            self.ALP_param.duration_edit.setText(str(event_defaults["ALP"]["window"]))
+            self.ALP_param.delay_edit.setText(str(event_defaults["ALP"]["delay"]))
+        if not self.IALP_chkbox.isChecked():
+            self.IALP_chkbox.setChecked(True)
+            self.IALP_param.duration_edit.setText(str(event_defaults["IALP"]["window"]))
+            self.IALP_param.delay_edit.setText(str(event_defaults["IALP"]["delay"]))
+        if not self.RNFS_chkbox.isChecked():
+            self.RNFS_chkbox.setChecked(True)
+            self.RNFS_param.duration_edit.setText(str(event_defaults["RNFS"]["window"]))
+            self.RNFS_param.delay_edit.setText(str(event_defaults["RNFS"]["delay"]))
+        if not self.ALP_Timeout_chkbox.isChecked():
+            self.ALP_Timeout_chkbox.setChecked(True)
+            self.ALP_Timeout_param.duration_edit.setText(str(event_defaults["ALP_Timeout"]["window"]))
+            self.ALP_Timeout_param.delay_edit.setText(str(event_defaults["ALP_Timeout"]["delay"]))
+
 
     def add_outlier(self, click=None):
         potential_outlier = int(self.outlier_input.text())
@@ -274,32 +360,32 @@ class ToolWidget(QWidget):
             self.ALP_param.delay_edit.setText(str(result["ALP"]["delay"]))
         else:
             self.ALP_chkbox.setChecked(False)
-            self.ALP_param.duration_edit.setText("30")
-            self.ALP_param.delay_edit.setText("-20")
+            self.ALP_param.duration_edit.setText(str(self.event_defaults["ALP"]["window"]))
+            self.ALP_param.delay_edit.setText(str(self.event_defaults["ALP"]["delay"]))
         if "IALP" in result:
             self.IALP_chkbox.setChecked(True)
             self.IALP_param.duration_edit.setText(str(result["IALP"]["window"]))
             self.IALP_param.delay_edit.setText(str(result["IALP"]["delay"]))
         else:
             self.IALP_chkbox.setChecked(False)
-            self.IALP_param.duration_edit.setText("30")
-            self.IALP_param.delay_edit.setText("-20")
+            self.IALP_param.duration_edit.setText(str(self.event_defaults["IALP"]["window"]))
+            self.IALP_param.delay_edit.setText(str(self.event_defaults["IALP"]["delay"]))
         if "RNFS" in result:
             self.RNFS_chkbox.setChecked(True)
             self.RNFS_param.duration_edit.setText(str(result["RNFS"]["window"]))
             self.RNFS_param.delay_edit.setText(str(result["RNFS"]["delay"]))
         else:
             self.RNFS_chkbox.setChecked(False)
-            self.RNFS_param.duration_edit.setText("30")
-            self.RNFS_param.delay_edit.setText("-10")
+            self.RNFS_param.duration_edit.setText(str(self.event_defaults["RNFS"]["window"]))
+            self.RNFS_param.delay_edit.setText(str(self.event_defaults["RNFS"]["delay"]))
         if "ALP_Timeout" in result:
             self.ALP_Timeout_chkbox.setChecked(True)
             self.ALP_Timeout_param.duration_edit.setText(str(result["ALP_Timeout"]["window"]))
             self.ALP_Timeout_param.delay_edit.setText(str(result["ALP_Timeout"]["delay"]))
         else:
             self.ALP_Timeout_chkbox.setChecked(False)
-            self.ALP_Timeout_param.duration_edit.setText("30")
-            self.ALP_Timeout_param.delay_edit.setText("-20")
+            self.ALP_Timeout_param.duration_edit.setText(str(self.event_defaults["ALP_Timeout"]["window"]))
+            self.ALP_Timeout_param.delay_edit.setText(str(self.event_defaults["ALP_Timeout"]["delay"]))
         if "outliers" in result:
             for outlier in result["outliers"]:
                 self.outlier_combo_box.addItem(str(outlier))
@@ -317,7 +403,7 @@ def hide_unhide(chkbox, param):
 
 
 class ParamWidget(QWidget):
-    def __init__(self, name, parent=None):
+    def __init__(self, name, event_defaults, parent=None):
         super().__init__(parent)
         layout = QVBoxLayout()
 
@@ -325,12 +411,12 @@ class ParamWidget(QWidget):
         delay_label = QLabel("Delay: ")
 
 
-        self.duration_edit = QLineEdit("30")
+        self.duration_edit = QLineEdit(str(event_defaults[name]["window"]))
         onlyInt = QIntValidator()
         onlyInt.setRange(20, 120)
         self.duration_edit.setValidator(onlyInt)
 
-        self.delay_edit = QLineEdit("-10") if name == "RNFS" else QLineEdit("-20")
+        self.delay_edit = QLineEdit(str(event_defaults[name]["delay"]))
         onlyInt = QIntValidator()
         onlyInt.setRange(-20, 20)
         self.delay_edit.setValidator(onlyInt)
@@ -530,6 +616,7 @@ class InspectionWidget(QWidget):
         left_layout = QVBoxLayout()
         right_layout = QVBoxLayout()
         mid_layout = QHBoxLayout()
+        left_mid_layout = QHBoxLayout()
 
         mid_layout.setDirection(3)
         mid_layout.addStretch()
@@ -593,7 +680,10 @@ class InspectionWidget(QWidget):
         button_layout = QHBoxLayout()
         button_layout.addWidget(show_all_button)
         button_layout.addWidget(show_selected_button)
-        
+
+        # Splitters
+        splitter_vertical = QSplitter(Qt.Vertical)
+        splitter_horizontal = QSplitter(Qt.Horizontal)        
 
         # Layouts
         left_layout.addWidget(label_cluster_select)
@@ -611,14 +701,22 @@ class InspectionWidget(QWidget):
         mid_layout.addWidget(w_cell_label)
         mid_layout.addWidget(self.total_neurons_label)
 
-        right_layout.addLayout(layout_mpl)
-        right_layout.addWidget(self.w_signals)
+        mpl_widget = QWidget()
+        mpl_widget.setLayout(layout_mpl)
+        splitter_vertical.addWidget(mpl_widget)
+        splitter_vertical.addWidget(self.w_signals)
 
-        layout.addLayout(left_layout)
-        layout.addLayout(mid_layout)
-        layout.addLayout(right_layout)
+        left_mid_layout.addLayout(left_layout)
+        left_mid_layout.addLayout(mid_layout)
+        left_mid_widget = QWidget()
+        left_mid_widget.setLayout(left_mid_layout)
+
+        splitter_horizontal.addWidget(left_mid_widget)
+        splitter_horizontal.addWidget(splitter_vertical)
+        layout.addWidget(splitter_horizontal)
 
         self.setLayout(layout)
+        QApplication.setStyle(QStyleFactory.create('Cleanlooks'))
 
         for id in self.session.clustering_result["all"]['ids']:
             if id not in self.session.outliers_list:

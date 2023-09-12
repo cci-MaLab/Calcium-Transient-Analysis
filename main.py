@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMe
                             QLabel, QVBoxLayout, QHBoxLayout, QGridLayout, QComboBox, QWidget,
                             QFrame, QCheckBox)
 from PyQt5.QtCore import (QThreadPool)
-from custom_widgets import (LoadingDialog, ParamDialog, VisualizeClusterWidget, Viewer, ToolWidget,
+from custom_widgets import (UpdateDialog, ParamDialog, VisualizeClusterWidget, Viewer, ToolWidget,
                             InspectionWidget)
 from PyQt5 import Qt
 import sys
@@ -27,6 +27,12 @@ class MainWindow(QMainWindow):
         self.sessions['cocaine'] = {}
         self.path_list = {}
 
+        # Event defaults:
+        self.event_defaults = {"ALP": {"window": 20, "delay": 0},
+                               "IALP": {"window": 20, "delay": 0},
+                               "RNFS": {"window": 20, "delay": 0},
+                               "ALP_Timeout": {"window": 20, "delay": 0}}
+
         # Menu Bar
         pixmapi_folder = QStyle.StandardPixmap.SP_DirIcon
         button_folder = QAction(self.style().standardIcon(pixmapi_folder), "&Load Data", self)
@@ -40,15 +46,20 @@ class MainWindow(QMainWindow):
         button_load = QAction(self.style().standardIcon(pixmapi_load), "&Load Saved State", self)
         button_load.setStatusTip("Load previously saved state")
         button_load.triggered.connect(self.load_saved_state)
+        pixmapi_update = QStyle.StandardPixmap.SP_BrowserReload
+        button_update = QAction(self.style().standardIcon(pixmapi_update), "&Update Default Parameters", self)
+        button_update.setStatusTip("Update the default parameters of the events")
+        button_update.triggered.connect(self.updateDefaults)
         menu = self.menuBar()
         file_menu = menu.addMenu("&File")
         file_menu.addAction(button_folder)
         file_menu.addAction(button_save)
         file_menu.addAction(button_load)
+        file_menu.addAction(button_update)
 
         # Tool Widgets        
         self.current_selection = None
-        self.w_tools = ToolWidget()
+        self.w_tools = ToolWidget(self.event_defaults)
         self.w_tools.setEnabled(False)
 
         # Layouts
@@ -96,6 +107,15 @@ class MainWindow(QMainWindow):
         result["no_of_clusters"] = session.no_of_clusters
 
         self.w_tools.update(result, session.data["unit_ids"])
+
+    def updateDefaults(self):
+        pdg = UpdateDialog(self.event_defaults)
+        if pdg.exec():
+            result = pdg.get_result()
+        else:
+            return
+        self.event_defaults = result
+        self.w_tools.update_defaults(self.event_defaults)
 
     def updateCluster(self, result):
         no_of_clusters = result.pop("no_of_clusters")
@@ -157,7 +177,7 @@ class MainWindow(QMainWindow):
             "Open Folder",
         )
         if fname != '' and fname not in self.path_list:
-            pdg = ParamDialog()
+            pdg = ParamDialog(self.event_defaults)
             if pdg.exec():
                 result = pdg.get_result()
             else:
@@ -176,7 +196,11 @@ class MainWindow(QMainWindow):
                 self.setWindowTitle("Loading...")
                 with open(fname, 'r') as f:
                     self.path_list = json.load(f)
-                
+
+                if "defaults" in self.path_list:
+                    self.event_defaults = self.path_list.pop("defaults")
+                    self.w_tools.update_defaults(self.event_defaults)
+
                 for path in self.path_list.keys():
                     results = self.path_list[path]
                     self.load_session(path, results)
@@ -186,8 +210,10 @@ class MainWindow(QMainWindow):
 
     def load_session(self, fname, result):
         self.setWindowTitle("Loading...")
+
         events = list(result.keys())
         events.remove("group")
+        
         if "outliers" in result:
             events.remove("outliers")
         no_of_clusters = None
@@ -230,8 +256,10 @@ class MainWindow(QMainWindow):
         )
 
         if self.path_list:
+            extended_json = self.path_list.copy()
+            extended_json["defaults"] = self.event_defaults
             with open(filename, 'w') as f:
-                json.dump(self.path_list, f)
+                json.dump(extended_json, f)
 
 app = QApplication([])
 window = MainWindow()
