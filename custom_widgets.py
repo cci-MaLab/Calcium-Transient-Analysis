@@ -586,7 +586,7 @@ class GridQLabel(QLabel):
 
 
 class InspectionWidget(QWidget):
-    def __init__(self, session, parent=None):
+    def __init__(self, session, main_win_ref, parent=None):
         super().__init__(parent)
         self.session = session
         self.total_neurons = len(self.session.clustering_result["all"]["ids"]) - len(self.session.outliers_list)
@@ -594,6 +594,8 @@ class InspectionWidget(QWidget):
         self.cell_ids = None
         self.displaying = "None"
         self.current_labels = []
+        self.name = f"{session.mouseID} {session.day} {session.session}"
+        self.main_window_ref = main_win_ref
 
         # Brushes
         self.brushes_lines = {"ALP": pg.mkColor(255, 0, 0, 255),
@@ -794,6 +796,8 @@ class InspectionWidget(QWidget):
         return label
 
     def indexChanged(self, value):
+        if value == -1:
+            return # Necessary for the refresh step
         value = "all" if value == 0 else value
         self.imv.setImage(self.session.clustering_result[value]['image'])
 
@@ -839,6 +843,30 @@ class InspectionWidget(QWidget):
         self.selected_plot = round(click_height / current_height * (len(self.cell_ids) - 1))
         if self.selected_plot > len(self.cell_ids) - 1:
             self.selected_plot = len(self.cell_ids) - 1
+
+
+    def closeEvent(self, event):
+        super(InspectionWidget, self).closeEvent(event)
+        self.main_window_ref.removeWindow(self.name)
+
+    def refresh(self):
+        self.imv.setImage(self.session.clustering_result['all']['image'])
+
+        self.cluster_select.clear()
+        self.cluster_select.addItem("Show all")
+        for i in range (1, self.session.no_of_clusters + 1):
+            self.cluster_select.addItem(f"Cluster {i}")
+        self.cluster_select.setCurrentIndex(0)
+
+        self.w_cell_list.clear()
+        for id in self.session.clustering_result["all"]['ids']:
+            if id not in self.session.outliers_list:
+                self.w_cell_list.addItem(str(id))
+
+        self.session.get_dendrogram(self.w_dendro.axes)
+
+        self.w_signals.clear()
+
 
 class MyPlotWidget(PlotItem):
     def __init__(self, id=None, **kwargs):

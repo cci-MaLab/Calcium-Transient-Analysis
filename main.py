@@ -19,7 +19,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Cell Clustering Tool")
         self.setMinimumSize(600, 400)
         
-        self.windows = []
+        self.windows = {}
 
         # Data stuff
         self.sessions = {}
@@ -141,18 +141,28 @@ class MainWindow(QMainWindow):
         mouseID, x, y, group, cl_result = session.get_vis_info()
         self.current_selection.updateVisualization(cl_result)
         self.setWindowTitle("Cell Clustering Tool")
+
+        # Check if there is an active subwindow and update it
+        name = f"{session.mouseID} {session.day} {session.session}"
+        if name in self.windows:
+            self.windows[name].refresh()
+
         
     def startInspection(self, current_selection=None):
         current_selection = self.current_selection if current_selection is None else current_selection
         group, x, y, mouseID = self.current_selection.returnInfo()
         session = self.sessions[group][mouseID][f"{x}:{y}"]
 
-        wid = InspectionWidget(session)
-        wid.setWindowTitle(f"{session.mouseID} {session.day} {session.session}")
-        self.windows.append(wid)
-        wid.show()
+        name = f"{session.mouseID} {session.day} {session.session}"
 
-        
+        if name not in self.windows:
+            wid = InspectionWidget(session, self)
+            wid.setWindowTitle(name)
+            self.windows[name] = wid
+            wid.show()
+
+    def removeWindow(self, name):
+        self.windows.pop(name)
 
     def printError(self, s):
         dlg = QMessageBox(self)
