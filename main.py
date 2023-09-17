@@ -264,12 +264,12 @@ class MainWindow(QMainWindow):
         filename, _ = QFileDialog.getSaveFileName(
             self, "Save State", default_filename, "JSON Files (*.json)"
         )
-
-        if self.path_list:
-            extended_json = self.path_list.copy()
-            extended_json["defaults"] = self.event_defaults
-            with open(filename, 'w') as f:
-                json.dump(extended_json, f)
+        if filename:
+            if self.path_list:
+                extended_json = self.path_list.copy()
+                extended_json["defaults"] = self.event_defaults
+                with open(filename, 'w') as f:
+                    json.dump(extended_json, f)
 
 app = QApplication([])
 window = MainWindow()

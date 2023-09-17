@@ -19,6 +19,7 @@ from scipy.signal import savgol_filter
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from scipy.ndimage import gaussian_filter1d
 from scipy.ndimage.measurements import center_of_mass
+from skimage.measure import find_contours
 
 from matplotlib import cm
 from matplotlib import colors 
@@ -319,6 +320,22 @@ class SessionFeature:
         if(os.path.exists(self.output_path) == False):
             os.makedirs(self.output_path)
         
+    def get_pdf_format(self, unit_ids, cluster, path):
+        contours = []
+        for id in unit_ids:
+            neuron = self.A[id].values
+            thresholded_roi = 1 * neuron > (np.mean(neuron) + 10 * np.std(neuron))
+            contours.append(find_contours(thresholded_roi, 0)[0])
+        
+        fig, ax = plt.subplots(figsize=(10, 10))
+        cluster = "all" if cluster == 0 else cluster
+        ax.imshow(self.clustering_result[cluster]['image'])
+        for neuron, unit_id in zip(contours, unit_ids):
+            ax.plot(neuron[:, 1], neuron[:, 0], color='xkcd:azure', alpha=0.5, linewidth=1)
+            ax.text(np.mean(neuron[:, 1]), np.mean(neuron[:, 0]), unit_id, color='xkcd:azure',
+                    ha='center', va='center', fontsize="small")
+        ax.axis('off')
+        fig.savefig(path)
 
     def get_timestep(self, type: str):
         """

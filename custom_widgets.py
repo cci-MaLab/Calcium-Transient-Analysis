@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout, QWidget,
                             QCheckBox, QGridLayout, QFrame, QGraphicsView, QGraphicsScene, QPushButton, 
-                            QComboBox, QListWidget, QAbstractItemView, QSplitter, QApplication, QStyleFactory)
+                            QComboBox, QListWidget, QAbstractItemView, QSplitter, QApplication, QStyleFactory,
+                            QAction, QFileDialog)
 from PyQt5.QtGui import (QIntValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush, QFont)
 from PyQt5.QtCore import Qt
 import pyqtgraph as pg
@@ -11,6 +12,8 @@ matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 from PyQt5.QtGui import QPixmap
+import os
+
 
 
 class ParamDialog(QDialog):
@@ -661,6 +664,12 @@ class InspectionWidget(QWidget):
         self.imv.setImage(self.session.clustering_result['all']['image'])
         self.imv.setMinimumWidth(800)
 
+        # Add Context Menu Action
+        button_pdf = QAction("&Export PDF Enhanced", self.imv.getView().menu)
+        button_pdf.setStatusTip("Export Image using PDF with Vector Graphics Instead of Raster")
+        button_pdf.triggered.connect(self.pdfExport)
+        self.imv.getView().menu.addAction(button_pdf)
+
         # Dendrogram
         self.w_dendro = MplCanvas()
         self.session.get_dendrogram(self.w_dendro.axes)
@@ -723,6 +732,17 @@ class InspectionWidget(QWidget):
         for id in self.session.clustering_result["all"]['ids']:
             if id not in self.session.outliers_list:
                 self.w_cell_list.addItem(str(id))
+
+    def pdfExport(self):
+        default_dir = os.getcwd()
+        default_filename = os.path.join(default_dir, "image.pdf")
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Save Image", default_filename, "PDF Files (*.pdf)"
+        )
+        if filename:
+            unit_ids = [int(self.w_cell_list.item(x).text()) for x in range(self.w_cell_list.count())]
+            cluster = self.cluster_select.currentIndex()
+            self.session.get_pdf_format(unit_ids, cluster, filename)
 
     def show_labels(self, type):
         if type == "select":
