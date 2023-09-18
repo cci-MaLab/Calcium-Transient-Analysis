@@ -324,7 +324,7 @@ class SessionFeature:
         contours = []
         for id in unit_ids:
             neuron = self.A[id].values
-            thresholded_roi = 1 * neuron > (np.mean(neuron) + 10 * np.std(neuron))
+            thresholded_roi = 1 * neuron > (np.mean(neuron) + 6 * np.std(neuron))
             contours.append(find_contours(thresholded_roi, 0)[0])
         
         fig, ax = plt.subplots(figsize=(10, 10))
