@@ -25,6 +25,9 @@ from matplotlib import cm
 from matplotlib import colors 
 import matplotlib.pyplot as plt
 
+
+import configparser
+
 def open_minian(
     dpath: str, post_process: Optional[Callable] = None, return_dict=False
 ) -> Union[dict, xr.Dataset]:
@@ -151,6 +154,26 @@ def match_path(dpath):# Add by HF
     mouse_path = result.group("mouse_path")
     return mouse_path, video_path
 
+def parse_file(dpath):# set up configure file
+    cpath = os.path.join(dpath,"config.ini")
+    if os.path.exists(cpath):
+        config = configparser.ConfigParser()
+        config.read('config.ini')
+        return config['Default']['mouseID'],config['Default']['day'],config['Default']['session'],config['Default']['group']
+    else:
+        config = configparser.ConfigParser()
+        config['Default'] = {}
+        mouseID, day, session = match_information(dpath)
+        mouse_path, video_path = match_path(dpath)
+        group = "None"
+        config['Default']['mouseID'] = mouseID
+        config['Default']['day'] = day
+        config['Default']['session'] = session
+        config['Default']['group'] = group
+        with open(cpath, 'w') as configfile:
+            config.write(configfile)
+        return mouseID, day, session, group 
+        
 
 class Event:
     '''
@@ -270,7 +293,7 @@ class SessionFeature:
         self.centroids: dict
 
     def load_data(self,dpath):
-        mouseID, day, session = match_information(dpath)
+        mouseID, day, session,group = parse_file(dpath)
         mouse_path, video_path = match_path(dpath)
         self.mouseID = mouseID
         self.day = day
@@ -496,6 +519,7 @@ class CellClustering:
             self.psd_list = [self.signals[unit_id] for unit_id in self.signals]        
         # Compute agglomerative clustering
         self.linkage_data = linkage(self.psd_list, method='average', metric='euclidean')
+        # self.linkage_data = linkage(self.psd_list, method='average', metric='cosine')
 
     def compute_psd(self, unit: int):
         val = self.signals[unit]
