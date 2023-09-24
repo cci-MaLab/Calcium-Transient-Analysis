@@ -150,7 +150,7 @@ class MainWindow(QMainWindow):
         
     def startInspection(self, current_selection=None):
         current_selection = self.current_selection if current_selection is None else current_selection
-        group, x, y, mouseID = self.current_selection.returnInfo()
+        group, x, y, mouseID = current_selection.returnInfo()
         session = self.sessions[group][mouseID][f"{x}:{y}"]
 
         name = f"{session.mouseID} {session.day} {session.session}"
@@ -160,6 +160,17 @@ class MainWindow(QMainWindow):
             wid.setWindowTitle(name)
             self.windows[name] = wid
             wid.show()
+    
+    def deleteSelection(self):
+        group, x, y, mouseID = self.current_selection.returnInfo()
+        self.cluster_viz.grids[group].removeVisualization(mouseID, x, y)
+        path = self.sessions[group][mouseID][f"{x}:{y}"].dpath
+        # Remove it from all references
+        del self.path_list[path]
+        del self.sessions[group][mouseID][f"{x}:{y}"]
+        if not self.sessions[group][mouseID]:
+            del self.sessions[group][mouseID]
+
 
     def removeWindow(self, name):
         self.windows.pop(name)

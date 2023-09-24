@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLi
                             QComboBox, QListWidget, QAbstractItemView, QSplitter, QApplication, QStyleFactory,
                             QAction, QFileDialog)
 from PyQt5.QtGui import (QIntValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush, QFont)
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import (Qt, pyqtSignal)
 import pyqtgraph as pg
 from pyqtgraph import PlotItem
 import numpy as np
@@ -191,7 +191,6 @@ class ToolWidget(QWidget):
             self.cluster_select.addItem(str(i))
         self.cluster_select.setCurrentIndex(2)
 
-
         self.button = QPushButton("Update")
         self.button.setStyleSheet("background-color : green")
         self.button.setEnabled(False)
@@ -203,8 +202,12 @@ class ToolWidget(QWidget):
         self.button_inspect.setFixedWidth(120)
         self.button_inspect.clicked.connect(self.inspect)
 
-        self.setFixedWidth(300)
+        self.button_delete = QPushButton("Delete Cluster")
+        self.button_delete.setStyleSheet("background-color : red")
+        self.button_delete.setFixedWidth(120)
+        self.button_delete.clicked.connect(self.delete)
 
+        self.setFixedWidth(300)
 
         self.ALP_chkbox = QCheckBox("ALP")
         self.ALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_chkbox, self.ALP_param))
@@ -262,6 +265,7 @@ class ToolWidget(QWidget):
         button_layout.addWidget(self.button)
         button_layout.addWidget(self.button_inspect)
 
+        layout_sub.addWidget(self.button_delete)
         layout_sub.addLayout(button_layout)
         layout_sub.addWidget(self.outlier_return_button)
         layout_sub.addWidget(self.outlier_combo_box)
@@ -353,6 +357,10 @@ class ToolWidget(QWidget):
     def inspect(self, event):
         root_parent = self.parent().parent()
         root_parent.startInspection()
+
+    def delete(self, event):
+        root_parent = self.parent().parent()
+        root_parent.deleteSelection()
     
     def update(self, result, cell_list):
         self.all_cells = cell_list
@@ -501,9 +509,37 @@ class GridLayoutWidget(QWidget):
         imageViewer = Viewer(group, mouseID, x, y)
         imageViewer.pixmap = QPixmap.fromImage(qimg)
         self.mouse_group[mouseID].addWidget(imageViewer, x, y)
+    
+    def removeVisualization(self, mouseID, x, y):
+        item = self.mouse_group[mouseID].itemAtPosition(x, y)
+        self.mouse_group[mouseID].removeItem(item)
+        image = item.widget()
+        self.mouse_group[mouseID].removeWidget(image)
+        image.setParent(None)
+        if self.mouse_group[mouseID].count() < 6:
+            self.removeLayout()
+    
+    def removeLayout(self):
+        for i in range(self.layout.count()):
+            l = self.layout.itemAt(i)
+            if l.layout().count() < 6:
+                deleteItemsOfLayout(l.layout())
+                self.layout.removeItem(l)
+            
+
+        
 
 
-
+def deleteItemsOfLayout(layout):
+    if layout is not None:
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+            else:
+                deleteItemsOfLayout(item.layout())
     
 
 
