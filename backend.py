@@ -159,20 +159,27 @@ def parse_file(dpath):# set up configure file
     if os.path.exists(cpath):
         config = configparser.ConfigParser()
         config.read('config.ini')
-        return config['Default']['mouseID'],config['Default']['day'],config['Default']['session'],config['Default']['group']
+        return config['Default']['mouseID'],config['Default']['day'],config['Default']['session'],config['Default']['group'], config['Default']['data_path'], config['Default']['behavior_path']
     else:
         config = configparser.ConfigParser()
         config['Default'] = {}
         mouseID, day, session = match_information(dpath)
         mouse_path, video_path = match_path(dpath)
+        data_path = os.path.join(dpath, "minian")
+        if (session is None):
+            behavior_path = os.path.join(mouse_path, mouseID + "_" + day + "_" + "behavior_ms.csv")
+        else:
+            behavior_path = os.path.join(mouse_path, mouseID + "_" + day + "_" + session + "_" + "behavior_ms.csv")
         group = "None"
         config['Default']['mouseID'] = mouseID
         config['Default']['day'] = day
         config['Default']['session'] = session
         config['Default']['group'] = group
+        config['Default']['data_path'] = data_path
+        config['Default']['behavior_path'] = behavior_path
         with open(cpath, 'w') as configfile:
             config.write(configfile)
-        return mouseID, day, session, group 
+        return mouseID, day, session, group,data_path, behavior_path
         
 
 class Event:
@@ -293,15 +300,17 @@ class SessionFeature:
         self.centroids: dict
 
     def load_data(self,dpath):
-        mouseID, day, session,group = parse_file(dpath)
+        mouseID, day, session, group,minian_path,behavior_path = parse_file(dpath)
         mouse_path, video_path = match_path(dpath)
         self.mouseID = mouseID
         self.day = day
         self.session = session
-        if (session is None):
-            behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + "behavior_ms.csv"),sep=',')
-        else:
-            behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + session + "_" + "behavior_ms.csv"),sep=',')
+        self.group = group
+        # if (session is None):
+        #     behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + "behavior_ms.csv"),sep=',')
+        # else:
+        #     behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + session + "_" + "behavior_ms.csv"),sep=',')
+        behavior_data = pd.read_csv(behavior_path,sep=',')
         data_types = ['RNFS', 'ALP', 'IALP', 'ALP_Timeout','Time Stamp (ms)']
         self.data = {}
         for dt in data_types:            
@@ -311,7 +320,7 @@ class SessionFeature:
                 print("No %s data found in minian file" % (dt))
                 self.data[dt] = None
 
-        minian_path = os.path.join(dpath, "minian")
+        # minian_path = os.path.join(dpath, "minian")
         data = open_minian(minian_path)
         data_types = ['A', 'C', 'S']
         for dt in data_types:            
