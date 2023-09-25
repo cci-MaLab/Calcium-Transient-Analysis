@@ -9,7 +9,7 @@ import sys
 import os
 import json
 sys.path.insert(0, ".")
-from backend import SessionFeature
+from backend import DataInstance
 
 class MainWindow(QMainWindow):
 
@@ -241,7 +241,7 @@ class MainWindow(QMainWindow):
         if "no_of_clusters" in events:
             no_of_clusters = result["no_of_clusters"]
             events.remove("no_of_clusters")
-        session = SessionFeature(fname, events)
+        session = DataInstance(fname, events)
         if no_of_clusters is not None:
             session.no_of_clusters = no_of_clusters
         for event in events:
