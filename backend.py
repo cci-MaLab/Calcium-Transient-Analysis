@@ -154,32 +154,7 @@ def match_path(dpath):# Add by HF
     mouse_path = result.group("mouse_path")
     return mouse_path, video_path
 
-def parse_file(dpath):# set up configure file
-    cpath = os.path.join(dpath,"config.ini")
-    if os.path.exists(cpath):
-        config = configparser.ConfigParser()
-        config.read('config.ini')
-        return config['Default']['mouseID'],config['Default']['day'],config['Default']['session'],config['Default']['group'], config['Default']['data_path'], config['Default']['behavior_path']
-    else:
-        config = configparser.ConfigParser()
-        config['Default'] = {}
-        mouseID, day, session = match_information(dpath)
-        mouse_path, video_path = match_path(dpath)
-        data_path = os.path.join(dpath, "minian")
-        if (session is None):
-            behavior_path = os.path.join(mouse_path, mouseID + "_" + day + "_" + "behavior_ms.csv")
-        else:
-            behavior_path = os.path.join(mouse_path, mouseID + "_" + day + "_" + session + "_" + "behavior_ms.csv")
-        group = "None"
-        config['Default']['mouseID'] = mouseID
-        config['Default']['day'] = day
-        config['Default']['session'] = session
-        config['Default']['group'] = group
-        config['Default']['data_path'] = data_path
-        config['Default']['behavior_path'] = behavior_path
-        with open(cpath, 'w') as configfile:
-            config.write(configfile)
-        return mouseID, day, session, group,data_path, behavior_path
+
         
 
 class Event:
@@ -270,7 +245,7 @@ class Event:
         self.values = values
         self.windows = windows
 
-class SessionFeature:
+class DataInstance:
     '''
         Tips:
         1. load_data and load_events will be automatically excuted.
@@ -299,8 +274,16 @@ class SessionFeature:
         self.no_of_clusters = 4
         self.centroids: dict
 
+    def parse_file(self,dpath):# set up configure file
+        config = configparser.ConfigParser()
+        config.read(dpath)
+        if len(config.sections())==1 and config.sections()[0]=='Session_Info':
+            return config['Session_Info']['mouseID'],config['Session_Info']['day'],config['Session_Info']['session'],config['Session_Info']['group'], config['Session_Info']['data_path'], config['Session_Info']['behavior_path']
+        else:
+            print("Error! Section name should be 'Session_Info'!")
+
     def load_data(self,dpath):
-        mouseID, day, session, group,minian_path,behavior_path = parse_file(dpath)
+        mouseID, day, session, group,minian_path,behavior_path = self.parse_file(dpath)
         mouse_path, video_path = match_path(dpath)
         self.mouseID = mouseID
         self.day = day
@@ -428,11 +411,7 @@ class SessionFeature:
         self.clustering_result = self.cellClustering.visualize_clusters(self.no_of_clusters)
 
     def get_vis_info(self):
-        val = int(self.day[1:])
-        y = 1 if val < 4 else 2
-        x = 1 if self.session == 'S1' else 2
-
-        return self.mouseID, x, y, self.group, self.clustering_result['all']['image']
+        return self.mouseID, self.session, self.day, self.group, self.clustering_result['all']['image']
 
     def get_dendrogram(self, ax):
         self.cellClustering.visualize_dendrogram(color_threshold =self.linkage_data[(self.no_of_clusters-1),2] ,ax=ax)
