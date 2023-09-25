@@ -470,20 +470,35 @@ class VisualizeClusterWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        layout = QVBoxLayout()
-        self.grids = {}
-        self.grids["cocaine"] = GridLayoutWidget("Cocaine")
-        self.grids["saline"] = GridLayoutWidget("Saline")
+        self.layout = QVBoxLayout()
+        self.groups = {}
+        self.grids["cocaine"] = GroupGridLayout("Cocaine")
+        self.grids["saline"] = GroupGridLayout("Saline")
 
         layout.addWidget(self.grids["cocaine"])
         layout.addWidget(self.grids["saline"])
 
-        self.setLayout(layout)
+        self.setLayout(self.layout)
 
-class GridLayoutWidget(QWidget):
-    def __init__(self, type:str, parent=None):
+    def removeVisualization(self, group, mouse, x, y):
+        self.grids[group].removeVisualization(mouse, x, y)
+        if not self.grids[group]:
+            self.layout.removeWidget(self.grids[group])
+            self.grids[group].setParent(None)
+            del self.grids[group]
+    
+    def addVisualization(self, group, mouseID, image, x, y):
+        if group not in self.groups:
+            self.groups[group] = GroupGridLayout(group)
+            self.layout.addWidget(self.groups[group])
+        
+        self.groups[group].addVisualization(mouseID, image, x, y)
+
+
+class GroupGridLayout(QWidget):
+    def __init__(self, group:str, parent=None):
         super().__init__(parent)
-        self.type = type
+        self.group = group
         self.layout = QHBoxLayout()
 
         self.mouse_group = {}

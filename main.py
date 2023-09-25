@@ -163,13 +163,16 @@ class MainWindow(QMainWindow):
     
     def deleteSelection(self):
         group, x, y, mouseID = self.current_selection.returnInfo()
-        self.cluster_viz.grids[group].removeVisualization(mouseID, x, y)
+        self.cluster_viz.removeVisualization(group, mouseID, x, y)
         path = self.sessions[group][mouseID][f"{x}:{y}"].dpath
         # Remove it from all references
         del self.path_list[path]
         del self.sessions[group][mouseID][f"{x}:{y}"]
         if not self.sessions[group][mouseID]:
             del self.sessions[group][mouseID]
+        self.w_tools.setEnabled(False)
+        self.current_selection = None
+
 
 
     def removeWindow(self, name):
@@ -262,7 +265,7 @@ class MainWindow(QMainWindow):
         mouseID, x, y, group, cl_result = session.get_vis_info()
         if session.mouseID not in self.sessions[group]:
             self.sessions[group][f"{session.mouseID}"] = {}
-            self.cluster_viz.grids[group].addGrid(mouseID)
+            self.cluster_viz.addVisualization(group, mouseID)
         self.sessions[group][f"{session.mouseID}"][f"{x}:{y}"] = session
         # Generate the Grid
         self.cluster_viz.grids[group].addVisualization(group, mouseID, cl_result, x, y)
