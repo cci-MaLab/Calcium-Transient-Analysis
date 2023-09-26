@@ -1,10 +1,7 @@
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox, QAction,
-                            QLabel, QVBoxLayout, QHBoxLayout, QGridLayout, QComboBox, QWidget,
-                            QFrame, QCheckBox)
-from PyQt5.QtCore import (QThreadPool)
+                            QVBoxLayout, QHBoxLayout, QWidget)
 from custom_widgets import (UpdateDialog, ParamDialog, VisualizeClusterWidget, Viewer, ToolWidget,
                             InspectionWidget)
-from PyQt5 import Qt
 import sys
 import os
 import json
@@ -22,9 +19,7 @@ class MainWindow(QMainWindow):
         self.windows = {}
 
         # Data stuff
-        self.sessions = {}
-        self.sessions['saline'] = {}
-        self.sessions['cocaine'] = {}
+        self.instances = {}
         self.path_list = {}
 
         # Event defaults:
@@ -37,7 +32,7 @@ class MainWindow(QMainWindow):
         pixmapi_folder = QStyle.StandardPixmap.SP_DirIcon
         button_folder = QAction(self.style().standardIcon(pixmapi_folder), "&Load Data", self)
         button_folder.setStatusTip("Select a Folder to load in data")
-        button_folder.triggered.connect(self.onMyToolBarButtonClick)
+        button_folder.triggered.connect(self.load_data)
         pixmapi_save = QStyle.StandardPixmap.SP_DialogSaveButton
         button_save = QAction(self.style().standardIcon(pixmapi_save), "&Save", self)
         button_save.setStatusTip("Save current state")
@@ -101,12 +96,12 @@ class MainWindow(QMainWindow):
             self.updateParams()
 
     def updateParams(self):
-        group, x, y, mouseID = self.current_selection.returnInfo()
-        session = self.sessions[group][mouseID][f"{x}:{y}"]
-        result = self.path_list[session.dpath]
-        result["no_of_clusters"] = session.no_of_clusters
+        group, session, day, mouseID = self.current_selection.returnInfo()
+        instance = self.instances[group][mouseID][f"{session}:{day}"]
+        result = self.path_list[instance.dpath]
+        result["no_of_clusters"] = instance.no_of_clusters
 
-        self.w_tools.update(result, session.data["unit_ids"])
+        self.w_tools.update(result, instance.data["unit_ids"])
 
     def updateDefaults(self):
         pdg = UpdateDialog(self.event_defaults)
@@ -121,55 +116,55 @@ class MainWindow(QMainWindow):
         no_of_clusters = result.pop("no_of_clusters")
         outliers = result.pop("outliers")
         self.setWindowTitle("Loading...")
-        group, x, y, mouseID = self.current_selection.returnInfo()
-        session = self.sessions[group][mouseID][f"{x}:{y}"]
-        session.set_outliers(outliers)
-        old_result = self.path_list[session.dpath]
-        session.load_events(result.keys())
+        group, session, day, mouseID = self.current_selection.returnInfo()
+        instance = self.instances[group][mouseID][f"{session}:{day}"]
+        instance.set_outliers(outliers)
+        old_result = self.path_list[instance.dpath]
+        instance.load_events(result.keys())
         for event in result:
             delay, window = result[event]["delay"], result[event]["window"]
-            session.events[event].set_delay_and_duration(delay, window)
-            session.events[event].set_values()        
+            instance.events[event].set_delay_and_duration(delay, window)
+            instance.events[event].set_values()        
         result["group"] = old_result["group"]
-        result["outliers"] = session.outliers_list
-        session.set_vector()
-        session.set_no_of_clusters(no_of_clusters)
-        session.compute_clustering()
-        self.path_list[session.dpath] = result
+        result["outliers"] = instance.outliers_list
+        instance.set_vector()
+        instance.set_no_of_clusters(no_of_clusters)
+        instance.compute_clustering()
+        self.path_list[instance.dpath] = result
 
         # Visualisation stuff
-        mouseID, x, y, group, cl_result = session.get_vis_info()
+        mouseID, session, day, group, cl_result = instance.get_vis_info()
         self.current_selection.updateVisualization(cl_result)
         self.setWindowTitle("Cell Clustering Tool")
 
         # Check if there is an active subwindow and update it
-        name = f"{session.mouseID} {session.day} {session.session}"
+        name = f"{instance.mouseID} {instance.day} {instance.session}"
         if name in self.windows:
             self.windows[name].refresh()
 
         
     def startInspection(self, current_selection=None):
         current_selection = self.current_selection if current_selection is None else current_selection
-        group, x, y, mouseID = current_selection.returnInfo()
-        session = self.sessions[group][mouseID][f"{x}:{y}"]
+        group, session, day, mouseID = current_selection.returnInfo()
+        instance = self.instance[group][mouseID][f"{session}:{day}"]
 
-        name = f"{session.mouseID} {session.day} {session.session}"
+        name = f"{instance.mouseID} {instance.day} {instance.session}"
 
         if name not in self.windows:
-            wid = InspectionWidget(session, self)
+            wid = InspectionWidget(instance, self)
             wid.setWindowTitle(name)
             self.windows[name] = wid
             wid.show()
     
     def deleteSelection(self):
-        group, x, y, mouseID = self.current_selection.returnInfo()
-        self.cluster_viz.removeVisualization(group, mouseID, x, y)
-        path = self.sessions[group][mouseID][f"{x}:{y}"].dpath
+        group, session, day, mouseID = self.current_selection.returnInfo()
+        self.cluster_viz.removeVisualization(group, mouseID, session, day)
+        path = self.instances[group][mouseID][f"{session}:{day}"].dpath
         # Remove it from all references
         del self.path_list[path]
-        del self.sessions[group][mouseID][f"{x}:{y}"]
-        if not self.sessions[group][mouseID]:
-            del self.sessions[group][mouseID]
+        del self.instances[group][mouseID][f"{session}:{day}"]
+        if not self.instances[group][mouseID]:
+            del self.instances[group][mouseID]
         self.w_tools.setEnabled(False)
         self.current_selection = None
 
@@ -195,18 +190,19 @@ class MainWindow(QMainWindow):
         print("finished")
 
 
-    def onMyToolBarButtonClick(self, s):
-        fname = QFileDialog.getExistingDirectory(
+    def load_data(self, s):
+        fname = QFileDialog.getOpenFileName(
             self,
-            "Open Folder",
+            "Select ini File",
         )
+        fname = fname[0]
         if fname != '' and fname not in self.path_list:
             pdg = ParamDialog(self.event_defaults)
             if pdg.exec():
                 result = pdg.get_result()
             else:
                 return
-            self.load_session(fname, result)
+            self.load_instance(fname, result)
             
 
     def load_saved_state(self):
@@ -227,16 +223,15 @@ class MainWindow(QMainWindow):
 
                 for path in self.path_list.keys():
                     results = self.path_list[path]
-                    self.load_session(path, results)
+                    self.load_instance(path, results)
 
                 self.setWindowTitle("Cell Clustering Tool")      
         
 
-    def load_session(self, fname, result):
+    def load_instance(self, fname, result):
         self.setWindowTitle("Loading...")
 
         events = list(result.keys())
-        events.remove("group")
         
         if "outliers" in result:
             events.remove("outliers")
@@ -244,31 +239,30 @@ class MainWindow(QMainWindow):
         if "no_of_clusters" in events:
             no_of_clusters = result["no_of_clusters"]
             events.remove("no_of_clusters")
-        session = DataInstance(fname, events)
+        instance = DataInstance(fname, events)
         if no_of_clusters is not None:
-            session.no_of_clusters = no_of_clusters
+            instance.no_of_clusters = no_of_clusters
         for event in events:
             delay, window = result[event]["delay"], result[event]["window"]
-            session.events[event].set_delay_and_duration(delay, window)
-            session.events[event].set_values()
-
-        session.set_group(result["group"])
+            instance.events[event].set_delay_and_duration(delay, window)
+            instance.events[event].set_values()
         if "outliers" in result:
-            session.set_outliers(result["outliers"])
-        session.set_vector()
-        session.compute_clustering()
+            instance.set_outliers(result["outliers"])
+        instance.set_vector()
+        instance.compute_clustering()
 
         self.path_list[fname] = result
         
 
         # Visualisation stuff
-        mouseID, x, y, group, cl_result = session.get_vis_info()
-        if session.mouseID not in self.sessions[group]:
-            self.sessions[group][f"{session.mouseID}"] = {}
-            self.cluster_viz.addVisualization(group, mouseID)
-        self.sessions[group][f"{session.mouseID}"][f"{x}:{y}"] = session
+        mouseID, session, day, group, cl_result = instance.get_vis_info()
+        if group not in self.instances:
+            self.instances[group] = {}
+        if instance.mouseID not in self.instances[group]:
+            self.instances[group][f"{instance.mouseID}"] = {}
+        self.instances[group][f"{instance.mouseID}"][f"{session}:{day}"] = instance
         # Generate the Grid
-        self.cluster_viz.grids[group].addVisualization(group, mouseID, cl_result, x, y)
+        self.cluster_viz.addVisualization(group, mouseID, cl_result, session, day)
         self.setWindowTitle("Cell Clustering Tool")
 
     

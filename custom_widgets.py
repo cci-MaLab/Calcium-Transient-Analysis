@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLi
                             QComboBox, QListWidget, QAbstractItemView, QSplitter, QApplication, QStyleFactory,
                             QAction, QFileDialog)
 from PyQt5.QtGui import (QIntValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush, QFont)
-from PyQt5.QtCore import (Qt, pyqtSignal)
+from PyQt5.QtCore import (Qt, pyqtSlot, QRunnable, QThreadPool, pyqtSignal)
 import pyqtgraph as pg
 from pyqtgraph import PlotItem
 import numpy as np
@@ -13,6 +13,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationTool
 from matplotlib.figure import Figure
 from PyQt5.QtGui import QPixmap
 import os
+import bisect
 
 
 
@@ -28,8 +29,6 @@ class ParamDialog(QDialog):
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.reject)
         self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
-
-        self.group_chkbox = QCheckBox("Cocaine Group? (Otherwise Saline)")
 
         self.ALP_chkbox = QCheckBox("ALP")
         self.ALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_chkbox, self.ALP_param))
@@ -72,7 +71,6 @@ class ParamDialog(QDialog):
         layout_param.addLayout(IALP_layout)
         layout_param.addLayout(RNFS_layout)
         layout_param.addLayout(ALP_Timeout_layout)
-        layout_param.addWidget(self.group_chkbox)
 
         layout = QVBoxLayout()
         layout.addLayout(layout_param)
@@ -104,11 +102,6 @@ class ParamDialog(QDialog):
             result["ALP_Timeout"] = {}
             result["ALP_Timeout"]["window"] = int(self.ALP_Timeout_param.duration_edit.text())
             result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
-        
-        if self.group_chkbox.isChecked():
-            result["group"] = "cocaine"
-        else:
-            result["group"] = "saline"
         
         return result
 
@@ -472,27 +465,22 @@ class VisualizeClusterWidget(QWidget):
 
         self.layout = QVBoxLayout()
         self.groups = {}
-        self.grids["cocaine"] = GroupGridLayout("Cocaine")
-        self.grids["saline"] = GroupGridLayout("Saline")
-
-        layout.addWidget(self.grids["cocaine"])
-        layout.addWidget(self.grids["saline"])
 
         self.setLayout(self.layout)
 
-    def removeVisualization(self, group, mouse, x, y):
-        self.grids[group].removeVisualization(mouse, x, y)
+    def removeVisualization(self, group, mouse, session, day):
+        self.grids[group].removeVisualization(mouse, session, day)
         if not self.grids[group]:
             self.layout.removeWidget(self.grids[group])
             self.grids[group].setParent(None)
             del self.grids[group]
     
-    def addVisualization(self, group, mouseID, image, x, y):
+    def addVisualization(self, group, mouseID, image, session, day):
         if group not in self.groups:
             self.groups[group] = GroupGridLayout(group)
             self.layout.addWidget(self.groups[group])
         
-        self.groups[group].addVisualization(mouseID, image, x, y)
+        self.groups[group].addVisualization(mouseID, image, session, day)
 
 
 class GroupGridLayout(QWidget):
@@ -501,32 +489,18 @@ class GroupGridLayout(QWidget):
         self.group = group
         self.layout = QHBoxLayout()
 
-        self.mouse_group = {}
-
+        self.mice = {}
         
         self.setLayout(self.layout)
-    
-    def addGrid(self, mouseID: str):
-        layout = QGridLayout()
-        layout.addWidget(GridQLabel(f"{mouseID}/{self.type}"), 0, 0, Qt.AlignCenter)
-        layout.addWidget(GridQLabel("First 15 min"), 1, 0, Qt.AlignCenter)
-        layout.addWidget(GridQLabel("Last 15 min"), 2, 0, Qt.AlignCenter)
-        layout.addWidget(GridQLabel("First Day"), 0, 1, Qt.AlignCenter)
-        layout.addWidget(GridQLabel("Last Day"), 0, 2, Qt.AlignCenter)
 
-        self.mouse_group[mouseID] = layout
-        self.layout.addLayout(layout)
-        
-
-    def addVisualization(self, group, mouseID, image, x, y):
-        ov = (image*255).astype('uint8')
-        qimg = QImage(ov, ov.shape[1], ov.shape[0], ov.shape[1] * 3, QImage.Format_RGB888)
-        imageViewer = Viewer(group, mouseID, x, y)
-        imageViewer.pixmap = QPixmap.fromImage(qimg)
-        self.mouse_group[mouseID].addWidget(imageViewer, x, y)
+    def addVisualization(self, mouseID, image, session, day):
+        if mouseID not in self.mice:
+            self.mice[mouseID] = MouseGrid(mouseID, self.group)
+            self.layout.addLayout(self.mice[mouseID])
+        self.mice[mouseID].addVisualization(image, session, day)
     
-    def removeVisualization(self, mouseID, x, y):
-        item = self.mouse_group[mouseID].itemAtPosition(x, y)
+    def removeVisualization(self, mouseID, session, day):
+        item = self.mouse_group[mouseID].itemAtPosition(session, day)
         self.mouse_group[mouseID].removeItem(item)
         image = item.widget()
         self.mouse_group[mouseID].removeWidget(image)
@@ -541,10 +515,6 @@ class GroupGridLayout(QWidget):
                 deleteItemsOfLayout(l.layout())
                 self.layout.removeItem(l)
             
-
-        
-
-
 def deleteItemsOfLayout(layout):
     if layout is not None:
         while layout.count():
@@ -555,11 +525,57 @@ def deleteItemsOfLayout(layout):
                 widget.deleteLater()
             else:
                 deleteItemsOfLayout(item.layout())
+
+class MouseGrid(QGridLayout):
+    def __init__(self, mouseID:str, group:str, parent=None):
+        super().__init__(parent)
+        self.mouseID = mouseID
+        self.group = group
+        self.days = []
+        self.sessions = []
+        self.images = {}
+        self.day_labels = {}
+        self.session_labels = {}
+        self.needs_redraw = False
+
+        self.c = 0
+        
     
+    def addVisualization(self, image, session, day):
+        imageViewer = Viewer(image, self.group, self.mouseID, session, day)
+        day = int(day[1:])
+        session = int(session[1:])
+        self.images[f"{session}:{day}"] = imageViewer
+
+        if day not in self.days:
+            bisect.insort(self.days, day)
+        if session not in self.sessions:
+            bisect.insort(self.sessions, session)
+        self.day_labels[day] = GridQLabel("D" + str(day))
+        self.session_labels[session] = GridQLabel("S" + str(session))
+        self.redrawGrid()
+        
+
+            
+    def redrawGrid(self):
+        # Iterate through the lists check if they have corresponding images/labels
+        self.addWidget(GridQLabel(f"{self.mouseID}/{self.group}"), 0, 0, Qt.AlignCenter)
+        for i, session in enumerate(self.sessions):
+            for j, day in enumerate(self.days):
+                if i == 0:
+                    self.addWidget(self.day_labels[day], i, j+1, Qt.AlignCenter)
+                if j == 0:
+                    self.addWidget(self.session_labels[session], i+1, j, Qt.AlignCenter)
+                if f"{session}:{day}" in self.images:
+                    # Reset the Widget
+                    self.images[f"{session}:{day}"].reset()
+                    self.addWidget(self.images[f"{session}:{day}"], i+1, j+1)
+        
+
 
 
 class Viewer(QGraphicsView):
-    def __init__(self, group, mouseID, x, y, parent=None):
+    def __init__(self, image, group, mouseID, session, day, parent=None):
         super().__init__(parent)
         self.setScene(QGraphicsScene(self))
         self.m_pixmapItem = self.scene().addPixmap(QPixmap())
@@ -569,15 +585,24 @@ class Viewer(QGraphicsView):
         self.p = self.palette()
         self.p.setColor(self.backgroundRole(), Qt.white)
         self.setPalette(self.p)
+        
         self.selected = False
-
         self.mouseReleaseEvent=self.updateParams
         self.mouseDoubleClickEvent=self.inspect
         self.group = group
         self.mouseID = mouseID
-        self.x = x
-        self.y = y
+        self.session = session
+        self.day = day
+        self.image = image
+        self.createPixmap()
 
+    def createPixmap(self):
+        ov = (self.image*255).astype('uint8')
+        qimg = QImage(ov, ov.shape[1], ov.shape[0], ov.shape[1] * 3, QImage.Format_RGB888)
+        self.pixmap = QPixmap.fromImage(qimg)
+
+    def reset(self):       
+        self.resetTransform()
 
     @property
     def pixmap(self):
@@ -616,10 +641,10 @@ class Viewer(QGraphicsView):
         root_parent.startInspection(self)
 
     def __eq__(self, other):
-        return (self.group, self.x, self.y, self.mouseID) == (other.group, other.x, other.y, other.mouseID)
+        return (self.group, self.session, self.day, self.mouseID) == (other.group, other.session, other.day, other.mouseID)
 
     def returnInfo(self):
-        return self.group, self.x, self.y, self.mouseID
+        return self.group, self.session, self.day, self.mouseID
 
 
 class MplCanvas(FigureCanvasQTAgg):
