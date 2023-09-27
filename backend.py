@@ -268,11 +268,13 @@ class DataInstance:
         self.A: dict    #key is unit_id,value is A. Just keep same uniform with self.value
         self.value: dict #key is the unit_id,value is the numpy array
         self.outliers_list: List[int] = []
+        self.distance_metric_list = ['euclidean','cosine']
         # self.linkage_data:
         self.load_data(dpath=dpath)
         self.load_events(events)
         self.no_of_clusters = 4
         self.centroids: dict
+        self.distance_metric = 'euclidean'
 
     def parse_file(self,dpath):# set up configure file
         config = configparser.ConfigParser()
@@ -390,6 +392,8 @@ class DataInstance:
                 values[uid] = self.data['C'].sel(unit_id = int(uid)).values
         self.values = values
 
+    def set_distance_metric(self, distance_metirc:str):
+        self.distance_metric = distance_metirc
 
     def set_group(self, group_type: str):
         self.group = group_type
@@ -401,7 +405,7 @@ class DataInstance:
         self.no_of_clusters = number
 
     def compute_clustering(self):
-        self.cellClustering = CellClustering(self.values,self.outliers_list,self.A)
+        self.cellClustering = CellClustering(self.values,self.outliers_list,self.A,distance_metric = self.distance_metric)
         self.linkage_data = self.cellClustering.linkage_data
         self.clustering_result = self.cellClustering.visualize_clusters(self.no_of_clusters)
 
@@ -485,15 +489,19 @@ class CellClustering:
         section: Optional[dict] = None,
         outliers_list: List[int] = [],
         A: Optional[xr.DataArray] = None,
-        fft: bool = True
+        fft: bool = True,
+        distance_metric: str = 'euclidean'
     ):
         self.A = A
+        self.psd_list_pre = {}
         self.psd_list = []
         self.outliers_list = outliers_list
+        self.special_unit = []
+        self.distance_metric = distance_metric
         self.signals = {}
-        for i in section.keys():
-            if i not in self.outliers_list:
-                self.signals[i] = section[i]
+        for values in section.keys():
+            if values not in self.outliers_list:
+                self.signals[values] = section[values]
 
         if fft:
             for unit_id in self.signals:
@@ -501,8 +509,18 @@ class CellClustering:
         else:
             self.psd_list = [self.signals[unit_id] for unit_id in self.signals]        
         # Compute agglomerative clustering
-        self.linkage_data = linkage(self.psd_list, method='average', metric='euclidean')
-        # self.linkage_data = linkage(self.psd_list, method='average', metric='cosine')
+        if self.distance_metric == 'euclidean':
+            for unit_id in self.psd_list_pre:
+                self.psd_list.append(self.psd_list_pre[unit_id])
+            self.linkage_data = linkage(self.psd_list, method='average', metric='euclidean')
+        elif self.distance_metric == 'cosine':
+            for (unit_id,unit_id) in zip(self.signals,self.psd_list_pre):
+                if(all(value == 0 for value in self.psd_list_pre[unit_id]) ==True):
+                    self.special_unit.append(unit_id)
+                else:
+                    self.psd_list.append(self.psd_list_pre[unit_id])
+            self.linkage_data = linkage(self.psd_list, method='average', metric='cosine')
+            print(self.special_unit)
 
     def compute_psd(self, unit: int):
         val = self.signals[unit]
@@ -511,7 +529,7 @@ class CellClustering:
                window='hann',
                nperseg=256,
                detrend='constant') 
-        self.psd_list.append(psd)
+        self.psd_list_pre[unit] = psd
     
     def visualize_dendrogram(self, color_threshold=None, ax=None):
         self.dendro = dendrogram(self.linkage_data,labels=list(self.signals.keys()), color_threshold=color_threshold, ax=ax)
