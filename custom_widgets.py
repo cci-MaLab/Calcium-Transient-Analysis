@@ -469,11 +469,11 @@ class VisualizeClusterWidget(QWidget):
         self.setLayout(self.layout)
 
     def removeVisualization(self, group, mouse, session, day):
-        self.grids[group].removeVisualization(mouse, session, day)
-        if not self.grids[group]:
-            self.layout.removeWidget(self.grids[group])
-            self.grids[group].setParent(None)
-            del self.grids[group]
+        self.groups[group].removeVisualization(mouse, session, day)
+        if self.groups[group].isEmpty():
+            self.layout.removeWidget(self.groups[group])
+            self.groups[group].setParent(None)
+            del self.groups[group]
     
     def addVisualization(self, group, mouseID, image, session, day):
         if group not in self.groups:
@@ -496,24 +496,19 @@ class GroupGridLayout(QWidget):
     def addVisualization(self, mouseID, image, session, day):
         if mouseID not in self.mice:
             self.mice[mouseID] = MouseGrid(mouseID, self.group)
-            self.layout.addLayout(self.mice[mouseID])
+            self.layout.addWidget(self.mice[mouseID])
         self.mice[mouseID].addVisualization(image, session, day)
     
     def removeVisualization(self, mouseID, session, day):
-        item = self.mouse_group[mouseID].itemAtPosition(session, day)
-        self.mouse_group[mouseID].removeItem(item)
-        image = item.widget()
-        self.mouse_group[mouseID].removeWidget(image)
-        image.setParent(None)
-        if self.mouse_group[mouseID].count() < 6:
-            self.removeLayout()
+        self.mice[mouseID].removeVisualization(session, day)
+        if self.mice[mouseID].isEmpty():
+            self.layout.removeWidget(self.mice[mouseID])
+            self.mice[mouseID].setParent(None)
+            del self.mice[mouseID]
+
     
-    def removeLayout(self):
-        for i in range(self.layout.count()):
-            l = self.layout.itemAt(i)
-            if l.layout().count() < 6:
-                deleteItemsOfLayout(l.layout())
-                self.layout.removeItem(l)
+    def isEmpty(self):
+        return self.layout.count() == 0
             
 def deleteItemsOfLayout(layout):
     if layout is not None:
@@ -526,7 +521,7 @@ def deleteItemsOfLayout(layout):
             else:
                 deleteItemsOfLayout(item.layout())
 
-class MouseGrid(QGridLayout):
+class MouseGrid(QWidget):
     def __init__(self, mouseID:str, group:str, parent=None):
         super().__init__(parent)
         self.mouseID = mouseID
@@ -537,8 +532,9 @@ class MouseGrid(QGridLayout):
         self.day_labels = {}
         self.session_labels = {}
         self.needs_redraw = False
-
-        self.c = 0
+        self.layout = QGridLayout()
+        self.setLayout(self.layout)
+        self.layout.addWidget(GridQLabel(f"{self.mouseID}/{self.group}"), 0, 0, Qt.AlignCenter)
         
     
     def addVisualization(self, image, session, day):
@@ -551,25 +547,77 @@ class MouseGrid(QGridLayout):
             bisect.insort(self.days, day)
         if session not in self.sessions:
             bisect.insort(self.sessions, session)
-        self.day_labels[day] = GridQLabel("D" + str(day))
-        self.session_labels[session] = GridQLabel("S" + str(session))
+        if day not in self.day_labels:
+            self.day_labels[day] = GridQLabel("D" + str(day))
+        if session not in self.session_labels:
+            self.session_labels[session] = GridQLabel("S" + str(session))
         self.redrawGrid()
         
+    def removeVisualization(self, session, day):
+        day = int(day[1:])
+        session = int(session[1:])
+        session_index = self.sessions.index(session)
+        day_index = self.days.index(day)
+        wid = self.layout.itemAtPosition(session_index+1, day_index+1).widget()
+        self.layout.removeWidget(wid)
+        wid.setParent(None)
+        del self.images[f"{session}:{day}"]
+
+        # Now check if we need to remove the labels as well
+        found_wid_row = False
+        for i in range(1,len(self.days)+1):
+            if self.layout.itemAtPosition(session_index+1, i) is not None:
+                found_wid_row = True
+                break
+        found_wid_column = False
+        for i in range(1,len(self.sessions)+1):
+            if self.layout.itemAtPosition(i, day_index+1) is not None:
+                found_wid_column = True
+                break
+        
+        if not found_wid_row:
+            wid = self.layout.itemAtPosition(session_index+1, 0).widget()
+            self.layout.removeWidget(wid)
+            wid.setParent(None)
+            wid.deleteLater()
+            self.sessions.remove(session)
+            del self.session_labels[session]
+        
+        if not found_wid_column:
+            wid = self.layout.itemAtPosition(0, day_index+1).widget()
+            self.layout.removeWidget(wid)
+            wid.setParent(None)
+            wid.deleteLater()
+            self.days.remove(day)
+            del self.day_labels[day]
+
+        self.redrawGrid()
+
+        if self.layout.count() == 1:
+            wid = self.layout.itemAtPosition(0, 0).widget()
+            self.layout.removeWidget(wid)
+            wid.setParent(None)
+            wid.deleteLater()
+
+
+
 
             
     def redrawGrid(self):
         # Iterate through the lists check if they have corresponding images/labels
-        self.addWidget(GridQLabel(f"{self.mouseID}/{self.group}"), 0, 0, Qt.AlignCenter)
         for i, session in enumerate(self.sessions):
             for j, day in enumerate(self.days):
                 if i == 0:
-                    self.addWidget(self.day_labels[day], i, j+1, Qt.AlignCenter)
+                    self.layout.addWidget(self.day_labels[day], i, j+1, Qt.AlignCenter)
                 if j == 0:
-                    self.addWidget(self.session_labels[session], i+1, j, Qt.AlignCenter)
+                    self.layout.addWidget(self.session_labels[session], i+1, j, Qt.AlignCenter)
                 if f"{session}:{day}" in self.images:
                     # Reset the Widget
                     self.images[f"{session}:{day}"].reset()
-                    self.addWidget(self.images[f"{session}:{day}"], i+1, j+1)
+                    self.layout.addWidget(self.images[f"{session}:{day}"], i+1, j+1)
+    
+    def isEmpty(self):
+        return self.layout.count() == 0
         
 
 
@@ -628,7 +676,7 @@ class Viewer(QGraphicsView):
         self.selected = True
 
     def updateParams(self, event):
-        root_parent = self.parent().parent().parent().parent()
+        root_parent = self.parent().parent().parent().parent().parent()
         root_parent.activateParams(self)
         
     def updateVisualization(self, image):

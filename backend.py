@@ -289,10 +289,6 @@ class DataInstance:
         self.day = day
         self.session = session
         self.group = group
-        # if (session is None):
-        #     behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + "behavior_ms.csv"),sep=',')
-        # else:
-        #     behavior_data = pd.read_csv(os.path.join(mouse_path, mouseID + "_" + day + "_" + session + "_" + "behavior_ms.csv"),sep=',')
         behavior_data = pd.read_csv(behavior_path,sep=',')
         data_types = ['RNFS', 'ALP', 'IALP', 'ALP_Timeout','Time Stamp (ms)']
         self.data = {}
@@ -303,7 +299,6 @@ class DataInstance:
                 print("No %s data found in minian file" % (dt))
                 self.data[dt] = None
 
-        # minian_path = os.path.join(dpath, "minian")
         data = open_minian(minian_path)
         data_types = ['A', 'C', 'S']
         for dt in data_types:            
