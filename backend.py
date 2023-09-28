@@ -286,7 +286,6 @@ class DataInstance:
 
     def load_data(self,dpath):
         mouseID, day, session, group,minian_path,behavior_path = self.parse_file(dpath)
-        mouse_path, video_path = match_path(dpath)
         self.mouseID = mouseID
         self.day = day
         self.session = session

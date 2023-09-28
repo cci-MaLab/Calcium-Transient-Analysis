@@ -80,7 +80,7 @@ class ParamDialog(QDialog):
         layout_param.addLayout(IALP_layout)
         layout_param.addLayout(RNFS_layout)
         layout_param.addLayout(ALP_Timeout_layout)
-        layout_param.addWidget(distance_metric_layout)
+        layout_param.addLayout(distance_metric_layout)
 
         layout = QVBoxLayout()
         layout.addLayout(layout_param)

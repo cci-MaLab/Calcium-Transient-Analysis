@@ -127,7 +127,7 @@ class MainWindow(QMainWindow):
         for event in result:
             delay, window = result[event]["delay"], result[event]["window"]
             instance.events[event].set_delay_and_duration(delay, window)
-            instance.events[event].set_values()        
+            instance.events[event].set_values()     
         result["outliers"] = instance.outliers_list
         result["distance_metric"] = instance.distance_metric
         instance.set_vector()
