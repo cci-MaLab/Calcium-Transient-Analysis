@@ -253,6 +253,7 @@ class DataInstance:
         3. After you set vectors, call the function compute_clustering, self.linkage_data will be updated. Then you can draw the dendrogram.
         4. Footprint in A. A is a dict. the key is the neuron ID.
     '''
+    distance_metric_list = ['euclidean','cosine'] # Static variable so parameters can be read before initiating instance
     def __init__(
         self,
         dpath: str,
@@ -268,7 +269,6 @@ class DataInstance:
         self.A: dict    #key is unit_id,value is A. Just keep same uniform with self.value
         self.value: dict #key is the unit_id,value is the numpy array
         self.outliers_list: List[int] = []
-        self.distance_metric_list = ['euclidean','cosine']
         # self.linkage_data:
         self.load_data(dpath=dpath)
         self.load_events(events)
@@ -520,7 +520,6 @@ class CellClustering:
                 else:
                     self.psd_list.append(self.psd_list_pre[unit_id])
             self.linkage_data = linkage(self.psd_list, method='average', metric='cosine')
-            print(self.special_unit)
 
     def compute_psd(self, unit: int):
         val = self.signals[unit]

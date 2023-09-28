@@ -26,7 +26,8 @@ class MainWindow(QMainWindow):
         self.event_defaults = {"ALP": {"window": 20, "delay": 0},
                                "IALP": {"window": 20, "delay": 0},
                                "RNFS": {"window": 20, "delay": 0},
-                               "ALP_Timeout": {"window": 20, "delay": 0}}
+                               "ALP_Timeout": {"window": 20, "delay": 0},
+                               "distance_metric": "euclidean"}
 
         # Menu Bar
         pixmapi_folder = QStyle.StandardPixmap.SP_DirIcon
@@ -115,18 +116,20 @@ class MainWindow(QMainWindow):
     def updateCluster(self, result):
         no_of_clusters = result.pop("no_of_clusters")
         outliers = result.pop("outliers")
+        distance_metric = result.pop("distance_metric")
         self.setWindowTitle("Loading...")
         group, session, day, mouseID = self.current_selection.returnInfo()
         instance = self.instances[group][mouseID][f"{session}:{day}"]
         instance.set_outliers(outliers)
+        instance.set_distance_metric(distance_metric)
         old_result = self.path_list[instance.dpath]
         instance.load_events(result.keys())
         for event in result:
             delay, window = result[event]["delay"], result[event]["window"]
             instance.events[event].set_delay_and_duration(delay, window)
             instance.events[event].set_values()        
-        result["group"] = old_result["group"]
         result["outliers"] = instance.outliers_list
+        result["distance_metric"] = instance.distance_metric
         instance.set_vector()
         instance.set_no_of_clusters(no_of_clusters)
         instance.compute_clustering()
@@ -219,6 +222,8 @@ class MainWindow(QMainWindow):
 
                 if "defaults" in self.path_list:
                     self.event_defaults = self.path_list.pop("defaults")
+                    if "distance_metric" not in self.event_defaults:
+                        self.event_defaults["distance_metric"] = "euclidean"
                     self.w_tools.update_defaults(self.event_defaults)
 
                 for path in self.path_list.keys():
@@ -233,6 +238,8 @@ class MainWindow(QMainWindow):
 
         events = list(result.keys())
         
+        if "distance_metric" in result:
+            events.remove("distance_metric")
         if "outliers" in result:
             events.remove("outliers")
         no_of_clusters = None
@@ -248,6 +255,8 @@ class MainWindow(QMainWindow):
             instance.events[event].set_values()
         if "outliers" in result:
             instance.set_outliers(result["outliers"])
+        if "distance_metric" in result:
+            instance.set_distance_metric(result["distance_metric"])
         instance.set_vector()
         instance.compute_clustering()
 

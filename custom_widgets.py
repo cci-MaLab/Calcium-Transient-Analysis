@@ -14,6 +14,7 @@ from matplotlib.figure import Figure
 from PyQt5.QtGui import QPixmap
 import os
 import bisect
+from backend import DataInstance
 
 
 
@@ -43,6 +44,9 @@ class ParamDialog(QDialog):
         self.ALP_Timeout_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_Timeout_chkbox, self.ALP_Timeout_param))
         self.ALP_Timeout_chkbox.stateChanged.connect(self.release_button)
 
+        distance_metric_label = QLabel("Distance Metric")
+        self.distance_metric_combo = QComboBox()
+
         self.ALP_param = ParamWidget("ALP", event_defaults)
         self.ALP_param.setEnabled(False)
         self.IALP_param = ParamWidget("IALP", event_defaults)
@@ -51,12 +55,15 @@ class ParamDialog(QDialog):
         self.RNFS_param.setEnabled(False)
         self.ALP_Timeout_param = ParamWidget("ALP_Timeout", event_defaults)
         self.ALP_Timeout_param.setEnabled(False)
+        self.distance_metric_combo.addItems(DataInstance.distance_metric_list)
+        self.distance_metric_combo.setCurrentIndex(self.distance_metric_combo.findText(event_defaults["distance_metric"]))
 
         layout_param = QHBoxLayout()
         ALP_layout = QVBoxLayout()
         IALP_layout = QVBoxLayout()
         RNFS_layout = QVBoxLayout()
         ALP_Timeout_layout = QVBoxLayout()
+        distance_metric_layout = QVBoxLayout()
 
         ALP_layout.addWidget(self.ALP_chkbox)
         ALP_layout.addWidget(self.ALP_param)
@@ -66,11 +73,14 @@ class ParamDialog(QDialog):
         RNFS_layout.addWidget(self.RNFS_param)
         ALP_Timeout_layout.addWidget(self.ALP_Timeout_chkbox)
         ALP_Timeout_layout.addWidget(self.ALP_Timeout_param)
+        distance_metric_layout.addWidget(distance_metric_label)
+        distance_metric_layout.addWidget(self.distance_metric_combo)
 
         layout_param.addLayout(ALP_layout)
         layout_param.addLayout(IALP_layout)
         layout_param.addLayout(RNFS_layout)
         layout_param.addLayout(ALP_Timeout_layout)
+        layout_param.addWidget(distance_metric_layout)
 
         layout = QVBoxLayout()
         layout.addLayout(layout_param)
@@ -102,6 +112,7 @@ class ParamDialog(QDialog):
             result["ALP_Timeout"] = {}
             result["ALP_Timeout"]["window"] = int(self.ALP_Timeout_param.duration_edit.text())
             result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
+        result["distance_metric"] = self.distance_metric_combo.currentText()
         
         return result
 
@@ -128,11 +139,17 @@ class UpdateDialog(QDialog):
         self.RNFS_param = ParamWidget("RNFS", event_defaults)
         self.ALP_Timeout_param = ParamWidget("ALP_Timeout", event_defaults)
 
+        distance_metric_label = QLabel("Distance Metric")
+        self.distance_metric_combo = QComboBox()
+        self.distance_metric_combo.addItems(DataInstance.distance_metric_list)
+        self.distance_metric_combo.setCurrentIndex(self.distance_metric_combo.findText(event_defaults["distance_metric"]))    
+
         layout_param = QHBoxLayout()
         ALP_layout = QVBoxLayout()
         IALP_layout = QVBoxLayout()
         RNFS_layout = QVBoxLayout()
         ALP_Timeout_layout = QVBoxLayout()
+        distance_metric_layout = QVBoxLayout()
 
         ALP_layout.addWidget(self.ALP_label)
         ALP_layout.addWidget(self.ALP_param)
@@ -142,11 +159,14 @@ class UpdateDialog(QDialog):
         RNFS_layout.addWidget(self.RNFS_param)
         ALP_Timeout_layout.addWidget(self.ALP_Timeout_label)
         ALP_Timeout_layout.addWidget(self.ALP_Timeout_param)
+        distance_metric_layout.addWidget(distance_metric_label)
+        distance_metric_layout.addWidget(self.distance_metric_combo)
 
         layout_param.addLayout(ALP_layout)
         layout_param.addLayout(IALP_layout)
         layout_param.addLayout(RNFS_layout)
         layout_param.addLayout(ALP_Timeout_layout)
+        layout_param.addWidget(distance_metric_layout)
 
         layout = QVBoxLayout()
         layout.addLayout(layout_param)
@@ -168,6 +188,7 @@ class UpdateDialog(QDialog):
         result["ALP_Timeout"] = {}
         result["ALP_Timeout"]["window"] = int(self.ALP_Timeout_param.duration_edit.text())
         result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
+        result["distance_metric"] = self.distance_metric_combo.currentText()
         
         return result
 
@@ -224,6 +245,11 @@ class ToolWidget(QWidget):
         self.ALP_Timeout_param = ParamWidget("ALP_Timeout", self.event_defaults)
         self.ALP_Timeout_param.setEnabled(False)
 
+        distance_metric_label = QLabel("Distance Metric")
+        self.distance_metric_combo = QComboBox()
+        self.distance_metric_combo.addItems(DataInstance.distance_metric_list)
+        self.distance_metric_combo.setCurrentIndex(self.distance_metric_combo.findText(event_defaults["distance_metric"]))
+
         self.outlier_input_label = QLabel("Type in outlier to exclude")
         self.outlier_input = QLineEdit("")
         onlyInt = QIntValidator()
@@ -244,6 +270,7 @@ class ToolWidget(QWidget):
         IALP_layout = QVBoxLayout()
         RNFS_layout = QVBoxLayout()
         ALP_Timeout_layout = QVBoxLayout()
+        distance_metric_layout = QVBoxLayout()
 
         ALP_layout.addWidget(self.ALP_chkbox)
         ALP_layout.addWidget(self.ALP_param)
@@ -253,6 +280,8 @@ class ToolWidget(QWidget):
         RNFS_layout.addWidget(self.RNFS_param)
         ALP_Timeout_layout.addWidget(self.ALP_Timeout_chkbox)
         ALP_Timeout_layout.addWidget(self.ALP_Timeout_param)
+        distance_metric_layout.addWidget(distance_metric_label)
+        distance_metric_layout.addWidget(self.distance_metric_combo)
 
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.button)
@@ -272,6 +301,7 @@ class ToolWidget(QWidget):
         layout_sub.addLayout(ALP_layout)
         layout_sub.addWidget(self.cluster_select)
         layout_sub.addWidget(label_cluster_select)
+        layout_sub.addLayout(distance_metric_layout)
 
 
         layout_tools = QHBoxLayout()
@@ -298,6 +328,7 @@ class ToolWidget(QWidget):
             self.ALP_Timeout_chkbox.setChecked(True)
             self.ALP_Timeout_param.duration_edit.setText(str(event_defaults["ALP_Timeout"]["window"]))
             self.ALP_Timeout_param.delay_edit.setText(str(event_defaults["ALP_Timeout"]["delay"]))
+        self.distance_metric_combo.setCurrentIndex(self.distance_metric_combo.findText(event_defaults["distance_metric"]))
 
 
     def add_outlier(self, click=None):
@@ -342,6 +373,7 @@ class ToolWidget(QWidget):
             result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
         result["no_of_clusters"] = int(self.cluster_select.currentText())
         result["outliers"] = [int(self.outlier_combo_box.itemText(i)) for i in range(self.outlier_combo_box.count())]
+        result["distance_metric"] = self.distance_metric_combo.currentText()
         
         
         root_parent = self.parent().parent()
