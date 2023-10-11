@@ -717,7 +717,7 @@ class Viewer(QGraphicsView):
         self.pixmap = QPixmap.fromImage(qimg)
 
     def inspect(self, event):
-        root_parent = self.parent().parent().parent().parent()
+        root_parent = self.parent().parent().parent().parent().parent()
         root_parent.startInspection(self)
 
     def __eq__(self, other):

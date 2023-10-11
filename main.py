@@ -149,7 +149,7 @@ class MainWindow(QMainWindow):
     def startInspection(self, current_selection=None):
         current_selection = self.current_selection if current_selection is None else current_selection
         group, session, day, mouseID = current_selection.returnInfo()
-        instance = self.instance[group][mouseID][f"{session}:{day}"]
+        instance = self.instances[group][mouseID][f"{session}:{day}"]
 
         name = f"{instance.mouseID} {instance.day} {instance.session}"
 
