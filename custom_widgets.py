@@ -802,6 +802,9 @@ class InspectionWidget(QWidget):
         self.w_cell_button = QPushButton("Visualize Selection")
         self.w_cell_button.clicked.connect(self.visualizeSignals)
 
+        self.w_cell_average_button = QPushButton("Visualize Average")
+        self.w_cell_average_button.clicked.connect(self.createAverageSignals)
+
         self.total_neurons_label = QLabel(f"Looking at {self.total_neurons} out of {self.total_neurons} neurons")
         self.total_neurons_label.setWordWrap(True)
 
@@ -863,6 +866,7 @@ class InspectionWidget(QWidget):
         mid_layout.addWidget(IALP_label)
         mid_layout.addWidget(ALP_label)
         mid_layout.addLayout(button_layout)
+        mid_layout.addWidget(self.w_cell_average_button)
         mid_layout.addWidget(self.w_cell_button)
         mid_layout.addWidget(self.w_cell_list)
         mid_layout.addWidget(w_cell_label)
@@ -1012,13 +1016,38 @@ class InspectionWidget(QWidget):
                         start, end = w
                         p.addItem(pg.LinearRegionItem((start, end), brush=brush_box, pen=brush_box, movable=False))
 
+    def createAverageSignals(self):
+        self.cell_ids = [int(item.text()) for item in self.w_cell_list.selectedItems()]
+        self.selected_plot = None
+
+        if self.cell_ids:
+            self.w_signals.clear()
+            i = 0
+            p = MyPlotWidget(id=i)
+            self.w_signals.addItem(p, row=i, col=0)
+            data = self.session.data['C'].sel(unit_id=self.cell_ids).mean("unit_id")
+            p.plot(data)
+            p.setTitle(f"Cell Average")
+
+            # Add event lines and boxes
+            for event in self.session.events.values():
+                brush_line = self.brushes_lines[event.event_type]
+                brush_box = self.brushes_boxes[event.event_type]
+                for t in event.timesteps:
+                    p.addItem(pg.InfiniteLine(t, pen=brush_line, movable=False, name=f"{event}"))
+                
+                for w in event.windows:
+                    start, end = w
+                    p.addItem(pg.LinearRegionItem((start, end), brush=brush_box, pen=brush_box, movable=False))
+
     def onClick(self, event):
-        # Funky stuff to get the PlotItem clicked
-        current_height = self.w_signals.range.height()
-        click_height = event.scenePos().y()
-        self.selected_plot = round(click_height / current_height * (len(self.cell_ids) - 1))
-        if self.selected_plot > len(self.cell_ids) - 1:
-            self.selected_plot = len(self.cell_ids) - 1
+        if not self.w_signals.getItem(1,0):
+            # Funky stuff to get the PlotItem clicked
+            current_height = self.w_signals.range.height()
+            click_height = event.scenePos().y()
+            self.selected_plot = round(click_height / current_height * (len(self.cell_ids) - 1))
+            if self.selected_plot > len(self.cell_ids) - 1:
+                self.selected_plot = len(self.cell_ids) - 1
 
 
     def closeEvent(self, event):
