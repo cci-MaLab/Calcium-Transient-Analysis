@@ -264,6 +264,7 @@ class DataInstance:
         self.day : str
         self.session: str
         self.group: str
+        self.minian_path: str
         self.data:dict # Original data, key:'A', 'C', 'S','unit_ids'
         self.events:dict # {"ALP": Event, "IALP" : Event, "RNFS": Event}
         self.A: dict    #key is unit_id,value is A. Just keep same uniform with self.value
@@ -284,12 +285,30 @@ class DataInstance:
         else:
             print("Error! Section name should be 'Session_Info'!")
 
+
+    def load_videos(self):
+        # We're setting this up as a seperate function as is takes up a lot of space and we only want to load the video info when we need to
+        data = open_minian(self.minian_path + "_intermediate")
+        video_types = ["Y_fm_chk", "varr"]
+        video_files = {}
+        for video_type in video_types:
+            if video_type in data:
+                video_files[video_type] = data[video_type]
+            else:
+                print("No %s data found in minian intermediate folder" % (video_type))
+        
+        return video_files
+
+        
+
+
     def load_data(self,dpath):
         mouseID, day, session, group,minian_path,behavior_path = self.parse_file(dpath)
         self.mouseID = mouseID
         self.day = day
         self.session = session
         self.group = group
+        self.minian_path = minian_path
         behavior_data = pd.read_csv(behavior_path,sep=',')
         data_types = ['RNFS', 'ALP', 'IALP', 'ALP_Timeout','Time Stamp (ms)']
         self.data = {}

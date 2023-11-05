@@ -7,6 +7,8 @@ import os
 import json
 sys.path.insert(0, ".")
 from backend import DataInstance
+from data_exploration import ExplorationWidget
+import dask
 
 class MainWindow(QMainWindow):
 
@@ -17,6 +19,8 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(600, 400)
         
         self.windows = {}
+
+        dask.config.set({"array.slicing.split_large_chunks": True})
 
         # Data stuff
         self.instances = {}
@@ -113,6 +117,20 @@ class MainWindow(QMainWindow):
         self.event_defaults = result
         self.w_tools.update_defaults(self.event_defaults)
 
+    def startExploration(self, current_selection=None):
+        current_selection = self.current_selection if current_selection is None else current_selection
+        group, session, day, mouseID = current_selection.returnInfo()
+        instance = self.instances[group][mouseID][f"{session}:{day}"]
+
+        name = f"{instance.mouseID} {instance.day} {instance.session} Exploration"
+
+        if name not in self.windows:
+            wid = ExplorationWidget(instance, self)
+            wid.setWindowTitle(name)
+            self.windows[name] = wid
+            wid.show()
+
+
     def updateCluster(self, result):
         no_of_clusters = result.pop("no_of_clusters")
         outliers = result.pop("outliers")
@@ -151,7 +169,7 @@ class MainWindow(QMainWindow):
         group, session, day, mouseID = current_selection.returnInfo()
         instance = self.instances[group][mouseID][f"{session}:{day}"]
 
-        name = f"{instance.mouseID} {instance.day} {instance.session}"
+        name = f"{instance.mouseID} {instance.day} {instance.session} Inspection"
 
         if name not in self.windows:
             wid = InspectionWidget(instance, self)
@@ -287,7 +305,7 @@ class MainWindow(QMainWindow):
                 extended_json["defaults"] = self.event_defaults
                 with open(filename, 'w') as f:
                     json.dump(extended_json, f)
-
+    
 app = QApplication([])
 window = MainWindow()
 app.exec()

@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLi
                             QComboBox, QListWidget, QAbstractItemView, QSplitter, QApplication, QStyleFactory,
                             QAction, QFileDialog)
 from PyQt5.QtGui import (QIntValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush, QFont)
-from PyQt5.QtCore import (Qt, pyqtSlot, QRunnable, QThreadPool, pyqtSignal)
+from PyQt5.QtCore import Qt
 import pyqtgraph as pg
 from pyqtgraph import PlotItem
 import numpy as np
@@ -221,6 +221,12 @@ class ToolWidget(QWidget):
         self.button_delete.setFixedWidth(120)
         self.button_delete.clicked.connect(self.delete)
 
+        self.button_explore = QPushButton("Data Exploration")
+        self.button_explore.setStyleSheet("background-color : blue")
+        self.button_explore.setFixedWidth(120)
+        self.button_explore.clicked.connect(self.explore)
+
+
         self.setFixedWidth(300)
 
         self.ALP_chkbox = QCheckBox("ALP")
@@ -287,7 +293,11 @@ class ToolWidget(QWidget):
         button_layout.addWidget(self.button)
         button_layout.addWidget(self.button_inspect)
 
-        layout_sub.addWidget(self.button_delete)
+        button_layout2 = QHBoxLayout()
+        button_layout2.addWidget(self.button_delete)
+        button_layout2.addWidget(self.button_explore)
+
+        layout_sub.addLayout(button_layout2)
         layout_sub.addLayout(button_layout)
         layout_sub.addWidget(self.outlier_return_button)
         layout_sub.addWidget(self.outlier_combo_box)
@@ -386,6 +396,10 @@ class ToolWidget(QWidget):
     def delete(self, event):
         root_parent = self.parent().parent()
         root_parent.deleteSelection()
+
+    def explore(self, event):
+        root_parent = self.parent().parent()
+        root_parent.startExploration()
     
     def update(self, result, cell_list):
         self.all_cells = cell_list
@@ -753,7 +767,7 @@ class InspectionWidget(QWidget):
         self.cell_ids = None
         self.displaying = "None"
         self.current_labels = []
-        self.name = f"{session.mouseID} {session.day} {session.session}"
+        self.name = f"{session.mouseID} {session.day} {session.session} Inspection"
         self.main_window_ref = main_win_ref
 
         # Brushes
