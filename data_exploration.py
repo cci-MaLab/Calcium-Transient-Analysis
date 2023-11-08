@@ -2,11 +2,10 @@
 The following file will be used for doing a deeper dive into the selected session
 """
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAction, QStyle, 
-                            QSlider)
-from PyQt5.QtGui import (QIntValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush, QFont)
+                            QSlider, QLabel, QListWidget, QAbstractItemView)
 from PyQt5.QtCore import (Qt, QTimer)
 import pyqtgraph as pg
-from pyqtgraph import PlotItem
+import numpy as np
 
 class ExplorationWidget(QWidget):
     def __init__(self, session, main_win_ref, parent=None):
@@ -19,6 +18,7 @@ class ExplorationWidget(QWidget):
         self.videos = self.session.load_videos()
         self.current_video = self.videos["varr"]
         self.video_length = self.current_video.shape[0]
+        self.mask = np.ones((self.current_video.shape[1], self.current_video.shape[2]))
         self.current_frame = 0
         self.imv.setImage(self.current_video.sel(frame=self.current_frame).values)
 
@@ -40,6 +40,23 @@ class ExplorationWidget(QWidget):
         self.centroids = self.session.centroids
         for outlier in self.session.outliers_list:
             self.A.pop(outlier)
+
+        # Select Cells
+        w_cell_label = QLabel("Pick which cells to focus (Hold ctrl):")
+        self.list_cell = QListWidget()
+        self.list_cell.setMaximumSize(250, 600)
+        self.list_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
+
+        self.btn_cell_focus = QPushButton("Focus Selection")
+        self.btn_cell_focus.clicked.connect(self.focus_mask)
+        self.btn_cell_reset = QPushButton("Reset Mask")
+        self.btn_cell_reset.clicked.connect(self.reset_mask)
+
+
+
+        # Populate cell list
+        for id in self.A.keys():
+            self.list_cell.addItem(str(id))
 
         
         # Tools for video
@@ -70,6 +87,8 @@ class ExplorationWidget(QWidget):
         
 
         # Layouts
+        main_layout = QHBoxLayout()
+
         layout_video_tools = QHBoxLayout()
         layout_video_tools.addWidget(self.btn_backward)
         layout_video_tools.addWidget(self.btn_play)
@@ -80,11 +99,40 @@ class ExplorationWidget(QWidget):
         layout_video.addWidget(self.imv)
         layout_video.addLayout(layout_video_tools)
 
-        self.setLayout(layout_video)
+        layout_cells = QVBoxLayout()
+        layout_cells.addWidget(w_cell_label)
+        layout_cells.addWidget(self.list_cell)
+        layout_cells.addWidget(self.btn_cell_focus)
+        layout_cells.addWidget(self.btn_cell_reset)
+
+        main_layout.addLayout(layout_video)
+        main_layout.addLayout(layout_cells)
+
+        self.setLayout(main_layout)
 
         self.video_timer = QTimer()
         self.video_timer.setInterval(50)
         self.video_timer.timeout.connect(self.next_frame)
+
+    def focus_mask(self):
+        cell_ids = [int(item.text()) for item in self.list_cell.selectedItems()]
+        new_mask = np.zeros(self.mask.shape)
+        if cell_ids:
+            for cell_id in cell_ids:
+                new_mask += self.A[cell_id].values
+        
+        new_mask[new_mask > 0] = 1
+        self.mask = new_mask
+        if not self.btn_play.isChecked():
+            self.current_frame -= 1
+            self.next_frame()
+
+    def reset_mask(self):
+        self.mask = np.ones(self.mask.shape)
+        if not self.btn_play.isChecked():
+            self.current_frame -= 1
+            self.next_frame()
+
 
     def slider_update(self):
         self.current_frame = self.scroll_video.value() - 1
@@ -108,12 +156,14 @@ class ExplorationWidget(QWidget):
     def next_frame(self):
         self.current_frame = (1 + self.current_frame) % self.video_length
         self.scroll_video.setValue(self.current_frame)
-        self.imv.setImage(self.current_video.sel(frame=self.current_frame).values, autoRange=False) 
+        image = self.current_video.sel(frame=self.current_frame).values * self.mask
+        self.imv.setImage(image, autoRange=False, autoLevels=False)
 
     def prev_frame(self):
         self.current_frame = (self.current_frame - 1) % self.video_length
         self.scroll_video.setValue(self.current_frame)
-        self.imv.setImage(self.current_video.sel(frame=self.current_frame).values, autoRange=False) 
+        image = self.current_video.sel(frame=self.current_frame).values * self.mask
+        self.imv.setImage(image, autoRange=False, autoLevels=False)
     
     def pause_video(self):
         self.video_timer.stop()
