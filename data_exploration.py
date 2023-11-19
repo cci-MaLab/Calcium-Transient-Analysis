@@ -6,12 +6,13 @@ from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAc
 from PyQt5.QtCore import (Qt, QTimer)
 import pyqtgraph as pg
 import numpy as np
+from custom_widgets import MyPlotWidget
 
 class ExplorationWidget(QWidget):
-    def __init__(self, session, main_win_ref, parent=None):
+    def __init__(self, session, main_window_ref, parent=None):
         super().__init__(parent)
         self.session = session
-        self.main_win_ref = main_win_ref
+        self.main_window_ref = main_window_ref
 
         # Set up main view
         self.imv = pg.ImageView()
@@ -37,9 +38,19 @@ class ExplorationWidget(QWidget):
 
         # We'll load in a copy of the visualization of the cells we are monitoring
         self.A = self.session.A.copy()
-        self.centroids = self.session.centroids
         for outlier in self.session.outliers_list:
             self.A.pop(outlier)
+
+        self.A_posToCell = {}
+        for cell_id, cell_ROI in self.A.items():
+            indices = np.argwhere(cell_ROI.values > 0)
+            for pair in indices:
+                if tuple(pair) in self.A_posToCell:
+                    self.A_posToCell[tuple(pair)] += cell_id
+                else:
+                    self.A_posToCell[tuple(pair)] = [cell_id]
+                    
+
 
         # Select Cells
         w_cell_label = QLabel("Pick which cells to focus (Hold ctrl):")
@@ -51,7 +62,6 @@ class ExplorationWidget(QWidget):
         self.btn_cell_focus.clicked.connect(self.focus_mask)
         self.btn_cell_reset = QPushButton("Reset Mask")
         self.btn_cell_reset.clicked.connect(self.reset_mask)
-
 
 
         # Populate cell list
@@ -84,10 +94,20 @@ class ExplorationWidget(QWidget):
         self.scroll_video.setRange(0, self.video_length)
         self.scroll_video.sliderMoved.connect(self.pause_video)
         self.scroll_video.sliderReleased.connect(self.slider_update)
+
+        # Video interaction elements
+        self.imv.scene.sigMouseClicked.connect(self.highlight_cell)
+        self.video_cell_selection = set()
+        self.video_selection_mask = np.zeros((self.current_video.shape[1], self.current_video.shape[2]))
+
+        # Visualize signals selected in video
+        self.w_signals = pg.GraphicsLayoutWidget()
+
         
 
         # Layouts
-        main_layout = QHBoxLayout()
+        layout_video_cells = QHBoxLayout()
+        layout_video_cells_visualize = QVBoxLayout()
 
         layout_video_tools = QHBoxLayout()
         layout_video_tools.addWidget(self.btn_backward)
@@ -105,14 +125,51 @@ class ExplorationWidget(QWidget):
         layout_cells.addWidget(self.btn_cell_focus)
         layout_cells.addWidget(self.btn_cell_reset)
 
-        main_layout.addLayout(layout_video)
-        main_layout.addLayout(layout_cells)
+        layout_video_cells.addLayout(layout_video)
+        layout_video_cells.addLayout(layout_cells)
 
-        self.setLayout(main_layout)
+        layout_video_cells_visualize.addLayout(layout_video_cells)
+        layout_video_cells_visualize.addWidget(self.w_signals)
+
+        self.setLayout(layout_video_cells_visualize)
 
         self.video_timer = QTimer()
         self.video_timer.setInterval(50)
         self.video_timer.timeout.connect(self.next_frame)
+
+    def highlight_cell(self, event):
+        point = self.imv.getImageItem().mapFromScene(event.pos())
+        converted_point = (round(point.x()), round(point.y()))
+
+        if converted_point in self.A_posToCell:
+            temp_ids = set()
+            for cell_id in self.A_posToCell[converted_point]:
+                temp_ids.add(cell_id)
+
+            # We add selected cells and deactivate already selected cells
+            self.video_cell_selection = (self.video_cell_selection | temp_ids) - (self.video_cell_selection & temp_ids)
+            self.video_selection_mask = np.zeros(self.mask.shape)
+            for id in self.video_cell_selection:
+                self.video_selection_mask  += self.A[id].values
+            self.video_selection_mask[self.video_selection_mask  > 0] = 1
+            self.visualizeSignals(self.video_cell_selection)
+            if not self.btn_play.isChecked():
+                self.current_frame -= 1
+                self.next_frame()
+
+
+
+    def visualizeSignals(self, cell_ids):
+        self.w_signals.clear()
+        if cell_ids:
+            for i, id in enumerate(cell_ids):
+                p = MyPlotWidget(id=i)
+                self.w_signals.addItem(p, row=i, col=0)
+                data = self.session.data['C'].sel(unit_id=id)
+                p.plot(data)
+                p.setTitle(f"Cell {id}")
+            
+
 
     def focus_mask(self):
         cell_ids = [int(item.text()) for item in self.list_cell.selectedItems()]
@@ -122,6 +179,7 @@ class ExplorationWidget(QWidget):
                 new_mask += self.A[cell_id].values
         
         new_mask[new_mask > 0] = 1
+        new_mask[new_mask == 0] = 3
         self.mask = new_mask
         if not self.btn_play.isChecked():
             self.current_frame -= 1
@@ -156,13 +214,19 @@ class ExplorationWidget(QWidget):
     def next_frame(self):
         self.current_frame = (1 + self.current_frame) % self.video_length
         self.scroll_video.setValue(self.current_frame)
-        image = self.current_video.sel(frame=self.current_frame).values * self.mask
+        image = self.current_video.sel(frame=self.current_frame).values // self.mask
+        if self.video_cell_selection:
+            image = np.stack((image,)*3, axis=-1)
+            image[:,:,:2][self.video_selection_mask == 1] = 0
         self.imv.setImage(image, autoRange=False, autoLevels=False)
 
     def prev_frame(self):
         self.current_frame = (self.current_frame - 1) % self.video_length
         self.scroll_video.setValue(self.current_frame)
         image = self.current_video.sel(frame=self.current_frame).values * self.mask
+        if self.video_cell_selection:
+            image = np.stack((image,)*3, axis=-1)
+            image[:,:,:2][self.video_selection_mask == 1] = 0
         self.imv.setImage(image, autoRange=False, autoLevels=False)
     
     def pause_video(self):
