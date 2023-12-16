@@ -24,7 +24,7 @@ from skimage.measure import find_contours
 from matplotlib import cm
 from matplotlib import colors 
 import matplotlib.pyplot as plt
-
+from scipy.stats import zscore
 
 import configparser
 
@@ -169,7 +169,7 @@ class Event:
         event_type:str,  # ALP, IALP, RNFS
         data:xr.DataArray,
         timesteps:List[int]
-        
+           
     ):  
         self.has_param = False
         self.data = data
@@ -179,6 +179,27 @@ class Event:
         self.switch = False
         self.timesteps = timesteps
         self.values:dict
+        self.binSize:int
+        self.preBinNum: int
+        self.postBinNum: int
+        self.binList: list
+
+    def set_binSize(self, binSize: int):
+        self.binSize = binSize
+
+    def set_preBinNum(self, preBinNum : int):
+        self.preBinNum = preBinNum
+
+    def set_postBinNum(self, postBinNum : int):
+        self.postBinNum = postBinNum
+
+    def get_binList(self,event_frame,preBinNum,postBinNum,binSize):
+        binList = []
+        total_num = preBinNum + postBinNum
+        for i in range(-preBinNum,postBinNum):
+            bin = self.get_section(event_frame,binSize,i*binSize)
+            binList.append(bin)
+        return binList
 
     def set_delay_and_duration(self, delay:float, duration:float):
         self.delay = delay
@@ -187,7 +208,6 @@ class Event:
 
     def set_switch(self, switch : bool = True):
         self.switch = switch
-
 
     def get_section(self, event_frame: int, duration: float, delay: float = 0.0, type: str = "C") -> xr.Dataset:
         """
@@ -331,6 +351,21 @@ class DataInstance:
         self.data['unit_ids'] = self.data['C'].coords['unit_id'].values
         self.dpath = dpath
 
+        #zscore 
+        # zscore_data = xr.apply_ufunc(
+        #     zscore,
+        #     self.data['C'].chunk(dict(frame=-1, unit_id="auto")),
+        #     input_core_dims=[["frame"]],
+        #     output_core_dims=[["frame"]],
+        #     dask="parallelized",
+        #     output_dtypes=[self.data['C'].dtype],
+        # )
+        # self.data['C'] = zscore_data
+        # self.data['C'] = zscore(self.data['C'], axis = 0)
+
+    
+    
+    
         neurons = self.data['unit_ids']
 
         cent = self.centroid(self.data['A'])
@@ -349,6 +384,8 @@ class DataInstance:
 
         if(os.path.exists(self.output_path) == False):
             os.makedirs(self.output_path)
+
+    
         
     def get_pdf_format(self, unit_ids, cluster, path):
         contours = []
