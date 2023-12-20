@@ -291,10 +291,11 @@ class DataInstance:
         self.value: dict #key is the unit_id,value is the numpy array
         self.outliers_list: List[int] = []
         # self.linkage_data:
+        self.centroids: dict
         self.load_data(dpath=dpath)
         self.load_events(events)
         self.no_of_clusters = 4
-        self.centroids: dict
+        
         self.distance_metric = 'euclidean'
 
     def parse_file(self,dpath):# set up configure file
