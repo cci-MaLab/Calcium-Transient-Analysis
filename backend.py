@@ -362,10 +362,9 @@ class DataInstance:
         #     output_dtypes=[self.data['C'].dtype],
         # )
         # self.data['C'] = zscore_data
-        # self.data['C'] = zscore(self.data['C'], axis = 0)
-
+        # self.data['C'] = zscore(self.data['C'], axis = 0)    
     
-    
+        self.data['filtered_C'] = self.get_filtered_C
     
         neurons = self.data['unit_ids']
 
@@ -386,8 +385,26 @@ class DataInstance:
         if(os.path.exists(self.output_path) == False):
             os.makedirs(self.output_path)
 
-    
+    def get_filtered_C(self) -> None:
+        normalized_S = xr.apply_ufunc(
+            self.normalize_events,
+            self.data['S'].chunk(dict(frame=-1, unit_id="auto")),
+            input_core_dims=[["frame"]],
+            output_core_dims=[["frame"]],
+            dask="parallelized",
+            output_dtypes=[self.data['E'].dtype],
+        )
+        filtered_C = self.data['C'] * normalized_S
+        return filtered_C
         
+    def normalize_events(self, a: np.ndarray) -> np.ndarray:
+        """
+        All positive values are converted to 1.
+        """
+        a = a.copy()
+        a[a > 0] = 1
+        return a
+
     def get_pdf_format(self, unit_ids, cluster, path):
         contours = []
         for id in unit_ids:
