@@ -206,11 +206,6 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
 
-    def addData(self):
-        #self.data.append(data)
-        print("finished")
-
-
     def load_data(self, s):
         fname = QFileDialog.getOpenFileName(
             self,

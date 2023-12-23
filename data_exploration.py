@@ -4,9 +4,10 @@ The following file will be used for doing a deeper dive into the selected sessio
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAction, QStyle, 
                             QSlider, QLabel, QListWidget, QAbstractItemView)
 from PyQt5.QtCore import (Qt, QTimer)
+from pyqtgraph import PlotItem
 import pyqtgraph as pg
 import numpy as np
-from custom_widgets import MyPlotWidget
+from pyqtgraph import InfiniteLine
 
 class ExplorationWidget(QWidget):
     def __init__(self, session, main_window_ref, parent=None):
@@ -21,7 +22,7 @@ class ExplorationWidget(QWidget):
         self.video_length = self.current_video.shape[0]
         self.mask = np.ones((self.current_video.shape[1], self.current_video.shape[2]))
         self.current_frame = 0
-        self.imv.setImage(self.current_video.sel(frame=self.current_frame).values)
+        self.imv.setImage(self.current_video.sel(frame=self.current_frame).values.T)
 
         # Add Context Menu Action
         self.submenu_videos = self.imv.getView().menu.addMenu('&Video Format')
@@ -46,7 +47,8 @@ class ExplorationWidget(QWidget):
             indices = np.argwhere(cell_ROI.values > 0)
             for pair in indices:
                 if tuple(pair) in self.A_posToCell:
-                    self.A_posToCell[tuple(pair)] += cell_id
+                    # We need to switch x and y positions because of how the image is displayed
+                    self.A_posToCell[tuple(pair)].append(cell_id)
                 else:
                     self.A_posToCell[tuple(pair)] = [cell_id]
                     
@@ -62,6 +64,9 @@ class ExplorationWidget(QWidget):
         self.btn_cell_focus.clicked.connect(self.focus_mask)
         self.btn_cell_reset = QPushButton("Reset Mask")
         self.btn_cell_reset.clicked.connect(self.reset_mask)
+        self.btn_cell_clear_color = QPushButton("Clear Color")
+        self.btn_cell_clear_color.setCheckable(True)
+        self.btn_cell_clear_color.clicked.connect(self.refresh_image)
 
 
         # Populate cell list
@@ -94,6 +99,7 @@ class ExplorationWidget(QWidget):
         self.scroll_video.setRange(0, self.video_length)
         self.scroll_video.sliderMoved.connect(self.pause_video)
         self.scroll_video.sliderReleased.connect(self.slider_update)
+        self.scroll_video.valueChanged.connect(self.update_plot_lines)
 
         # Video interaction elements
         self.imv.scene.sigMouseClicked.connect(self.highlight_cell)
@@ -124,6 +130,7 @@ class ExplorationWidget(QWidget):
         layout_cells.addWidget(self.list_cell)
         layout_cells.addWidget(self.btn_cell_focus)
         layout_cells.addWidget(self.btn_cell_reset)
+        layout_cells.addWidget(self.btn_cell_clear_color)
 
         layout_video_cells.addLayout(layout_video)
         layout_video_cells.addLayout(layout_cells)
@@ -163,11 +170,23 @@ class ExplorationWidget(QWidget):
         self.w_signals.clear()
         if cell_ids:
             for i, id in enumerate(cell_ids):
-                p = MyPlotWidget(id=i)
+                # Check if Event data exists
+                p = PlotWidgetEnhanced(id=i)
                 self.w_signals.addItem(p, row=i, col=0)
                 data = self.session.data['C'].sel(unit_id=id)
+                # Plot with a thicker line
                 p.plot(data)
                 p.setTitle(f"Cell {id}")
+                if 'E' in self.session.data:
+                    events = self.session.data['E'].sel(unit_id=id).values
+                    indices = events.nonzero()[0]
+                    # Split up the indices into groups
+                    indices = np.split(indices, np.where(np.diff(indices) != 1)[0]+1)
+                    for indices_group in indices:
+                        p.plot(indices_group, data[indices_group], pen='r')
+
+
+
             
 
 
@@ -214,19 +233,25 @@ class ExplorationWidget(QWidget):
     def next_frame(self):
         self.current_frame = (1 + self.current_frame) % self.video_length
         self.scroll_video.setValue(self.current_frame)
-        image = self.current_video.sel(frame=self.current_frame).values // self.mask
-        if self.video_cell_selection:
-            image = np.stack((image,)*3, axis=-1)
-            image[:,:,:2][self.video_selection_mask == 1] = 0
+        image = self.generate_image()
         self.imv.setImage(image, autoRange=False, autoLevels=False)
 
     def prev_frame(self):
         self.current_frame = (self.current_frame - 1) % self.video_length
         self.scroll_video.setValue(self.current_frame)
-        image = self.current_video.sel(frame=self.current_frame).values * self.mask
+        image = self.generate_image()
+        self.imv.setImage(image, autoRange=False, autoLevels=False)
+
+    def generate_image(self):
+        image = self.current_video.sel(frame=self.current_frame).values // self.mask
         if self.video_cell_selection:
             image = np.stack((image,)*3, axis=-1)
-            image[:,:,:2][self.video_selection_mask == 1] = 0
+            if not self.btn_cell_clear_color.isChecked():
+                image[:,:,:2][self.video_selection_mask == 1] = 0
+        return image
+    
+    def refresh_image(self):
+        image = self.generate_image()
         self.imv.setImage(image, autoRange=False, autoLevels=False)
     
     def pause_video(self):
@@ -246,7 +271,24 @@ class ExplorationWidget(QWidget):
                 action.setChecked(False)
         self.imv.setImage(self.current_video.sel(frame=self.current_frame).values, autoRange=False)
 
+    def update_plot_lines(self):
+        i = 0
+        while self.w_signals.getItem(i,0) is not None:
+            item = self.w_signals.getItem(i,0)
+            if isinstance(item, PlotWidgetEnhanced):
+                item.plotLine.setPos(self.scroll_video.value())
+            i += 1
+
     def closeEvent(self, event):
         super(ExplorationWidget, self).closeEvent(event)
         self.main_window_ref.removeWindow(self.name)
+
+
+class PlotWidgetEnhanced(PlotItem):
+    def __init__(self, id=None, **kwargs):
+        super(PlotWidgetEnhanced, self).__init__(**kwargs)
+        self.id = id
+        self.plotLine = InfiniteLine(pos=0, angle=90, pen='r')
+        self.addItem(self.plotLine)
+
 
