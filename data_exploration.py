@@ -8,6 +8,7 @@ from pyqtgraph import PlotItem
 import pyqtgraph as pg
 import numpy as np
 from pyqtgraph import InfiniteLine
+from scipy.signal import find_peaks
 
 class ExplorationWidget(QWidget):
     def __init__(self, session, main_window_ref, parent=None):
@@ -174,8 +175,8 @@ class ExplorationWidget(QWidget):
                 p = PlotWidgetEnhanced(id=i)
                 self.w_signals.addItem(p, row=i, col=0)
                 data = self.session.data['C'].sel(unit_id=id)
-                # Plot with a thicker line
                 p.plot(data)
+                p.plotLine.setPos(self.scroll_video.value())
                 p.setTitle(f"Cell {id}")
                 if 'E' in self.session.data:
                     events = self.session.data['E'].sel(unit_id=id).values
@@ -282,6 +283,117 @@ class ExplorationWidget(QWidget):
     def closeEvent(self, event):
         super(ExplorationWidget, self).closeEvent(event)
         self.main_window_ref.removeWindow(self.name)
+
+    def change_button(self, clicks=None):
+        if self.wgt_flag.button_type == "success":
+            self.wgt_flag.button_type = "danger"
+            self.wgt_flag.name = "Bad Cell"
+            cell_status = False
+        else:
+            self.wgt_flag.button_type = "success"
+            self.wgt_flag.name = "Good Cell"
+            cell_status = True
+        
+        # Update the coordinates of self._C
+        idx, = np.where(self._C["unit_id"].values == self.current_cell)
+        good_cells = self._C["good_cells"].values
+        good_cells[idx] = cell_status
+        self._C = self._C.assign_coords(good_cells=("unit_id", good_cells))
+    
+    def update_peaks(self, clicks=None):
+        min_height = self.min_height_input.value
+        distance = self.dist_input.value if self.dist_input.value != 0 else 10
+        auc = self.auc.value
+        if self._normalize:
+            C_signal = self._C_norm.sel(unit_id=self.strm_usub.usub[0]).values
+            S_signal = self._S_norm.sel(unit_id=self.strm_usub.usub[0]).values
+        else:
+            C_signal = self._C_norm_global.sel(unit_id=self.strm_usub.usub[0]).values
+            S_signal = self._S_norm_global.sel(unit_id=self.strm_usub.usub[0]).values
+
+        peaks, _ = find_peaks(C_signal)
+        self.spikes = []
+        self.peaks = []
+        # We must now determine when the beginning of the spiking occurs. It must satisfy the following conditions:
+        # 1.) Use the C signal to detect all potential peaks.
+        # 2.) Going from left to right start evaluating the distance between peaks. If the next peak is close enough and greater than the current, delete the current peak and allocate the S values to the next peak.
+        # 3.) Check the AUC of all allocated S values of the observed peak. If its less than a threshold then delete it.
+        # 4.) Exclude all peaks whose C value (amplitude) is smaller than a threshold) - I decided to do this last in case we want to allocate the S value to another peak.
+        culminated_s_indices = set() # We make use of a set to avoid duplicates
+        for i, current_peak in enumerate(peaks):
+            # Look at the next peak and see if it is close enough to the current peak
+            peak_height = C_signal[current_peak]
+            # Allocate the overlapping S values to the next peak
+            if S_signal[current_peak] == 0:
+                continue # This indicates no corresponding S signal
+            culminated_s_indices.add(self.get_S_dimensions(S_signal, current_peak))
+            if i < len(peaks) - 1 and C_signal[peaks[i+1]] > peak_height:
+                diff = peaks[i+1] - current_peak if self.timestamps is None else self.timestamps[peaks[i+1]] - self.timestamps[current_peak]
+                if diff <= distance:
+                    continue
+
+            # Now check the AUC of the current peak we will use the accumulated S values and also keep track of the earliest
+            # index.
+            beg, end = len(S_signal), 0
+            for beg_temp, end_temp in culminated_s_indices:
+                beg = beg_temp if beg_temp < beg else beg
+                end = end_temp if end_temp > end else end
+            
+            culminated_s_indices = set()
+
+            if np.sum(S_signal[beg:end]) < auc:
+                continue
+
+            if C_signal[beg:current_peak+1].max() - C_signal[beg:current_peak+1].min() < min_height:
+                continue
+
+
+            self.spikes.append([beg, current_peak+1])
+            self.peaks.append([current_peak])
+
+
+        self.update_temp_comp_sub()
+
+
+    def get_S_dimensions(self, S_signal, idx):
+        '''
+        This is a helper function for update_peaks. It returns the beginning and end indices of the S signal for a given peak.
+        It will make use of numpy methods to make it quick as possible, as looping through the S signal will be slow.
+        '''
+        # First get the final index of the S signal we'll assume for the time being that an S signal is no longer than 200 frames.
+        # If by a small chance the S signal is longer than 200 frames, then we'll keep doubling the frame length until we find the end of the S signal.
+        frame_length = 200
+        end = -1
+        start = -1
+        while end == -1:
+            reached_end = False
+            if idx + frame_length > len(S_signal):
+                frame_length = idx + frame_length - len(S_signal)
+                reached_end = True
+            values = np.where(S_signal[idx:idx+frame_length] == 0)[0]
+            end = idx + values[0] if values.any() else -1
+            if end == -1:
+                if reached_end:
+                    end = len(S_signal)
+                else:
+                    frame_length *= 2
+        
+        # Now get the beginning index of the S signal we'll do the same as above except backwards
+        frame_length = 200
+        while start == -1:
+            reached_beg = False
+            if idx - frame_length < 0:
+                frame_length = idx
+                reached_beg = True
+            values = np.where(S_signal[idx-frame_length:idx+1][::-1] == 0)[0] # Little hack to reverse it
+            start = idx - values[0] + 1 if values.any() else -1
+            if start == -1:
+                if reached_beg:
+                    start = 0
+                else:
+                    frame_length *= 2
+        
+        return (start, end)
 
 
 class PlotWidgetEnhanced(PlotItem):
