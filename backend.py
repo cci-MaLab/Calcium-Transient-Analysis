@@ -244,6 +244,41 @@ class Event:
             print("No %s data found in minian file" % (type))
             return None
 
+    def get_interval_section(self, event_frame: int, duration: float, delay: float = 0.0, interval:int = 100, type: str = "C") -> xr.Dataset:
+        '''
+        interval: 100 ms
+        '''
+         # duration is in seconds convert to ms
+        duration *= 1000
+        delay *= 1000
+        start = self.data['Time Stamp (ms)'][event_frame]
+        frame_list = []
+        max_length = len(self.data['Time Stamp (ms)'])
+        if delay > 0:
+            frame_gap = 1
+            while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < delay:
+                frame_gap += 1
+            event_frame += frame_gap
+        elif delay < 0:
+            frame_gap = -1
+            while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] > delay and event_frame + frame_gap > 0:
+                frame_gap -= 1
+            event_frame += frame_gap
+        frame_gap = 1
+        time_flag = self.data['Time Stamp (ms)'][event_frame]
+        frame_list.append(event_frame)
+        while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < duration and event_frame + frame_gap < max_length:
+            if self.data['Time Stamp (ms)'][event_frame + frame_gap]-time_flag > interval:
+                time_flag = self.data['Time Stamp (ms)'][event_frame + frame_gap]
+                frame_list.append(event_frame + frame_gap)
+            frame_gap += 1
+        if type in self.data:
+            return self.data[type].sel(frame=frame_list) , event_frame,event_frame+frame_gap
+        else:
+            print("No %s data found in minian file" % (type))
+            return None
+    
+        return 
 
     def set_values(self):
         values={}
@@ -318,10 +353,7 @@ class DataInstance:
             else:
                 print("No %s data found in minian intermediate folder" % (video_type))
         
-        return video_files
-
-        
-
+        return video_files        
 
     def load_data(self,dpath):
         mouseID, day, session, group,minian_path,behavior_path = self.parse_file(dpath)
@@ -342,6 +374,13 @@ class DataInstance:
 
         data = open_minian(minian_path)
         data_types = ['A', 'C', 'S', 'E']
+        self.dataset = data
+        timestamp = behavior_data[["Time Stamp (ms)"]]
+        timestamp.index.name = "frame"
+        da_ts = timestamp["Time Stamp (ms)"].to_xarray()
+        self.dataset.coords['Time Stamp (ms)'] = da_ts
+        data.coords['Time Stamp (ms)'] = da_ts
+
         for dt in data_types:            
             if dt in data:
                 self.data[dt] = data[dt]
@@ -365,7 +404,7 @@ class DataInstance:
         # self.data['C'] = zscore(self.data['C'], axis = 0)    
     
         self.data['filtered_C'] = self.get_filtered_C
-    
+
         neurons = self.data['unit_ids']
 
         cent = self.centroid(self.data['A'])
