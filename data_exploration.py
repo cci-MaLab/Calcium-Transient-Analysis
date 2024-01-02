@@ -4,9 +4,11 @@ The following file will be used for doing a deeper dive into the selected sessio
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAction, QStyle, 
                             QSlider, QLabel, QListWidget, QAbstractItemView)
 from PyQt5.QtCore import (Qt, QTimer)
+from pyqtgraph import PlotItem
 import pyqtgraph as pg
 import numpy as np
-from custom_widgets import MyPlotWidget
+from pyqtgraph import InfiniteLine
+from scipy.signal import find_peaks
 
 class ExplorationWidget(QWidget):
     def __init__(self, session, main_window_ref, parent=None):
@@ -21,7 +23,7 @@ class ExplorationWidget(QWidget):
         self.video_length = self.current_video.shape[0]
         self.mask = np.ones((self.current_video.shape[1], self.current_video.shape[2]))
         self.current_frame = 0
-        self.imv.setImage(self.current_video.sel(frame=self.current_frame).values)
+        self.imv.setImage(self.current_video.sel(frame=self.current_frame).values.T)
 
         # Add Context Menu Action
         self.submenu_videos = self.imv.getView().menu.addMenu('&Video Format')
@@ -46,7 +48,8 @@ class ExplorationWidget(QWidget):
             indices = np.argwhere(cell_ROI.values > 0)
             for pair in indices:
                 if tuple(pair) in self.A_posToCell:
-                    self.A_posToCell[tuple(pair)] += cell_id
+                    # We need to switch x and y positions because of how the image is displayed
+                    self.A_posToCell[tuple(pair)].append(cell_id)
                 else:
                     self.A_posToCell[tuple(pair)] = [cell_id]
                     
@@ -62,6 +65,9 @@ class ExplorationWidget(QWidget):
         self.btn_cell_focus.clicked.connect(self.focus_mask)
         self.btn_cell_reset = QPushButton("Reset Mask")
         self.btn_cell_reset.clicked.connect(self.reset_mask)
+        self.btn_cell_clear_color = QPushButton("Clear Color")
+        self.btn_cell_clear_color.setCheckable(True)
+        self.btn_cell_clear_color.clicked.connect(self.refresh_image)
 
 
         # Populate cell list
@@ -94,6 +100,7 @@ class ExplorationWidget(QWidget):
         self.scroll_video.setRange(0, self.video_length)
         self.scroll_video.sliderMoved.connect(self.pause_video)
         self.scroll_video.sliderReleased.connect(self.slider_update)
+        self.scroll_video.valueChanged.connect(self.update_plot_lines)
 
         # Video interaction elements
         self.imv.scene.sigMouseClicked.connect(self.highlight_cell)
@@ -124,6 +131,7 @@ class ExplorationWidget(QWidget):
         layout_cells.addWidget(self.list_cell)
         layout_cells.addWidget(self.btn_cell_focus)
         layout_cells.addWidget(self.btn_cell_reset)
+        layout_cells.addWidget(self.btn_cell_clear_color)
 
         layout_video_cells.addLayout(layout_video)
         layout_video_cells.addLayout(layout_cells)
@@ -163,11 +171,23 @@ class ExplorationWidget(QWidget):
         self.w_signals.clear()
         if cell_ids:
             for i, id in enumerate(cell_ids):
-                p = MyPlotWidget(id=i)
+                # Check if Event data exists
+                p = PlotWidgetEnhanced(id=i)
                 self.w_signals.addItem(p, row=i, col=0)
                 data = self.session.data['C'].sel(unit_id=id)
                 p.plot(data)
+                p.plotLine.setPos(self.scroll_video.value())
                 p.setTitle(f"Cell {id}")
+                if 'E' in self.session.data:
+                    events = self.session.data['E'].sel(unit_id=id).values
+                    indices = events.nonzero()[0]
+                    # Split up the indices into groups
+                    indices = np.split(indices, np.where(np.diff(indices) != 1)[0]+1)
+                    for indices_group in indices:
+                        p.plot(indices_group, data[indices_group], pen='r')
+
+
+
             
 
 
@@ -214,19 +234,25 @@ class ExplorationWidget(QWidget):
     def next_frame(self):
         self.current_frame = (1 + self.current_frame) % self.video_length
         self.scroll_video.setValue(self.current_frame)
-        image = self.current_video.sel(frame=self.current_frame).values // self.mask
-        if self.video_cell_selection:
-            image = np.stack((image,)*3, axis=-1)
-            image[:,:,:2][self.video_selection_mask == 1] = 0
+        image = self.generate_image()
         self.imv.setImage(image, autoRange=False, autoLevels=False)
 
     def prev_frame(self):
         self.current_frame = (self.current_frame - 1) % self.video_length
         self.scroll_video.setValue(self.current_frame)
-        image = self.current_video.sel(frame=self.current_frame).values * self.mask
+        image = self.generate_image()
+        self.imv.setImage(image, autoRange=False, autoLevels=False)
+
+    def generate_image(self):
+        image = self.current_video.sel(frame=self.current_frame).values // self.mask
         if self.video_cell_selection:
             image = np.stack((image,)*3, axis=-1)
-            image[:,:,:2][self.video_selection_mask == 1] = 0
+            if not self.btn_cell_clear_color.isChecked():
+                image[:,:,:2][self.video_selection_mask == 1] = 0
+        return image
+    
+    def refresh_image(self):
+        image = self.generate_image()
         self.imv.setImage(image, autoRange=False, autoLevels=False)
     
     def pause_video(self):
@@ -246,7 +272,135 @@ class ExplorationWidget(QWidget):
                 action.setChecked(False)
         self.imv.setImage(self.current_video.sel(frame=self.current_frame).values, autoRange=False)
 
+    def update_plot_lines(self):
+        i = 0
+        while self.w_signals.getItem(i,0) is not None:
+            item = self.w_signals.getItem(i,0)
+            if isinstance(item, PlotWidgetEnhanced):
+                item.plotLine.setPos(self.scroll_video.value())
+            i += 1
+
     def closeEvent(self, event):
         super(ExplorationWidget, self).closeEvent(event)
         self.main_window_ref.removeWindow(self.name)
+
+    def change_button(self, clicks=None):
+        if self.wgt_flag.button_type == "success":
+            self.wgt_flag.button_type = "danger"
+            self.wgt_flag.name = "Bad Cell"
+            cell_status = False
+        else:
+            self.wgt_flag.button_type = "success"
+            self.wgt_flag.name = "Good Cell"
+            cell_status = True
+        
+        # Update the coordinates of self._C
+        idx, = np.where(self._C["unit_id"].values == self.current_cell)
+        good_cells = self._C["good_cells"].values
+        good_cells[idx] = cell_status
+        self._C = self._C.assign_coords(good_cells=("unit_id", good_cells))
+    
+    def update_peaks(self, clicks=None):
+        min_height = self.min_height_input.value
+        distance = self.dist_input.value if self.dist_input.value != 0 else 10
+        auc = self.auc.value
+        if self._normalize:
+            C_signal = self._C_norm.sel(unit_id=self.strm_usub.usub[0]).values
+            S_signal = self._S_norm.sel(unit_id=self.strm_usub.usub[0]).values
+        else:
+            C_signal = self._C_norm_global.sel(unit_id=self.strm_usub.usub[0]).values
+            S_signal = self._S_norm_global.sel(unit_id=self.strm_usub.usub[0]).values
+
+        peaks, _ = find_peaks(C_signal)
+        self.spikes = []
+        self.peaks = []
+        # We must now determine when the beginning of the spiking occurs. It must satisfy the following conditions:
+        # 1.) Use the C signal to detect all potential peaks.
+        # 2.) Going from left to right start evaluating the distance between peaks. If the next peak is close enough and greater than the current, delete the current peak and allocate the S values to the next peak.
+        # 3.) Check the AUC of all allocated S values of the observed peak. If its less than a threshold then delete it.
+        # 4.) Exclude all peaks whose C value (amplitude) is smaller than a threshold) - I decided to do this last in case we want to allocate the S value to another peak.
+        culminated_s_indices = set() # We make use of a set to avoid duplicates
+        for i, current_peak in enumerate(peaks):
+            # Look at the next peak and see if it is close enough to the current peak
+            peak_height = C_signal[current_peak]
+            # Allocate the overlapping S values to the next peak
+            if S_signal[current_peak] == 0:
+                continue # This indicates no corresponding S signal
+            culminated_s_indices.add(self.get_S_dimensions(S_signal, current_peak))
+            if i < len(peaks) - 1 and C_signal[peaks[i+1]] > peak_height:
+                diff = peaks[i+1] - current_peak if self.timestamps is None else self.timestamps[peaks[i+1]] - self.timestamps[current_peak]
+                if diff <= distance:
+                    continue
+
+            # Now check the AUC of the current peak we will use the accumulated S values and also keep track of the earliest
+            # index.
+            beg, end = len(S_signal), 0
+            for beg_temp, end_temp in culminated_s_indices:
+                beg = beg_temp if beg_temp < beg else beg
+                end = end_temp if end_temp > end else end
+            
+            culminated_s_indices = set()
+
+            if np.sum(S_signal[beg:end]) < auc:
+                continue
+
+            if C_signal[beg:current_peak+1].max() - C_signal[beg:current_peak+1].min() < min_height:
+                continue
+
+
+            self.spikes.append([beg, current_peak+1])
+            self.peaks.append([current_peak])
+
+
+        self.update_temp_comp_sub()
+
+
+    def get_S_dimensions(self, S_signal, idx):
+        '''
+        This is a helper function for update_peaks. It returns the beginning and end indices of the S signal for a given peak.
+        It will make use of numpy methods to make it quick as possible, as looping through the S signal will be slow.
+        '''
+        # First get the final index of the S signal we'll assume for the time being that an S signal is no longer than 200 frames.
+        # If by a small chance the S signal is longer than 200 frames, then we'll keep doubling the frame length until we find the end of the S signal.
+        frame_length = 200
+        end = -1
+        start = -1
+        while end == -1:
+            reached_end = False
+            if idx + frame_length > len(S_signal):
+                frame_length = idx + frame_length - len(S_signal)
+                reached_end = True
+            values = np.where(S_signal[idx:idx+frame_length] == 0)[0]
+            end = idx + values[0] if values.any() else -1
+            if end == -1:
+                if reached_end:
+                    end = len(S_signal)
+                else:
+                    frame_length *= 2
+        
+        # Now get the beginning index of the S signal we'll do the same as above except backwards
+        frame_length = 200
+        while start == -1:
+            reached_beg = False
+            if idx - frame_length < 0:
+                frame_length = idx
+                reached_beg = True
+            values = np.where(S_signal[idx-frame_length:idx+1][::-1] == 0)[0] # Little hack to reverse it
+            start = idx - values[0] + 1 if values.any() else -1
+            if start == -1:
+                if reached_beg:
+                    start = 0
+                else:
+                    frame_length *= 2
+        
+        return (start, end)
+
+
+class PlotWidgetEnhanced(PlotItem):
+    def __init__(self, id=None, **kwargs):
+        super(PlotWidgetEnhanced, self).__init__(**kwargs)
+        self.id = id
+        self.plotLine = InfiniteLine(pos=0, angle=90, pen='r')
+        self.addItem(self.plotLine)
+
 

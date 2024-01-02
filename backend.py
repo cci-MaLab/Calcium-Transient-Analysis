@@ -341,7 +341,7 @@ class DataInstance:
                 self.data[dt] = None
 
         data = open_minian(minian_path)
-        data_types = ['A', 'C', 'S']
+        data_types = ['A', 'C', 'S', 'E']
         for dt in data_types:            
             if dt in data:
                 self.data[dt] = data[dt]
