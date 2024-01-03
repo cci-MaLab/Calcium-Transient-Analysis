@@ -99,7 +99,7 @@ class Genetic_Algorithm:
 
     def excute(self):
 
-        MAX_GENERATION = 100
+        MAX_GENERATION = 50
 
         # test demo
         # di1= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D1/2023_05_05/11_02_42/Miniscope_2/S4/config.ini",['ALP','IALP','RNFS'] ) # Coke demo
