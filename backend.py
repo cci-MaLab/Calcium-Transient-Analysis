@@ -249,31 +249,40 @@ class Event:
         interval: 100 ms
         '''
          # duration is in seconds convert to ms
+        integrity = True
         duration *= 1000
         delay *= 1000
         start = self.data['Time Stamp (ms)'][event_frame]
         frame_list = []
         max_length = len(self.data['Time Stamp (ms)'])
         if delay > 0:
-            frame_gap = 1
+            frame_gap = 0
             while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < delay:
-                frame_gap += 1
+                if (event_frame + frame_gap) < (max_length-1): 
+                    frame_gap += 1
+                else:
+                    integrity = False 
+                    break
             event_frame += frame_gap
         elif delay < 0:
-            frame_gap = -1
-            while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] > delay and event_frame + frame_gap > 0:
-                frame_gap -= 1
+            frame_gap = 0
+            while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] > delay:
+                if(event_frame + frame_gap > 0):
+                    frame_gap -= 1
+                else:
+                    integrity = False
+                    break
             event_frame += frame_gap
-        frame_gap = 1
+        frame_gap = 0
         time_flag = self.data['Time Stamp (ms)'][event_frame]
         frame_list.append(event_frame)
-        while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < duration and event_frame + frame_gap < max_length:
+        while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < duration and event_frame + frame_gap < max_length-1:
             if self.data['Time Stamp (ms)'][event_frame + frame_gap]-time_flag > interval:
                 time_flag = self.data['Time Stamp (ms)'][event_frame + frame_gap]
                 frame_list.append(event_frame + frame_gap)
             frame_gap += 1
         if type in self.data:
-            return self.data[type].sel(frame=frame_list) , event_frame,event_frame+frame_gap
+            return self.data[type].sel(frame=frame_list) , event_frame,event_frame + frame_gap, integrity
         else:
             print("No %s data found in minian file" % (type))
             return None

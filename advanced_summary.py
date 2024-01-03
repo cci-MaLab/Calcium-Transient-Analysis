@@ -28,15 +28,17 @@ class advanced:
         for instance in self.dataInstances:
             timestamps = instance.get_timestep(action) # need to double check frame number or real time
             unit_ids = instance.A.keys()
-            print(timestamps)
+            # print(timestamps)
             for time in timestamps:
                 
-                delay = self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['preNum']
+                delay = 0-self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['preNum']
                 duration = self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['postNum']+ self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['preNum']
-                single_event, start_frame, end_frame = instance.events[action].get_interval_section(event_frame = time, duration = duration, delay = delay,interval = 200,type = 'C')
+                single_event, start_frame, end_frame,integrity = instance.events[action].get_interval_section(event_frame = time, duration = duration, delay = delay,interval = 200,type = 'C')
                 # start_time = time - self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['preNum']*1000
                 # end_time = time + self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['postNum']*1000
                 # feature = instance.data['C'].sel(frame = (start_time,end_time))
+                if integrity == False:
+                    continue
                 for uid in unit_ids:
                     single_feature = single_event.sel(unit_id = uid)
                     features.append(np.array(single_feature))

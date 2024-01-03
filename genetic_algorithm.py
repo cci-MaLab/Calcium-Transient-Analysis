@@ -2,9 +2,9 @@ import numpy as np
 from backend import DataInstance
 from advanced_summary import advanced
 
-DNA_PREBINNUM_SIZE = 5
-DNA_POSTBINNUM_SIZE = 5
-DNA_BINSIZE_SIZE = 10
+DNA_PREBINNUM_SIZE = 4
+DNA_POSTBINNUM_SIZE = 4
+DNA_BINSIZE_SIZE = 5
 POPULATION_SIZE = 10
 CROSS_RATE = 0.5
 MUTATION_RATE = 0.15
@@ -16,8 +16,10 @@ EVENT = 'RNFS'
 
 class Genetic_Algorithm:
     
-    def __init__(self,
-                 mice):
+    def __init__(
+            self,
+            mice
+    ):
         self.mice = mice
         pass
     #DNA [preBinNum,postBinNum,binSize]
@@ -27,16 +29,8 @@ class Genetic_Algorithm:
         di1= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D1/2023_05_05/11_02_42/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Coke demo
         di2= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/12.2022_Seventh_group/AA042_D1/2022_12_12/12_35_11/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Saline demo
         return di1, di2
-
-    def mice_demo():
-        di1= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D1/2023_05_05/11_02_42/Miniscope_2/S4/config.ini",['ALP','IALP','RNFS'] ) # Coke demo
-        di2= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/12.2022_Seventh_group/AA042_D1/2022_12_12/12_35_11/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Saline demo
-        di3= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D6/2023_05_10/09_49_50/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Coke demo
-        di4= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/03.2023_Eighth_group/AA048_D8/2023_03_13/12_27_08/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Saline demo
-        mice = [di1,di2,di3,di4]
-        return mice
     
-    def get_fitness(population,mice):
+    def get_fitness(self, population,mice):
         fitness = []
         preBinNum_DNA = population[:, 0 : DNA_PREBINNUM_SIZE]
         postBinNum_DNA = population[:, DNA_PREBINNUM_SIZE:DNA_PREBINNUM_SIZE + DNA_POSTBINNUM_SIZE]
@@ -54,7 +48,7 @@ class Genetic_Algorithm:
             fitness.append(score)
         return np.array(fitness)
 
-    def crossover(population, CROSSOVER_RATE=0.8):
+    def crossover(self, population, CROSSOVER_RATE=0.8):
         next_generation = []
         for parent1 in population:
             child  = parent1
@@ -65,13 +59,13 @@ class Genetic_Algorithm:
             next_generation.append(child)
         return np.array(next_generation)
 
-    def mutation(dna, mutation_rate):
+    def mutation(self, dna, mutation_rate):
         if np.random.rand() < MUTATION_RATE:
             mutate_point = np.random.randint(0, DNA_PREBINNUM_SIZE + DNA_POSTBINNUM_SIZE + DNA_BINSIZE_SIZE)
             dna[mutate_point] = dna[mutate_point] ^ 1
         return dna
 
-    def encoded_dna(preBinNum_input,postBinNum_input,binSize_input):
+    def encoded_dna(self, preBinNum_input,postBinNum_input,binSize_input):
         preBinNum = []
         postBinNum = []
         binSize = []
@@ -97,7 +91,7 @@ class Genetic_Algorithm:
 
         
 
-    def select(population,fitness):
+    def select(self, population,fitness):
         index = np.random.choice(np.arange(POPULATION_SIZE), size=POPULATION_SIZE, replace=True, p=(fitness) / (fitness.sum()))
         return population[index]
         
@@ -123,19 +117,24 @@ class Genetic_Algorithm:
         # binSize_input2 = int(input('Input binSize (0-19)'))
         # parentB = encoded_dna(preBinNum_input2,postBinNum_input2,binSize_input2)
 
-        mice = self.mice_demo()
         dna = self.encoded_dna(preBinNum_input,postBinNum_input,binSize_input)
         population = np.array([dna])
         for i in range(POPULATION_SIZE-1):
             population = np.append(population,[dna],axis = 0)
-
+        
         for i in range(MAX_GENERATION):
+            print("Generation: ",i)
+            print("Before:------")
+            print(population)
             population = self.crossover(population, CROSS_RATE)
             for j in range(POPULATION_SIZE):
                 population[j] = self.mutation(population[j],MUTATION_RATE)
-            fitness = self.get_fitness(population,mice)
+            print("After:------------")
+            print(population)
+            fitness = self.get_fitness(population,self.mice)
             population = self.select(population,fitness)
-        print(population) 
+            
+         
         # test SVM
         # advanced_calculator = advanced(preBinNum_input,postBinNum_input,binSize_input,mice)
         # score = advanced_calculator.generate_model()
