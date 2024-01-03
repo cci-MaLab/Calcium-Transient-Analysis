@@ -108,9 +108,16 @@ class Genetic_Algorithm:
         # di4= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/03.2023_Eighth_group/AA048_D8/2023_03_13/12_27_08/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Saline demo
 
         # init parents(user input)
-        preBinNum_input = int(input('Input preBinNum (0-9)'))
-        postBinNum_input = int(input('Input postBinNum (0-9)'))
-        binSize_input = int(input('Input binSize (0-19)'))
+        # preBinNum_input = int(input('Input preBinNum (0-9)'))
+        # postBinNum_input = int(input('Input postBinNum (0-9)'))
+        # binSize_input = int(input('Input binSize (0-19)'))
+
+
+        preBinNum_input = 1
+        postBinNum_input = 1
+        binSize_input = 5
+
+
         # parentA = encoded_dna(preBinNum_input,postBinNum_input,binSize_input)
         # preBinNum_input2 = int(input('Input preBinNum (0-9)'))
         # postBinNum_input2 = int(input('Input postBinNum (0-9)'))
