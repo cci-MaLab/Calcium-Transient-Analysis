@@ -92,6 +92,8 @@ class ExplorationWidget(QWidget):
         btn_algo_event.clicked.connect(self.update_peaks)
         btn_clear_events = QPushButton("Clear Selected Events")
         btn_clear_events.clicked.connect(self.clear_selected_events)
+        btn_create_event = QPushButton("Create Event")
+        btn_create_event.clicked.connect(self.create_event)
 
 
         # Populate cell list
@@ -171,6 +173,7 @@ class ExplorationWidget(QWidget):
         layout_plot_utility.addLayout(layout_auc)
         layout_plot_utility.addWidget(btn_algo_event)
         layout_plot_utility.addWidget(btn_clear_events)
+        layout_plot_utility.addWidget(btn_create_event)
         widget_plot_utility = QWidget()
         widget_plot_utility.setLayout(layout_plot_utility)
         widget_plot_utility.setMaximumWidth(250)
@@ -252,11 +255,10 @@ class ExplorationWidget(QWidget):
         if cell_ids:
             self.w_signals.scene().sigMouseClicked.connect(self.find_subplot)
             for i, id in enumerate(cell_ids):
-                # Check if Event data exists
-                p = PlotItemEnhanced(id=id)
-                self.w_signals.addItem(p, row=i, col=0)
                 data = self.session.data['C'].sel(unit_id=id).values
-                p.add_main_curve(data)
+                p = PlotItemEnhanced(data, id=id)
+                self.w_signals.addItem(p, row=i, col=0)
+                p.add_main_curve()
                 p.plotLine.setPos(self.scroll_video.value())
                 p.setTitle(f"Cell {id}")
                 if 'E' in self.session.data:
@@ -266,7 +268,7 @@ class ExplorationWidget(QWidget):
                     indices = np.split(indices, np.where(np.diff(indices) != 1)[0]+1)
                     # Now Split the indices into pairs of first and last indices
                     indices = [(indices_group[0], indices_group[-1]+1) for indices_group in indices]
-                    p.draw_event_curves(indices, data)
+                    p.draw_event_curves(indices)
 
 
 
@@ -371,7 +373,15 @@ class ExplorationWidget(QWidget):
         while self.w_signals.getItem(i,0) is not None:
             item = self.w_signals.getItem(i,0)
             if isinstance(item, PlotItemEnhanced):
-                item.clear_selected_events()
+                item.clear_selected_events_local()
+            i += 1
+
+    def create_event(self):
+        i = 0
+        while self.w_signals.getItem(i,0) is not None:
+            item = self.w_signals.getItem(i,0)
+            if isinstance(item, PlotItemEnhanced):
+                item.create_event_local()
             i += 1
 
     def update_peaks(self):
@@ -427,7 +437,7 @@ class ExplorationWidget(QWidget):
                 # Remove events
                 item.clear_event_curves()
                 # Plot spikes
-                item.draw_event_curves(spikes, C_signal)
+                item.draw_event_curves(spikes)
                 
                 
             i += 1
@@ -477,8 +487,9 @@ class ExplorationWidget(QWidget):
 
 
 class PlotItemEnhanced(PlotItem):
-    def __init__(self, **kwargs):
+    def __init__(self, C_signal, **kwargs):
         super(PlotItemEnhanced, self).__init__(**kwargs)
+        self.C_signal = C_signal
         self.id = kwargs["id"] if "id" in kwargs else None
         self.plotLine = InfiniteLine(pos=0, angle=90, pen='g')
         self.addItem(self.plotLine)
@@ -492,16 +503,16 @@ class PlotItemEnhanced(PlotItem):
                 if item.is_event:
                     self.removeItem(item)
 
-    def draw_event_curves(self, spikes, C_signal):
+    def draw_event_curves(self, spikes):
         for beg, end in spikes:
-            event_curve = PlotCurveItemEnhanced(np.arange(beg, end), C_signal[beg:end], pen='r', is_event=True, main_plot=self)
+            event_curve = PlotCurveItemEnhanced(np.arange(beg, end), self.C_signal[beg:end], pen='r', is_event=True, main_plot=self)
             self.addItem(event_curve)
 
-    def add_main_curve(self, data):
-        main_curve = PlotCurveItemEnhanced(np.arange(len(data)), data, pen='w', is_event=False)
+    def add_main_curve(self):
+        main_curve = PlotCurveItemEnhanced(np.arange(len(self.C_signal)), self.C_signal, pen='w', is_event=False)
         self.addItem(main_curve)
 
-    def clear_selected_events(self):
+    def clear_selected_events_local(self):
         for item in self.selected_events:
             self.removeItem(item)
         self.selected_events.clear()
@@ -511,7 +522,6 @@ class PlotItemEnhanced(PlotItem):
         # Map to this items coordinates
         point = event.pos()
         x, y = point.x(), point.y()
-        print(str(x) + ":::" + str(y))
         # Draw an x at the point
         if len(self.clicked_points) == 2:
             for point in self.clicked_points:
@@ -521,6 +531,66 @@ class PlotItemEnhanced(PlotItem):
         point = ScatterPlotItem([x], [y], pen='b', symbol='x', size=10)
         self.addItem(point)
         self.clicked_points.append(point)
+        
+    def create_event_local(self):
+        if len(self.clicked_points) == 2:
+            x1 = self.clicked_points[0].data[0][0]
+            x2 = self.clicked_points[1].data[0][0]
+            # Flip x1 and x2 if x1 is greater than x2
+            if x1 > x2:
+                x1, x2 = x2, x1
+            # Check if any of the x values have been extended to avoid unnecessary computation
+            extended_x1 = False
+            extended_x2 = False
+            # Now check the other events to see if they overlap
+            for item in self.listDataItems():
+                if isinstance(item, PlotCurveItemEnhanced):
+                    if item.is_event:
+                        x1_temp = item.getData()[0].min()
+                        x2_temp = item.getData()[0].max()
+                        # Check if the two events overlap
+                        if x1_temp <= x1 <= x2_temp or x1_temp <= x2 <= x2_temp:
+                            # Extend the x values if necessary
+                            if not extended_x1:
+                                if x1_temp < x1:
+                                    x1 = x1_temp
+                                    extended_x1 = True
+                            if not extended_x2:
+                                if x2_temp > x2:
+                                    x2 = x2_temp
+                                    extended_x2 = True
+                            # Remove the event
+                            self.removeItem(item)
+                            # Remove the event from the selected events
+                            self.selected_events.discard(item)
+                        # if temp_x1 is greater than x2 then we can break
+                        if x1_temp > x2:
+                            break
+                if extended_x1 and extended_x2:
+                    break
+            # If either hasn't been extended then we need to find the local minima and maxima
+            x1, x2 = round(x1), round(x2)
+            if not extended_x1:
+                # Just grab the lowest point within 20 frames of x1
+                lower_bound = x1 - 20 if x1 - 20 >= 0 else 0
+                upper_bound = x1 + 20 if x1 + 20 <= len(self.C_signal) else len(self.C_signal)
+                x1 = np.argmin(self.C_signal[lower_bound:upper_bound]) + lower_bound
+            if not extended_x2:
+                # Just grab the highest point within 20 frames of x2
+                lower_bound = x2 - 20 if x2 - 20 >= 0 else 0
+                upper_bound = x2 + 20 if x2 + 20 <= len(self.C_signal) else len(self.C_signal)
+                x2 = np.argmax(self.C_signal[lower_bound:upper_bound]) + lower_bound
+            # Now we can draw the event
+            event_curve = PlotCurveItemEnhanced(np.arange(x1, x2+1), self.C_signal[x1:x2+1], pen='r', is_event=True, main_plot=self)
+            self.addItem(event_curve)
+            
+            
+
+
+        for point in self.clicked_points:
+            self.removeItem(point)
+        self.clicked_points = []
+
 
 
 
@@ -535,13 +605,14 @@ class PlotCurveItemEnhanced(PlotCurveItem):
         if self.is_event:
             self.sigClicked.connect(self.clicked)
     
-    def clicked(self, event):
-        self.selected = not self.selected
-        if self.selected:
-            self.setPen('b')
-            self.main_plot.selected_events.add(self)
-        else:
-            self.setPen('r')
-            self.main_plot.selected_events.remove(self)
+    def clicked(self, _, event):
+        if not event.double():
+            self.selected = not self.selected
+            if self.selected:
+                self.setPen('b')
+                self.main_plot.selected_events.add(self)
+            else:
+                self.setPen('r')
+                self.main_plot.selected_events.remove(self)
 
 
