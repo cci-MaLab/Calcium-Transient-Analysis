@@ -1,37 +1,52 @@
 import numpy as np
 from backend import DataInstance
 from advanced_summary import advanced
+from traditional_summary import calculations
+import random
 
 DNA_PREBINNUM_SIZE = 4
 DNA_POSTBINNUM_SIZE = 4
 DNA_BINSIZE_SIZE = 5
-POPULATION_SIZE = 10
-CROSS_RATE = 0.5
-MUTATION_RATE = 0.15
+POPULATION_SIZE = 20
+
+
 DNA_PREBINNUM_BOUND = [0,9]
 DNA_POSTBINNUM_BOUND = [0,9]
 DNA_BINSIZE_BOUND = [0,19]
-EVENT = 'RNFS'
+
 
 
 class Genetic_Algorithm:
     
     def __init__(
             self,
-            mice
+            mice,
+            max_generation = 50,
+            cross_rate = 0.5,
+            mutation_rate = 0.15,
+            event = 'RNFS'
     ):
         self.mice = mice
+        self.max_generation = max_generation
+        self.cross_rate = cross_rate
+        self.mutation_rate = mutation_rate
+        self.event = event
         pass
     #DNA [preBinNum,postBinNum,binSize]
 
+    def decoded_dna(self, population):
+        preBinNum_DNA = population[:, 0 : DNA_PREBINNUM_SIZE]
+        postBinNum_DNA = population[:, DNA_PREBINNUM_SIZE:DNA_PREBINNUM_SIZE + DNA_POSTBINNUM_SIZE]
+        binSize_DNA = population[:, DNA_PREBINNUM_SIZE + DNA_POSTBINNUM_SIZE : ]
+        preBinNum = preBinNum_DNA.dot(2 ** np.arange(DNA_PREBINNUM_SIZE)[::-1])
+        postBinNum = postBinNum_DNA.dot(2 ** np.arange(DNA_POSTBINNUM_SIZE)[::-1])
+        binSize = binSize_DNA.dot(2 ** np.arange(DNA_BINSIZE_SIZE)[::-1])
+        return preBinNum,postBinNum,binSize
 
-    def choose_mice():# demo
-        di1= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D1/2023_05_05/11_02_42/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Coke demo
-        di2= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/12.2022_Seventh_group/AA042_D1/2022_12_12/12_35_11/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Saline demo
-        return di1, di2
     
     def get_fitness(self, population,mice):
         fitness = []
+        final_features_list = []
         preBinNum_DNA = population[:, 0 : DNA_PREBINNUM_SIZE]
         postBinNum_DNA = population[:, DNA_PREBINNUM_SIZE:DNA_PREBINNUM_SIZE + DNA_POSTBINNUM_SIZE]
         binSize_DNA = population[:, DNA_PREBINNUM_SIZE + DNA_POSTBINNUM_SIZE : ]
@@ -41,12 +56,13 @@ class Genetic_Algorithm:
         print(preBinNum)
         print(postBinNum)
         print(binSize)
-        RNFS_time = mice[0].events[EVENT].timesteps
+        RNFS_time = mice[0].events[self.event].timesteps
         for i in range(len(population)):
             advanced_calculator = advanced(preBinNum[i],postBinNum[i],binSize[i],mice)
-            score = advanced_calculator.generate_model()
+            score,final_features,labels = advanced_calculator.generate_model()
             fitness.append(score)
-        return np.array(fitness)
+            final_features_list.append(final_features)
+        return np.array(fitness),final_features_list
 
     def crossover(self, population, CROSSOVER_RATE=0.8):
         next_generation = []
@@ -60,7 +76,7 @@ class Genetic_Algorithm:
         return np.array(next_generation)
 
     def mutation(self, dna, mutation_rate):
-        if np.random.rand() < MUTATION_RATE:
+        if np.random.rand() < self.mutation_rate:
             mutate_point = np.random.randint(0, DNA_PREBINNUM_SIZE + DNA_POSTBINNUM_SIZE + DNA_BINSIZE_SIZE)
             dna[mutate_point] = dna[mutate_point] ^ 1
         return dna
@@ -95,74 +111,37 @@ class Genetic_Algorithm:
         index = np.random.choice(np.arange(POPULATION_SIZE), size=POPULATION_SIZE, replace=True, p=(fitness) / (fitness.sum()))
         return population[index]
         
-
+    def output_results(self, population, fitness,features, number:int = 5):
+        index = np.argsort(fitness)[:number]
+        return population[index],features[index,:]
 
     def excute(self):
-
-        MAX_GENERATION = 50
-
-        # test demo
-        # di1= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D1/2023_05_05/11_02_42/Miniscope_2/S4/config.ini",['ALP','IALP','RNFS'] ) # Coke demo
-        # di2= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/12.2022_Seventh_group/AA042_D1/2022_12_12/12_35_11/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Saline demo
-        # di3= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D6/2023_05_10/09_49_50/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Coke demo
-        # di4= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/03.2023_Eighth_group/AA048_D8/2023_03_13/12_27_08/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Saline demo
-
-        # init parents(user input)
-        # preBinNum_input = int(input('Input preBinNum (0-9)'))
-        # postBinNum_input = int(input('Input postBinNum (0-9)'))
-        # binSize_input = int(input('Input binSize (0-19)'))
-
-
-        preBinNum_input = 1
-        postBinNum_input = 1
-        binSize_input = 5
-
-
-        # parentA = encoded_dna(preBinNum_input,postBinNum_input,binSize_input)
-        # preBinNum_input2 = int(input('Input preBinNum (0-9)'))
-        # postBinNum_input2 = int(input('Input postBinNum (0-9)'))
-        # binSize_input2 = int(input('Input binSize (0-19)'))
-        # parentB = encoded_dna(preBinNum_input2,postBinNum_input2,binSize_input2)
-
-        dna = self.encoded_dna(preBinNum_input,postBinNum_input,binSize_input)
-        population = np.array([dna])
-        for i in range(POPULATION_SIZE-1):
-            population = np.append(population,[dna],axis = 0)
-        
-        for i in range(MAX_GENERATION):
+        population = np.random.randint(0,2,(POPULATION_SIZE,DNA_PREBINNUM_SIZE+DNA_POSTBINNUM_SIZE+DNA_BINSIZE_SIZE))
+        for i in range(self.max_generation):
             print("Generation: ",i)
             print("Before:------")
             print(population)
-            population = self.crossover(population, CROSS_RATE)
+            population = self.crossover(population, self.cross_rate)
             for j in range(POPULATION_SIZE):
-                population[j] = self.mutation(population[j],MUTATION_RATE)
+                population[j] = self.mutation(population[j],self.mutation_rate)
             print("After:------------")
             print(population)
-            fitness = self.get_fitness(population,self.mice)
+            fitness, f_features = self.get_fitness(population,self.mice)
             population = self.select(population,fitness)
-            
+        examples = []
+        good_number = 5
+        best_window, features = self.output_results(population,fitness,f_features,good_number)
+        preBinNum,postBinNum,binSize = self.decoded_dna(best_window)
+        for i in range(good_number):
+            calculation = calculations(self.mice,preBinNum[i],postBinNum[i],binSize[i],self.event)   
+            AUCs = calculation.auc()
+            number_of_samples = 20
+            example_features = random.sample(features,number_of_samples)
+            examples.append(example_features)
+        return preBinNum,postBinNum,binSize,examples,AUCs
+            #print traces and footprint
          
-        # test SVM
-        # advanced_calculator = advanced(preBinNum_input,postBinNum_input,binSize_input,mice)
-        # score = advanced_calculator.generate_model()
-        # 
-        #     select()
 
-
-
-        
-        # di1,di2 = choose_mice()
-        # symbol = 1
-        # population = [parentA,parentB]
-        # while(symbol==1):
-        #     while(len(population) < POPULATION_SIZE):
-
-                
-        #         continue  
-        #     symbol = input("If you want to quit, input 0 else input 1")
-
-    # if __name__ == "__main__":
-    #     main()
     ##steps : select mouse first
     ## step 2 : fixed the parameter
     # step 3 : machine learning

@@ -5,9 +5,17 @@ from backend import DataInstance
 class calculations:
     def __init__(
         self,
-        events:list
+        mice,
+        preBinNum,
+        postBinNum,
+        binSize, 
+        action
         ) -> None:
-        self.events = events
+        self.mice = mice
+        self.preBinNum = preBinNum
+        self.postBinNum = postBinNum
+        self.binSize = binSize
+        self.action = action
         pass
 
     def auc(self):
@@ -16,9 +24,17 @@ class calculations:
         after update the timewindow part, I will update the AUC for each bin
         '''
         auc = []
-        for i in self.events:
-            sum = i['C'].sum()
-            auc.append(sum)
+        mouse = []
+        bins = []      
+        for di in self.mice:
+            timestamps = di.get_timestep(self.action)
+            for time in timestamps:    
+                bin_list = di.events[self.action].get_binList(time, self.preBinNum,self.postBinNum,self.binSize)
+                for b in bin_list:
+                    sum = b['C'].sum()
+                    bins.append(sum)
+                mouse.append(bins)
+            auc.append(mouse)
         return auc
             
     def action_num(self):

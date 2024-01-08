@@ -33,7 +33,7 @@ class advanced:
                 
                 delay = 0-self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['preNum']
                 duration = self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['postNum']+ self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['preNum']
-                single_event, start_frame, end_frame,integrity = instance.events[action].get_interval_section(event_frame = time, duration = duration, delay = delay,interval = 200,type = 'C')
+                single_event, start_frame, end_frame,integrity = instance.events[action].get_interval_section(event_frame = time, duration = duration, delay = delay,interval = 100,type = 'C')
                 # start_time = time - self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['preNum']*1000
                 # end_time = time + self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['postNum']*1000
                 # feature = instance.data['C'].sel(frame = (start_time,end_time))
@@ -64,4 +64,4 @@ class advanced:
         clf.fit(feature_train, label_train)
         clf.score(feature_test,lable_test)
         print(clf.score(feature_test,lable_test))
-        return clf.score(feature_test,lable_test)
+        return clf.score(feature_test,lable_test), final_features,labels
