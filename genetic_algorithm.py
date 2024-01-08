@@ -20,19 +20,29 @@ class Genetic_Algorithm:
     
     def __init__(
             self,
-            mice,
-            max_generation = 50,
+            mice = None,
+            max_generation = 5,
             cross_rate = 0.5,
             mutation_rate = 0.15,
             event = 'RNFS'
     ):
         self.mice = mice
+        if(mice is None):
+            self.mice = self.mice_demo()
         self.max_generation = max_generation
         self.cross_rate = cross_rate
         self.mutation_rate = mutation_rate
         self.event = event
         pass
     #DNA [preBinNum,postBinNum,binSize]
+
+    def mice_demo(self):
+        di1= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D1/2023_05_05/11_02_42/Miniscope_2/S4/config.ini",['ALP','IALP','RNFS'] ) # Coke demo
+        di2= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/12.2022_Seventh_group/AA042_D1/2022_12_12/12_35_11/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Saline demo
+        di3= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D6/2023_05_10/09_49_50/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Coke demo
+        di4= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/03.2023_Eighth_group/AA048_D8/2023_03_13/12_27_08/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Saline demo
+        mice = [di1,di2,di3,di4]
+        return mice
 
     def decoded_dna(self, population):
         preBinNum_DNA = population[:, 0 : DNA_PREBINNUM_SIZE]
