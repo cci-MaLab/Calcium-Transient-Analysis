@@ -115,7 +115,7 @@ class Genetic_Algorithm:
         index = np.argsort(fitness)[:number]
         return population[index],features[index,:]
 
-    def excute(self):
+    def execute(self):
         population = np.random.randint(0,2,(POPULATION_SIZE,DNA_PREBINNUM_SIZE+DNA_POSTBINNUM_SIZE+DNA_BINSIZE_SIZE))
         for i in range(self.max_generation):
             print("Generation: ",i)
