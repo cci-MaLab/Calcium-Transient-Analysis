@@ -194,10 +194,11 @@ class UpdateDialog(QDialog):
         return result
 
 class ToolWidget(QWidget):
-    def __init__(self, event_defaults, parent=None):
+    def __init__(self, main_ref, event_defaults, parent=None):
         super().__init__(parent)
         self.all_cells = None
         self.event_defaults = event_defaults
+        self.main_ref = main_ref
 
         label_cluster_select = QLabel()
         label_cluster_select.setText("Pick number of clusters:")
@@ -379,20 +380,16 @@ class ToolWidget(QWidget):
         result["distance_metric"] = self.distance_metric_combo.currentText()
         
         
-        root_parent = self.parent().parent()
-        root_parent.updateCluster(result)
+        self.main_ref.updateCluster(result)
 
     def inspect(self, event):
-        root_parent = self.parent().parent()
-        root_parent.startInspection()
+        self.main_ref.startInspection()
 
     def delete(self, event):
-        root_parent = self.parent().parent()
-        root_parent.deleteSelection()
+        self.main_ref.deleteSelection()
 
     def explore(self, event):
-        root_parent = self.parent().parent()
-        root_parent.startExploration()
+        self.main_ref.startExploration()
     
     def update(self, result, cell_list):
         self.all_cells = cell_list
@@ -525,14 +522,16 @@ class GAWindowWidget(QWidget):
 
         # Table of top 5 values
         layout_table = QVBoxLayout()
-        label_table = QLabel(f"Top 5 Parameters for {ga.event}")
+        label_table = QLabel(f"Top {self.length} Parameters for {ga.event}")
         table = QTableWidget()
+        table.setRowCount(self.length)
+        table.setColumnCount(5)
         table.verticalHeader().setVisible(False)
         data = {"Rank": [f"Rank {i+1}" for i in range(self.length)],
-                "Fitness": ["NA" for i in range(self.length)],
-                "PreBinNum": [ga.preBinNum[i] for i in range(self.length)],
-                "PostBinNum": [ga.postBinNum[i] for i in range(self.length)],
-                "Bin Size": [ga.binSize[i] for i in range(self.length)]}
+                "Fitness": ['{:.4f}'.format(ga._best_fitness[i].item()) for i in range(self.length)],
+                "PreBinNum": [str(ga.preBinNum[i].item()) for i in range(self.length)],
+                "PostBinNum": [str(ga.postBinNum[i].item()) for i in range(self.length)],
+                "Bin Size": [str(ga.binSize[i].item()) for i in range(self.length)]}
         horHeaders = []
         for n, key in enumerate(data.keys()):
             horHeaders.append(key)
@@ -568,11 +567,13 @@ class GAWindowWidget(QWidget):
         for i in range(5):
             for j in range(4):
                 cocaine_item = self.cocaine_view.addPlot(row=i+1, col=j)
-                cocaine_item.plot(cocaine_traces[i*4+j])
+                cocaine_item.plot(self.ga.xvalues[index]["Cocaine"][i*4+j], cocaine_traces[i*4+j])
                 saline_item = self.saline_view.addPlot(row=i+1, col=j)
-                saline_item.plot(saline_traces[i*4+j])
-
-                
+                saline_item.plot(self.ga.xvalues[index]["Saline"][i*4+j], saline_traces[i*4+j])
+    
+    def closeEvent(self, event):
+        super(GAWindowWidget, self).closeEvent(event)
+        self.main_ref.removeWindow(self.name)                
 
         
 
@@ -638,9 +639,9 @@ class LoadingDialog(QDialog):
 
 
 class VisualizeClusterWidget(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, main_ref, parent=None):
         super().__init__(parent)
-
+        self.main_ref = main_ref
         self.layout = QVBoxLayout()
         self.groups = {}
 
@@ -655,15 +656,16 @@ class VisualizeClusterWidget(QWidget):
     
     def addVisualization(self, group, mouseID, image, session, day):
         if group not in self.groups:
-            self.groups[group] = GroupGridLayout(group)
+            self.groups[group] = GroupGridLayout(self.main_ref, group)
             self.layout.addWidget(self.groups[group])
         
         self.groups[group].addVisualization(mouseID, image, session, day)
 
 
 class GroupGridLayout(QWidget):
-    def __init__(self, group:str, parent=None):
+    def __init__(self, main_ref, group:str, parent=None):
         super().__init__(parent)
+        self.main_ref = main_ref
         self.group = group
         self.layout = QHBoxLayout()
 
@@ -673,7 +675,7 @@ class GroupGridLayout(QWidget):
 
     def addVisualization(self, mouseID, image, session, day):
         if mouseID not in self.mice:
-            self.mice[mouseID] = MouseGrid(mouseID, self.group)
+            self.mice[mouseID] = MouseGrid(self.main_ref, mouseID, self.group)
             self.layout.addWidget(self.mice[mouseID])
         self.mice[mouseID].addVisualization(image, session, day)
     
@@ -700,8 +702,9 @@ def deleteItemsOfLayout(layout):
                 deleteItemsOfLayout(item.layout())
 
 class MouseGrid(QWidget):
-    def __init__(self, mouseID:str, group:str, parent=None):
+    def __init__(self, main_ref, mouseID:str, group:str, parent=None):
         super().__init__(parent)
+        self.main_ref = main_ref
         self.mouseID = mouseID
         self.group = group
         self.days = []
@@ -716,7 +719,7 @@ class MouseGrid(QWidget):
         
     
     def addVisualization(self, image, session, day):
-        imageViewer = Viewer(image, self.group, self.mouseID, session, day)
+        imageViewer = Viewer(self.main_ref, image, self.group, self.mouseID, session, day)
         day = int(day[1:])
         session = int(session[1:])
         self.images[f"{session}:{day}"] = imageViewer
@@ -801,11 +804,12 @@ class MouseGrid(QWidget):
 
 
 class Viewer(QGraphicsView):
-    def __init__(self, image, group, mouseID, session, day, parent=None):
+    def __init__(self, main_ref, image, group, mouseID, session, day, parent=None):
         super().__init__(parent)
         self.setScene(QGraphicsScene(self))
         self.m_pixmapItem = self.scene().addPixmap(QPixmap())
         self.setAlignment(Qt.AlignCenter)
+        self.main_ref = main_ref
 
 
         self.p = self.palette()
@@ -854,8 +858,7 @@ class Viewer(QGraphicsView):
         self.selected = True
 
     def updateParams(self, event):
-        root_parent = self.parent().parent().parent().parent().parent()
-        root_parent.activateParams(self)
+        self.main_ref.activateParams(self)
         
     def updateVisualization(self, image):
         ov = (image*255).astype('uint8')
@@ -863,8 +866,7 @@ class Viewer(QGraphicsView):
         self.pixmap = QPixmap.fromImage(qimg)
 
     def inspect(self, event):
-        root_parent = self.parent().parent().parent().parent().parent()
-        root_parent.startInspection(self)
+        self.main_ref.startInspection(self)
 
     def __eq__(self, other):
         return (self.group, self.session, self.day, self.mouseID) == (other.group, other.session, other.day, other.mouseID)
@@ -891,7 +893,7 @@ class GridQLabel(QLabel):
 
 
 class InspectionWidget(QWidget):
-    def __init__(self, session, main_win_ref, parent=None):
+    def __init__(self, session, main_ref, parent=None):
         super().__init__(parent)
         self.session = session
         self.total_neurons = len(self.session.clustering_result["all"]["ids"]) - len(self.session.outliers_list)
@@ -900,7 +902,7 @@ class InspectionWidget(QWidget):
         self.displaying = "None"
         self.current_labels = []
         self.name = f"{session.mouseID} {session.day} {session.session} Inspection"
-        self.main_window_ref = main_win_ref
+        self.main_ref = main_ref
 
         # Brushes
         self.brushes_lines = {"ALP": pg.mkColor(255, 0, 0, 255),
@@ -1198,7 +1200,7 @@ class InspectionWidget(QWidget):
 
     def closeEvent(self, event):
         super(InspectionWidget, self).closeEvent(event)
-        self.main_window_ref.removeWindow(self.name)
+        self.main_ref.removeWindow(self.name)
 
     def refresh(self):
         self.imv.setImage(self.session.clustering_result['all']['image'])

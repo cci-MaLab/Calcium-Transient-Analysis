@@ -59,7 +59,7 @@ class MainWindow(QMainWindow):
 
         # Tool Widgets        
         self.current_selection = None
-        self.w_tools = ToolWidget(self.event_defaults)
+        self.w_tools = ToolWidget(self, self.event_defaults)
         self.ga_tools = GAToolWidget(self)
         self.w_tools.setEnabled(False)
 
@@ -68,7 +68,7 @@ class MainWindow(QMainWindow):
         layout_cluster = QVBoxLayout()
         tabs = QTabWidget()
         tabs.setFixedWidth(320)
-        self.cluster_viz = VisualizeClusterWidget()
+        self.cluster_viz = VisualizeClusterWidget(self)
 
         tabs.addTab(self.w_tools, "Clustering and Exploration")
         tabs.addTab(self.ga_tools, "Genetic Algorithm")
@@ -131,7 +131,8 @@ class MainWindow(QMainWindow):
         name = f"{instance.mouseID} {instance.day} {instance.session} Exploration"
 
         if name not in self.windows:
-            wid = ExplorationWidget(instance, self)
+            wid = ExplorationWidget(instance, name, self)
+            wid.setWindowTitle(name)
             self.windows[name] = wid
             wid.show()
 

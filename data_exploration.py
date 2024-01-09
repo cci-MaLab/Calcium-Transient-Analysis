@@ -13,9 +13,10 @@ from pyqtgraph import InfiniteLine
 from scipy.signal import find_peaks
 
 class ExplorationWidget(QWidget):
-    def __init__(self, session, main_window_ref, timestamps=None, parent=None):
+    def __init__(self, session, name, main_window_ref, timestamps=None, parent=None):
         super().__init__(parent)
         self.session = session
+        self.name = name
         self.main_window_ref = main_window_ref
         self.timestamps = timestamps
 
