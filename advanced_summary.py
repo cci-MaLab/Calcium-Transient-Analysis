@@ -25,11 +25,11 @@ class advanced:
         # features_group = []
         features = []
         labels = []
-        # traces = {}
-        traces = []
-        for instance in self.dataInstances:
+        traces = {}
+        # traces = []
+        for instance_index,instance in enumerate(self.dataInstances):
             timestamps = instance.get_timestep(action) # need to double check frame number or real time
-            print(instance.group)
+            print(instance_index,':',instance.group)
             unit_ids = instance.A.keys()
             # print(timestamps)
             for time in timestamps:
@@ -45,11 +45,12 @@ class advanced:
                 for uid in unit_ids:
                     single_feature = single_event_feature.sel(unit_id = uid)
                     single_trace = single_event_trace.sel(unit_id = uid)
-                    features.append(np.array(single_feature))
-                    
+                    features.append(np.array(single_feature))                    
                     labels.append(instance.group)
-                    traces.append(single_trace)
-                    # traces[instance.group].append(single_trace)
+                    # traces.append(single_trace)
+                    if instance.group not in traces.keys():
+                        traces[instance.group] = []
+                    traces[instance.group].append(single_trace)
             # features_group.append(features)
         return features, labels, traces
 

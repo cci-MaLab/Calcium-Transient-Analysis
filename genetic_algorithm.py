@@ -7,7 +7,7 @@ import random
 DNA_PREBINNUM_SIZE = 4
 DNA_POSTBINNUM_SIZE = 4
 DNA_BINSIZE_SIZE = 5
-POPULATION_SIZE = 3
+POPULATION_SIZE = 10
 
 
 DNA_PREBINNUM_BOUND = [0,9]
@@ -36,15 +36,10 @@ class Genetic_Algorithm:
 
     def mice_demo(self):
         di1= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D1/2023_05_05/11_02_42/Miniscope_2/S4/config.ini",['ALP','IALP','RNFS'] ) # Coke demo
-        di1.gourp = 'Cocaine'
         di2= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/12.2022_Seventh_group/AA042_D1/2022_12_12/12_35_11/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Saline demo
-        di2.group = 'Saline'
         di3= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D6/2023_05_10/09_49_50/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Coke demo
-        di3.group = 'Cocaine'
         di4= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/03.2023_Eighth_group/AA048_D8/2023_03_13/12_27_08/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Saline demo
-        di4.group = 'Saline'
         mice = [di1,di2,di3,di4]
-        print(di1.group)
         return mice
 
     def decoded_dna(self, population):
@@ -149,26 +144,32 @@ class Genetic_Algorithm:
         AUCs = []
         good_number = 5
         number_of_samples = 20
-        best_windows, features = self.output_results(population,fitness,traces,good_number)
+        best_windows, best_traces = self.output_results(population,fitness,traces,good_number)
         preBinNum,postBinNum,binSize = self.decoded_dna(best_windows)
-        # for i in range(good_number):
-            # example_features = {}
+        print('w:',len(best_windows),'t:',len(best_traces))
+        for i in range(good_number):
+            print(i)
+            example_features = {}
             # calculation = calculations(self.mice,preBinNum[i],postBinNum[i],binSize[i],self.event)   
             # auc = calculation.auc()
-            # example_features['Cocaine'] = random.sample(features['Cocaine'],number_of_samples)
-            # example_features['Saline'] = random.sample(features['Saline'],number_of_samples)
-            # examples.append(example_features)
+            example_features['Cocaine'] = []
+            example_features['Saline'] = []
+            for j in list(np.random.randint(low = 0, high = len(best_traces[i]['Cocaine'])-1,size = number_of_samples)):
+                example_features['Cocaine'].append(best_traces[i]['Cocaine'][j])
+            for j in list(np.random.randint(low = 0, high = len(best_traces[i]['Saline'])-1,size = number_of_samples)):
+                example_features['Saline'].append(best_traces[i]['Saline'][j])
+            examples.append(example_features)
             # AUCs.append(auc)
         self.preBinNum = preBinNum
         self.postBinNum = postBinNum
         self.binSize = binSize
-        # self.examples = examples
+        self.examples = examples
         # self.AUCs = AUCs
         # return preBinNum,postBinNum,binSize
             #print traces and footprint
          
     def return_results(self,rank:int):
-        return self.preBinNum[rank],self.postBinNum[rank],self.binSize[rank]
+        return self.preBinNum[rank],self.postBinNum[rank],self.binSize[rank], self.examples[rank]
 
     ##steps : select mouse first
     ## step 2 : fixed the parameter
