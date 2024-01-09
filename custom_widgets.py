@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLi
                             QCheckBox, QGridLayout, QFrame, QGraphicsView, QGraphicsScene, QPushButton, 
                             QComboBox, QListWidget, QAbstractItemView, QSplitter, QApplication, QStyleFactory,
                             QAction, QFileDialog)
-from PyQt5.QtGui import (QIntValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush, QFont)
+from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush, QFont)
 from PyQt5.QtCore import Qt
 import pyqtgraph as pg
 from pyqtgraph import PlotItem
@@ -15,6 +15,7 @@ from PyQt5.QtGui import QPixmap
 import os
 import bisect
 from backend import DataInstance
+from genetic_algorithm import GeneticAlgorithm
 
 
 
@@ -208,26 +209,19 @@ class ToolWidget(QWidget):
         self.button = QPushButton("Update")
         self.button.setStyleSheet("background-color : green")
         self.button.setEnabled(False)
-        self.button.setFixedWidth(120)
         self.button.clicked.connect(self.get_result)
 
         self.button_inspect = QPushButton("Inspect Cluster")
         self.button_inspect.setStyleSheet("background-color : green")
-        self.button_inspect.setFixedWidth(120)
         self.button_inspect.clicked.connect(self.inspect)
 
         self.button_delete = QPushButton("Delete Cluster")
         self.button_delete.setStyleSheet("background-color : red")
-        self.button_delete.setFixedWidth(120)
         self.button_delete.clicked.connect(self.delete)
 
         self.button_explore = QPushButton("Data Exploration")
         self.button_explore.setStyleSheet("background-color : blue")
-        self.button_explore.setFixedWidth(120)
         self.button_explore.clicked.connect(self.explore)
-
-
-        self.setFixedWidth(300)
 
         self.ALP_chkbox = QCheckBox("ALP")
         self.ALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_chkbox, self.ALP_param))
@@ -315,7 +309,6 @@ class ToolWidget(QWidget):
 
 
         layout_tools = QHBoxLayout()
-        layout_tools.addStretch()
         layout_tools.addLayout(layout_sub)
 
 
@@ -443,6 +436,65 @@ class ToolWidget(QWidget):
         self.cluster_select.setCurrentIndex(result["no_of_clusters"] - 2)
 
 
+class GAToolWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # Max Generations
+        label_max_gen = QLabel("Max Generations:")
+        self.input_max_gen = QLineEdit("50")
+        onlyInt = QIntValidator()
+        self.input_max_gen.setValidator(onlyInt)
+        layout_max_gen = QHBoxLayout()
+        layout_max_gen.addWidget(label_max_gen)
+        layout_max_gen.addWidget(self.input_max_gen)
+
+        # Crossover Rate
+        label_cross_rate = QLabel("Crossover Rate:")
+        self.input_cross_rate = QLineEdit("0.5")
+        onlyFloat = QDoubleValidator()
+        self.input_cross_rate.setValidator(onlyFloat)
+        layout_cross_rate = QHBoxLayout()
+        layout_cross_rate.addWidget(label_cross_rate)
+        layout_cross_rate.addWidget(self.input_cross_rate)
+
+        # Mutation Rate
+        label_mut_rate = QLabel("Mutation Rate:")
+        self.input_mut_rate = QLineEdit("0.15")
+        self.input_mut_rate.setValidator(onlyFloat)
+        layout_mut_rate = QHBoxLayout()
+        layout_mut_rate.addWidget(label_mut_rate)
+        layout_mut_rate.addWidget(self.input_mut_rate)
+
+        # Event Type
+        label_event_type = QLabel("Event Type:")
+        self.dropdown_event_type = QComboBox()
+        self.dropdown_event_type.addItems(["ALP", "IALP", "RNFS", "ALP_Timeout"])
+        layout_event_type = QHBoxLayout()
+        layout_event_type.addWidget(label_event_type)
+        layout_event_type.addWidget(self.dropdown_event_type)
+
+        btn_start = QPushButton("Start Genetic Algorithm")
+        btn_start.clicked.connect(self.runGA)
+
+        layout = QVBoxLayout()
+        layout.addStretch()
+        layout.setDirection(3)
+        layout.addWidget(btn_start)
+        layout.addLayout(layout_event_type)
+        layout.addLayout(layout_mut_rate)
+        layout.addLayout(layout_cross_rate)
+        layout.addLayout(layout_max_gen)
+        self.setLayout(layout)
+
+    def runGA(self):
+        max_gen = int(self.input_max_gen.text())
+        cross_rate = float(self.input_cross_rate.text())
+        mut_rate = float(self.input_mut_rate.text())
+        event_type = self.dropdown_event_type.currentText()
+
+        ga = GeneticAlgorithm(None, max_gen, cross_rate, mut_rate, event_type)
+        
+        
 
 def hide_unhide(chkbox, param):
     if chkbox.isChecked():

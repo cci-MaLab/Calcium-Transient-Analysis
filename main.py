@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox, QAction,
-                            QVBoxLayout, QHBoxLayout, QWidget)
+                            QVBoxLayout, QHBoxLayout, QWidget, QTabWidget)
 from custom_widgets import (UpdateDialog, ParamDialog, VisualizeClusterWidget, Viewer, ToolWidget,
-                            InspectionWidget)
+                            InspectionWidget, GAToolWidget)
 import sys
 import os
 import json
@@ -60,16 +60,22 @@ class MainWindow(QMainWindow):
         # Tool Widgets        
         self.current_selection = None
         self.w_tools = ToolWidget(self.event_defaults)
+        self.ga_tools = GAToolWidget()
         self.w_tools.setEnabled(False)
 
-        # Layouts
+        # Layouts and tabs
         layout_central = QHBoxLayout()
         layout_cluster = QVBoxLayout()
+        tabs = QTabWidget()
+        tabs.setFixedWidth(320)
         self.cluster_viz = VisualizeClusterWidget()
+
+        tabs.addTab(self.w_tools, "Clustering and Exploration")
+        tabs.addTab(self.ga_tools, "Genetic Algorithm")
 
         layout_cluster.addWidget(self.cluster_viz)
         layout_central.addLayout(layout_cluster)
-        layout_central.addWidget(self.w_tools)
+        layout_central.addWidget(tabs)
 
         widget = QWidget()
         widget.setLayout(layout_central)

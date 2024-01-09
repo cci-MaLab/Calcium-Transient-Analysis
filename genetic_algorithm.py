@@ -33,8 +33,6 @@ class Genetic_Algorithm:
         self.cross_rate = cross_rate
         self.mutation_rate = mutation_rate
         self.event = event
-        pass
-    #DNA [preBinNum,postBinNum,binSize]
 
     def mice_demo(self):
         di1= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D1/2023_05_05/11_02_42/Miniscope_2/S4/config.ini",['ALP','IALP','RNFS'] ) # Coke demo
