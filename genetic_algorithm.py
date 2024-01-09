@@ -164,9 +164,11 @@ class Genetic_Algorithm:
         self.binSize = binSize
         # self.examples = examples
         # self.AUCs = AUCs
-        return preBinNum,postBinNum,binSize
+        # return preBinNum,postBinNum,binSize
             #print traces and footprint
          
+    def return_results(self,rank:int):
+        return self.preBinNum[rank],self.postBinNum[rank],self.binSize[rank]
 
     ##steps : select mouse first
     ## step 2 : fixed the parameter
