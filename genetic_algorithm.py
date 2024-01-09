@@ -164,13 +164,13 @@ class Genetic_Algorithm:
         self.postBinNum = postBinNum
         self.binSize = binSize
         self.examples = examples # Make sure they are all the same size in timeline
-        self.fitness = best_fitness
+        self._best_fitness = best_fitness
         # self.AUCs = AUCs
         # return preBinNum,postBinNum,binSize
             #print traces and footprint
          
     def return_results(self,rank:int):
-        return self.preBinNum[rank],self.postBinNum[rank],self.binSize[rank], self.fitness[rank], self.examples[rank]
+        return self.preBinNum[rank],self.postBinNum[rank],self.binSize[rank], self.best_fitness[rank], self.examples[rank]
 
     def return_x_values(self, rank:int):
         pass
