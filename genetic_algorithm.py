@@ -125,7 +125,7 @@ class Genetic_Algorithm:
         f_traces = []
         for i in index:
             f_traces.append(traces[i])
-        return population[index],f_traces
+        return population[index],fitness[index],f_traces
 
     def execute(self):
         population = np.random.randint(0,2,(POPULATION_SIZE,DNA_PREBINNUM_SIZE+DNA_POSTBINNUM_SIZE+DNA_BINSIZE_SIZE))
@@ -144,7 +144,7 @@ class Genetic_Algorithm:
         AUCs = []
         good_number = min(5, POPULATION_SIZE)
         number_of_samples = 20
-        best_windows, best_traces = self.output_results(population,fitness,traces,good_number)
+        best_windows, best_fitness,best_traces = self.output_results(population,fitness,traces,good_number)
         preBinNum,postBinNum,binSize = self.decoded_dna(best_windows)
         print('w:',len(best_windows),'t:',len(best_traces))
         for i in range(good_number):
@@ -164,12 +164,13 @@ class Genetic_Algorithm:
         self.postBinNum = postBinNum
         self.binSize = binSize
         self.examples = examples # Make sure they are all the same size in timeline
+        self.fitness = best_fitness
         # self.AUCs = AUCs
         # return preBinNum,postBinNum,binSize
             #print traces and footprint
          
     def return_results(self,rank:int):
-        return self.preBinNum[rank],self.postBinNum[rank],self.binSize[rank], self.examples[rank]
+        return self.preBinNum[rank],self.postBinNum[rank],self.binSize[rank], self.fitness[rank], self.examples[rank]
 
     def return_x_values(self, rank:int):
         pass
