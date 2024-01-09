@@ -26,6 +26,7 @@ class advanced:
         features = []
         labels = []
         traces = {}
+        framelines = {}
         # traces = []
         for instance_index,instance in enumerate(self.dataInstances):
             timestamps = instance.get_timestep(action) # need to double check frame number or real time
@@ -36,12 +37,14 @@ class advanced:
                 delay = 0-self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['preNum']
                 duration = self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['postNum']+ self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['preNum']
                 single_event_feature, start_frame, end_frame,integrity = instance.events[action].get_interval_section(event_frame = time, duration = duration, delay = delay,interval = 100,type = 'C')
+                if integrity == False:
+                    continue
                 single_event_trace, start_frame, end_frame = instance.events[action].get_section(event_frame = time, duration = duration, delay = delay,type = 'C')
+                frameline = list(range(start_frame-time,end_frame-time+1))
+                print('frameline:',len(frameline), 'event:',len(single_event_trace.coords['frame'].values))
                 # start_time = time - self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['preNum']*1000
                 # end_time = time + self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['postNum']*1000
                 # feature = instance.data['C'].sel(frame = (start_time,end_time))
-                if integrity == False:
-                    continue
                 for uid in unit_ids:
                     single_feature = single_event_feature.sel(unit_id = uid)
                     single_trace = single_event_trace.sel(unit_id = uid)
@@ -51,12 +54,15 @@ class advanced:
                     if instance.group not in traces.keys():
                         traces[instance.group] = []
                     traces[instance.group].append(single_trace)
+                    if instance.group not in framelines.keys():
+                        framelines[instance.group] = []
+                    framelines[instance.group].append(frameline)
             # features_group.append(features)
-        return features, labels, traces
+        return features, labels, traces,framelines
 
     def generate_model(self):
         # svm model
-        features, labels,traces = self.get_features()
+        features, labels,traces,framelines = self.get_features()
         min_l = len(features[0])
         for i in features:
             min_l = min(min_l,len(i))
@@ -72,4 +78,4 @@ class advanced:
         clf.fit(feature_train, label_train)
         clf.score(feature_test,lable_test)
         print(clf.score(feature_test,lable_test))
-        return clf.score(feature_test,lable_test), traces,labels
+        return clf.score(feature_test,lable_test), traces,framelines,labels

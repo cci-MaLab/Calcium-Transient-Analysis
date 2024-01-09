@@ -658,9 +658,7 @@ class CellClustering:
     def visualize_clusters(self, t):
         self.cluster_indices = fcluster(self.linkage_data, t=t, criterion='maxclust')
         
-        viridis = cm.get_cmap('jet', self.cluster_indices.max()+1)
-
-        
+        viridis = cm.get_cmap('jet', self.cluster_indices.max()+1)        
         image_shape = self.A[list(self.A.keys())[0]].values.shape
         final_image = np.zeros((image_shape[0], image_shape[1], 3))
         

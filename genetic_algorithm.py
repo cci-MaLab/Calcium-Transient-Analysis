@@ -55,6 +55,7 @@ class Genetic_Algorithm:
     def get_fitness(self, population,mice):
         fitness = []
         all_traces = []
+        all_framelines = []
         preBinNum_DNA = population[:, 0 : DNA_PREBINNUM_SIZE]
         postBinNum_DNA = population[:, DNA_PREBINNUM_SIZE:DNA_PREBINNUM_SIZE + DNA_POSTBINNUM_SIZE]
         binSize_DNA = population[:, DNA_PREBINNUM_SIZE + DNA_POSTBINNUM_SIZE : ]
@@ -67,10 +68,11 @@ class Genetic_Algorithm:
         RNFS_time = mice[0].events[self.event].timesteps
         for i in range(len(population)):
             advanced_calculator = advanced(preBinNum[i],postBinNum[i],binSize[i],mice)
-            score,traces,labels = advanced_calculator.generate_model()
+            score,traces,framelines,labels = advanced_calculator.generate_model()
             fitness.append(score)
             all_traces.append(traces)
-        return np.array(fitness), all_traces
+            all_framelines.append(framelines)
+        return np.array(fitness), all_traces, all_framelines
 
     def crossover(self, population, CROSSOVER_RATE=0.8):
         next_generation = []
@@ -119,13 +121,15 @@ class Genetic_Algorithm:
         index = np.random.choice(np.arange(POPULATION_SIZE), size=POPULATION_SIZE, replace=True, p=(fitness) / (fitness.sum()))
         return population[index]
         
-    def output_results(self, population, fitness,traces, number:int = 5):
+    def output_results(self, population, fitness,traces, framelines,number:int = 5):
         index = np.argsort(fitness)[-number:]
         index = index[::-1]
         f_traces = []
+        f_framelines = []
         for i in index:
             f_traces.append(traces[i])
-        return population[index],fitness[index],f_traces
+            f_framelines.append(framelines[i])
+        return population[index],fitness[index],f_traces,f_framelines
 
     def execute(self):
         population = np.random.randint(0,2,(POPULATION_SIZE,DNA_PREBINNUM_SIZE+DNA_POSTBINNUM_SIZE+DNA_BINSIZE_SIZE))
@@ -138,39 +142,47 @@ class Genetic_Algorithm:
                 population[j] = self.mutation(population[j],self.mutation_rate)
             print("After:------------")
             print(population)
-            fitness, traces = self.get_fitness(population,self.mice)
+            fitness, traces,framelines = self.get_fitness(population,self.mice)
             population = self.select(population,fitness)
         examples = []
+        xvalues = []
         AUCs = []
         good_number = min(5, POPULATION_SIZE)
         number_of_samples = 20
-        best_windows, best_fitness,best_traces = self.output_results(population,fitness,traces,good_number)
+        best_windows, best_fitness,best_traces,best_frameline = self.output_results(population,fitness,traces,framelines,good_number)
         preBinNum,postBinNum,binSize = self.decoded_dna(best_windows)
         print('w:',len(best_windows),'t:',len(best_traces))
         for i in range(good_number):
             print(i)
             example_features = {}
+            example_framelines = {}
             # calculation = calculations(self.mice,preBinNum[i],postBinNum[i],binSize[i],self.event)   
             # auc = calculation.auc()
             example_features['Cocaine'] = []
             example_features['Saline'] = []
+            example_framelines['Cocaine'] = []
+            example_framelines['Saline'] = []
             for j in list(np.random.randint(low = 0, high = len(best_traces[i]['Cocaine'])-1,size = number_of_samples)):
                 example_features['Cocaine'].append(best_traces[i]['Cocaine'][j])
+                example_framelines['Cocaine'].append(best_frameline[i]['Cocaine'][j])
             for j in list(np.random.randint(low = 0, high = len(best_traces[i]['Saline'])-1,size = number_of_samples)):
                 example_features['Saline'].append(best_traces[i]['Saline'][j])
+                example_framelines['Saline'].append(best_frameline[i]['Saline'][j])
             examples.append(example_features)
+            xvalues.append(example_framelines)
             # AUCs.append(auc)
         self.preBinNum = preBinNum
         self.postBinNum = postBinNum
         self.binSize = binSize
         self.examples = examples # Make sure they are all the same size in timeline
         self._best_fitness = best_fitness
+        self.xvalues = xvalues
         # self.AUCs = AUCs
         # return preBinNum,postBinNum,binSize
             #print traces and footprint
          
-    def return_results(self,rank:int):
-        return self.preBinNum[rank],self.postBinNum[rank],self.binSize[rank], self.best_fitness[rank], self.examples[rank]
+    # def return_results(self,rank:int):
+    #     return self.preBinNum[rank],self.postBinNum[rank],self.binSize[rank], self.fitness[rank], self.examples[rank]
 
     def return_x_values(self, rank:int):
         pass
