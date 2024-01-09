@@ -7,7 +7,7 @@ import random
 DNA_PREBINNUM_SIZE = 4
 DNA_POSTBINNUM_SIZE = 4
 DNA_BINSIZE_SIZE = 5
-POPULATION_SIZE = 10
+POPULATION_SIZE = 3
 
 
 DNA_PREBINNUM_BOUND = [0,9]
@@ -142,7 +142,7 @@ class Genetic_Algorithm:
             population = self.select(population,fitness)
         examples = []
         AUCs = []
-        good_number = 5
+        good_number = min(5, POPULATION_SIZE)
         number_of_samples = 20
         best_windows, best_traces = self.output_results(population,fitness,traces,good_number)
         preBinNum,postBinNum,binSize = self.decoded_dna(best_windows)
@@ -163,13 +163,16 @@ class Genetic_Algorithm:
         self.preBinNum = preBinNum
         self.postBinNum = postBinNum
         self.binSize = binSize
-        self.examples = examples
+        self.examples = examples # Make sure they are all the same size in timeline
         # self.AUCs = AUCs
         # return preBinNum,postBinNum,binSize
             #print traces and footprint
          
     def return_results(self,rank:int):
         return self.preBinNum[rank],self.postBinNum[rank],self.binSize[rank], self.examples[rank]
+
+    def return_x_values(self, rank:int):
+        pass
 
     ##steps : select mouse first
     ## step 2 : fixed the parameter

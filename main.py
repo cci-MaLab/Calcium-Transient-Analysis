@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox, QAction,
                             QVBoxLayout, QHBoxLayout, QWidget, QTabWidget)
 from custom_widgets import (UpdateDialog, ParamDialog, VisualizeClusterWidget, Viewer, ToolWidget,
-                            InspectionWidget, GAToolWidget)
+                            InspectionWidget, GAToolWidget, GAWindowWidget)
 import sys
 import os
 import json
@@ -60,7 +60,7 @@ class MainWindow(QMainWindow):
         # Tool Widgets        
         self.current_selection = None
         self.w_tools = ToolWidget(self.event_defaults)
-        self.ga_tools = GAToolWidget()
+        self.ga_tools = GAToolWidget(self)
         self.w_tools.setEnabled(False)
 
         # Layouts and tabs
@@ -132,6 +132,13 @@ class MainWindow(QMainWindow):
 
         if name not in self.windows:
             wid = ExplorationWidget(instance, self)
+            self.windows[name] = wid
+            wid.show()
+
+    def startGA(self, ga):
+        name = "Genetic Algorithm"
+        if name not in self.windows:
+            wid = GAWindowWidget(ga)
             wid.setWindowTitle(name)
             self.windows[name] = wid
             wid.show()

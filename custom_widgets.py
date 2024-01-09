@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout, QWidget,
                             QCheckBox, QGridLayout, QFrame, QGraphicsView, QGraphicsScene, QPushButton, 
                             QComboBox, QListWidget, QAbstractItemView, QSplitter, QApplication, QStyleFactory,
-                            QAction, QFileDialog)
+                            QAction, QFileDialog, QTableWidget, QTableWidgetItem)
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush, QFont)
 from PyQt5.QtCore import Qt
 import pyqtgraph as pg
@@ -15,7 +15,7 @@ from PyQt5.QtGui import QPixmap
 import os
 import bisect
 from backend import DataInstance
-from genetic_algorithm import GeneticAlgorithm
+from genetic_algorithm import Genetic_Algorithm
 
 
 
@@ -437,9 +437,10 @@ class ToolWidget(QWidget):
 
 
 class GAToolWidget(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, main_ref, parent=None):
         super().__init__(parent)
         # Max Generations
+        self.main_ref = main_ref
         label_max_gen = QLabel("Max Generations:")
         self.input_max_gen = QLineEdit("50")
         onlyInt = QIntValidator()
@@ -487,13 +488,92 @@ class GAToolWidget(QWidget):
         self.setLayout(layout)
 
     def runGA(self):
+        print("Started GA")
         max_gen = int(self.input_max_gen.text())
         cross_rate = float(self.input_cross_rate.text())
         mut_rate = float(self.input_mut_rate.text())
         event_type = self.dropdown_event_type.currentText()
 
-        ga = GeneticAlgorithm(None, max_gen, cross_rate, mut_rate, event_type)
+        ga = Genetic_Algorithm(None, max_gen, cross_rate, mut_rate, event_type)
+        ga.execute()
+        self.main_ref.startGA(ga)
         
+
+class GAWindowWidget(QWidget):
+    def __init__(self, ga: Genetic_Algorithm, parent=None):
+        super().__init__(parent)
+        self.ga = ga
+        self.name = "Genetic Algorithm"
+        self.length = len(self.ga.examples)
+        self.setWindowTitle("Genetic Algorithm Results")
+        self.cocaine_view = pg.GraphicsLayoutWidget(title="Cocaine")
+        self.saline_view = pg.GraphicsLayoutWidget(title="Saline")
+
+        # Dropdown
+        layout_dropdown = QHBoxLayout()
+        self.dropdown = QComboBox()
+        self.dropdown.addItems([f"Rank {i+1}" for i in range(self.length)])
+        self.dropdown.setCurrentIndex(0)
+        self.dropdown.currentIndexChanged.connect(self.update)
+        layout_dropdown.addWidget(self.dropdown)
+
+        # Trace Visualization
+        layout_trace = QHBoxLayout()
+        layout_trace.addWidget(self.cocaine_view)
+        layout_trace.addWidget(self.saline_view)
+        self.update()
+
+        # Table of top 5 values
+        layout_table = QVBoxLayout()
+        label_table = QLabel(f"Top 5 Parameters for {ga.event}")
+        table = QTableWidget()
+        table.verticalHeader().setVisible(False)
+        data = {"Rank": [f"Rank {i+1}" for i in range(self.length)],
+                "Fitness": ["NA" for i in range(self.length)],
+                "PreBinNum": [ga.preBinNum[i] for i in range(self.length)],
+                "PostBinNum": [ga.postBinNum[i] for i in range(self.length)],
+                "Bin Size": [ga.binSize[i] for i in range(self.length)]}
+        horHeaders = []
+        for n, key in enumerate(data.keys()):
+            horHeaders.append(key)
+            for m, item in enumerate(data[key]):
+                newitem = QTableWidgetItem(item)
+                table.setItem(m, n, newitem)
+        table.setHorizontalHeaderLabels(horHeaders)
+        layout_table.addWidget(label_table)
+        layout_table.addWidget(table)
+
+        # Layout
+        layout = QVBoxLayout()
+        layout.addLayout(layout_dropdown)
+        layout.addLayout(layout_trace)
+        layout.addLayout(layout_table)
+        self.setLayout(layout)
+
+    def update(self):
+        index = self.dropdown.currentIndex()
+        cocaine_traces = self.ga.examples[index]["Cocaine"]
+        saline_traces = self.ga.examples[index]["Saline"]
+
+        self.cocaine_view.clear()
+        self.saline_view.clear()
+        # We'll set a label that spans the middle of the grid
+        cocaine_label = pg.LabelItem(justify='center')
+        cocaine_label.setText("Cocaine Traces")
+        saline_label = pg.LabelItem(justify='center')
+        saline_label.setText("Saline Traces")
+        self.cocaine_view.addItem(cocaine_label, row=0, col=0)
+        self.saline_view.addItem(saline_label, row=0, col=0)
+        # In both cases we'll create a 5 by 4 grid
+        for i in range(5):
+            for j in range(4):
+                cocaine_item = self.cocaine_view.addPlot(row=i+1, col=j)
+                cocaine_item.plot(cocaine_traces[i*4+j])
+                saline_item = self.saline_view.addPlot(row=i+1, col=j)
+                saline_item.plot(saline_traces[i*4+j])
+
+                
+
         
 
 def hide_unhide(chkbox, param):
