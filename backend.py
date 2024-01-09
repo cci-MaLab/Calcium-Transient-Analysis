@@ -197,7 +197,7 @@ class Event:
         binList = []
         total_num = preBinNum + postBinNum
         for i in range(-preBinNum,postBinNum):
-            bin = self.get_section(event_frame,binSize,i*binSize)
+            bin, start_frame, end_frame = self.get_section(event_frame,binSize,i*binSize)
             binList.append(bin)
         return binList
 
@@ -236,7 +236,7 @@ class Event:
                 frame_gap -= 1
             event_frame += frame_gap
         frame_gap = 1
-        while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < duration and event_frame + frame_gap < max_length:
+        while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < duration and event_frame + frame_gap < max_length-1:
             frame_gap += 1
         if type in self.data:
             return self.data[type].sel(frame=slice(event_frame, event_frame+frame_gap)) , event_frame,event_frame+frame_gap

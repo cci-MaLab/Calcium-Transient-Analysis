@@ -1,5 +1,6 @@
 import pandas as pd
 from backend import DataInstance
+import numpy as np
 
 
 class calculations:
@@ -25,16 +26,23 @@ class calculations:
         '''
         auc = []
         mouse = []
-        bins = []      
+        bins = np.zeros(shape = (self.preBinNum+self.postBinNum,1))
+        print(bins)    
         for di in self.mice:
+            unit_ids = di.data['unit_ids']
             timestamps = di.get_timestep(self.action)
-            for time in timestamps:    
+            for index, time in enumerate(timestamps):    
                 bin_list = di.events[self.action].get_binList(time, self.preBinNum,self.postBinNum,self.binSize)
                 for b in bin_list:
-                    sum = b['C'].sum()
-                    bins.append(sum)
-                mouse.append(bins)
-            auc.append(mouse)
+                    neuron_auc = []  
+                    for uid in unit_ids:
+                        sum = int(b.sel(unit_id = uid).sum())
+                        print(sum)
+                        neuron_auc.append(sum)
+                    bins = np.c_[bins,np.array(neuron_auc).T]
+                    print(bins)
+            #     mouse.append(bins)
+            # auc.append(mouse)
         return auc
             
     def action_num(self):
