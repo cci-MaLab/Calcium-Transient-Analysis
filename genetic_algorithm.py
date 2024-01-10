@@ -7,7 +7,7 @@ import random
 DNA_PREBINNUM_SIZE = 4
 DNA_POSTBINNUM_SIZE = 4
 DNA_BINSIZE_SIZE = 5
-POPULATION_SIZE = 5
+POPULATION_SIZE = 10
 
 
 DNA_PREBINNUM_BOUND = [0,9]
@@ -118,12 +118,23 @@ class Genetic_Algorithm:
         
 
     def select(self, population,fitness):
-        index = np.random.choice(np.arange(POPULATION_SIZE), size=POPULATION_SIZE, replace=True, p=(fitness) / (fitness.sum()))
+        # index = np.random.choice(np.arange(POPULATION_SIZE), size=POPULATION_SIZE, replace=True, p=(fitness) / (fitness.sum()))
+        # print(index)
+        index = np.argsort(fitness)
+        print("1:",index)
+        
+        index[0] = index[-1]
+        print("2:",index)
         return population[index]
         
     def output_results(self, population, fitness,traces, framelines,number:int = 5):
-        index = np.argsort(fitness)[-number:]
+        index = np.argsort(fitness)[-number:]       # temporary method
         index = index[::-1]
+        # temp_population = population[index]
+        # uni_population,uni_index = np.unique(temp_population, return_index=True)
+        # print('uni_index:',len(uni_index))
+        # f_index = index[uni_index][:number]
+        # print('index_len:',len(f_index))
         f_traces = []
         f_framelines = []
         for i in index:
