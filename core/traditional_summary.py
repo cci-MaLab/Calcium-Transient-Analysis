@@ -1,5 +1,5 @@
 import pandas as pd
-from backend import DataInstance
+from core.backend import DataInstance
 import numpy as np
 
 

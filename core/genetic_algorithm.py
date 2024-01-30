@@ -1,7 +1,7 @@
 import numpy as np
-from backend import DataInstance
-from advanced_summary import advanced
-from traditional_summary import calculations
+from .backend import DataInstance
+from .advanced_summary import advanced
+from .traditional_summary import calculations
 import random
 
 DNA_PREBINNUM_SIZE = 4

@@ -1,8 +1,8 @@
 import sys
 import os
 sys.path.insert(0, ".")
-from backend import DataInstance
-from backend import Event
+from core.backend import DataInstance
+from core.backend import Event
 import matplotlib.pyplot as plt
 
 def main():

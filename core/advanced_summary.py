@@ -2,7 +2,7 @@ from sklearn import svm
 from sklearn.model_selection import train_test_split
 from sklearn.decomposition import PCA
 import pandas as pd
-from backend import DataInstance 
+from core.backend import DataInstance 
 from typing import List
 import numpy as np
 
