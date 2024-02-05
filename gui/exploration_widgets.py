@@ -3,7 +3,7 @@ The following file will be used for doing a deeper dive into the selected sessio
 """
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAction, QStyle, 
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
-                            QApplication, QStyleFactory, QFrame)
+                            QApplication, QStyleFactory, QFrame, QTabWidget)
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator)
 from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem)
@@ -72,6 +72,20 @@ class ExplorationWidget(QWidget):
         self.btn_cell_clear_color = QPushButton("Clear Color")
         self.btn_cell_clear_color.setCheckable(True)
         self.btn_cell_clear_color.clicked.connect(self.refresh_image)
+        self.btn_cell_reject = QPushButton("Reject Cell")
+        self.btn_cell_reject.clicked.connect(self.reject_cells)
+
+        tabs = QTabWidget()
+        tabs.setFixedWidth(320)
+
+        # Rejected Cells
+        w_rejected_cell_label = QLabel("Rejected Cells:")
+        self.list_rejected_cell = QListWidget()
+        self.list_rejected_cell.setMaximumSize(250, 600)
+        self.list_rejected_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        
+        self.btn_cell_return = QPushButton("Return Cell")
+        self.btn_cell_return.clicked.connect(self.approve_cells)
 
         # Plot utility
         self.min_height_label = QLabel("Height Threshold")
@@ -98,8 +112,7 @@ class ExplorationWidget(QWidget):
 
 
         # Populate cell list
-        for id in self.A.keys():
-            self.list_cell.addItem(str(id))
+        self.refresh_cell_list()
 
         
         # Tools for video
@@ -158,6 +171,20 @@ class ExplorationWidget(QWidget):
         layout_cells.addWidget(self.btn_cell_focus)
         layout_cells.addWidget(self.btn_cell_reset)
         layout_cells.addWidget(self.btn_cell_clear_color)
+        layout_cells.addWidget(self.btn_cell_reject)
+        w_cells = QWidget()
+        w_cells.setLayout(layout_cells)
+
+        layout_rejected_cells = QVBoxLayout()
+        layout_rejected_cells.addWidget(w_rejected_cell_label)
+        layout_rejected_cells.addWidget(self.list_rejected_cell)
+        layout_rejected_cells.addWidget(self.btn_cell_return)
+        w_rejected_cells = QWidget()
+        w_rejected_cells.setLayout(layout_rejected_cells)
+
+        tabs.addTab(w_cells, "Approved Cells")
+        tabs.addTab(w_rejected_cells, "Rejected Cells")
+
 
         layout_plot_utility = QVBoxLayout()
         layout_height = QHBoxLayout()
@@ -180,7 +207,7 @@ class ExplorationWidget(QWidget):
         widget_plot_utility.setMaximumWidth(250)
 
         layout_video_cells.addLayout(layout_video)
-        layout_video_cells.addLayout(layout_cells)
+        layout_video_cells.addWidget(tabs)
         widget_video_cells = QWidget()
         widget_video_cells.setLayout(layout_video_cells)
 
@@ -339,6 +366,28 @@ class ExplorationWidget(QWidget):
     def refresh_image(self):
         image = self.generate_image()
         self.imv.setImage(image, autoRange=False, autoLevels=False)
+
+    def refresh_cell_list(self):
+        self.list_cell.clear()
+        self.list_rejected_cell.clear()
+        good_bad_cells = self.session.data['E']['good_cells'].values
+        for i, cell_id in enumerate(self.session.data['E']['unit_id'].values):
+            if good_bad_cells[i]:
+                self.list_cell.addItem(str(cell_id))
+            else:
+                self.list_rejected_cell.addItem(str(cell_id))
+
+    def reject_cells(self):
+        cell_ids = [int(item.text()) for item in self.list_cell.selectedItems()]
+        # Update good_cell list in E values
+        self.session.reject_cells(cell_ids)
+        self.refresh_cell_list()
+
+    def approve_cells(self):
+        cell_ids = [int(item.text()) for item in self.list_rejected_cell.selectedItems()]
+        self.session.approve_cells(cell_ids)
+        self.refresh_cell_list()
+
     
     def pause_video(self):
         self.video_timer.stop()
@@ -367,7 +416,7 @@ class ExplorationWidget(QWidget):
 
     def closeEvent(self, event):
         super(ExplorationWidget, self).closeEvent(event)
-        self.main_window_ref.removeWindow(self.name)
+        self.main_window_ref.remove_window(self.name)
     
     def clear_selected_events(self):
         i = 0
@@ -390,9 +439,9 @@ class ExplorationWidget(QWidget):
         distance = float(self.dist_input.text()) if self.dist_input.text() else 10        
         auc = float(self.auc_input.text()) if self.auc_input.text() else 0
         
-        i = 0
-        while self.w_signals.getItem(i,0) is not None:
-            item = self.w_signals.getItem(i,0)
+        idx = 0
+        while self.w_signals.getItem(idx,0) is not None:
+            item = self.w_signals.getItem(idx,0)
             if isinstance(item, PlotItemEnhanced):
                 C_signal = self.session.data['C'].sel(unit_id=item.id).values
                 S_signal = self.session.data['S'].sel(unit_id=item.id).values
@@ -432,6 +481,8 @@ class ExplorationWidget(QWidget):
                     if C_signal[beg:current_peak+1].max() - C_signal[beg:current_peak+1].min() < min_height:
                         continue
 
+                    # Compensate for the fact that S a frame after the beginning of the spike.
+                    beg = max(0, beg-1)
 
                     spikes.append([beg, current_peak+1])
                     final_peaks.append([current_peak])
@@ -439,9 +490,10 @@ class ExplorationWidget(QWidget):
                 item.clear_event_curves()
                 # Plot spikes
                 item.draw_event_curves(spikes)
+                # Save back to E
+                self.session.update_and_save_E(item.id, spikes)
                 
-                
-            i += 1
+            idx += 1
 
 
 

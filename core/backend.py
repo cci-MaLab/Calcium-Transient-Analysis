@@ -12,7 +12,14 @@ from os import listdir
 from typing import Callable, List, Optional, Union
 import os
 import re
+import shutil
+from pathlib import Path
 from dask.diagnostics import ProgressBar
+from dask.delayed import optimize as default_delay_optimize
+import rechunker
+import zarr as zr
+from uuid import uuid4
+
 
 from scipy.signal import welch
 from scipy.signal import savgol_filter
@@ -91,10 +98,124 @@ def open_minian(
         if return_dict:
             ds = {d.name: d for d in dslist}
         else:
-            ds = xr.merge(dslist, compat="no_conflicts")
+            ds = xr.merge(dslist, compat="override")
     if (not return_dict) and post_process:
         ds = post_process(ds, dpath)
     return ds
+
+
+def save_minian(
+    var: xr.DataArray,
+    dpath: str,
+    meta_dict: Optional[dict] = None,
+    overwrite=False,
+    chunks: Optional[dict] = None,
+    compute=True,
+    mem_limit="500MB",
+) -> xr.DataArray:
+    """
+    Save a `xr.DataArray` with `zarr` storage backend following minian
+    conventions.
+
+    This function will store arbitrary `xr.DataArray` into `dpath` with `zarr`
+    backend. A separate folder will be created under `dpath`, with folder name
+    `var.name + ".zarr"`. Optionally metadata can be retrieved from directory
+    hierarchy and added as coordinates of the `xr.DataArray`. In addition, an
+    on-disk rechunking of the result can be performed using
+    :func:`rechunker.rechunk` if `chunks` are given.
+
+    Parameters
+    ----------
+    var : xr.DataArray
+        The array to be saved.
+    dpath : str
+        The path to the minian dataset directory.
+    meta_dict : dict, optional
+        How metadata should be retrieved from directory hierarchy. The keys
+        should be negative integers representing directory level relative to
+        `dpath` (so `-1` means the immediate parent directory of `dpath`), and
+        values should be the name of dimensions represented by the corresponding
+        level of directory. The actual coordinate value of the dimensions will
+        be the directory name of corresponding level. By default `None`.
+    overwrite : bool, optional
+        Whether to overwrite the result on disk. By default `False`.
+    chunks : dict, optional
+        A dictionary specifying the desired chunk size. The chunk size should be
+        specified using :doc:`dask:array-chunks` convention, except the "auto"
+        specifiication is not supported. The rechunking operation will be
+        carried out with on-disk algorithms using :func:`rechunker.rechunk`. By
+        default `None`.
+    compute : bool, optional
+        Whether to compute `var` and save it immediately. By default `True`.
+    mem_limit : str, optional
+        The memory limit for the on-disk rechunking algorithm, passed to
+        :func:`rechunker.rechunk`. Only used if `chunks` is not `None`. By
+        default `"500MB"`.
+
+    Returns
+    -------
+    var : xr.DataArray
+        The array representation of saving result. If `compute` is `True`, then
+        the returned array will only contain delayed task of loading the on-disk
+        `zarr` arrays. Otherwise all computation leading to the input `var` will
+        be preserved in the result.
+
+    Examples
+    -------
+    The following will save the variable `var` to directory
+    `/spatial_memory/alpha/learning1/minian/important_array.zarr`, with the
+    additional coordinates: `{"session": "learning1", "animal": "alpha",
+    "experiment": "spatial_memory"}`.
+
+    >>> save_minian(
+    ...     var.rename("important_array"),
+    ...     "/spatial_memory/alpha/learning1/minian",
+    ...     {-1: "session", -2: "animal", -3: "experiment"},
+    ... ) # doctest: +SKIP
+    """
+    dpath = os.path.normpath(dpath)
+    Path(dpath).mkdir(parents=True, exist_ok=True)
+    ds = var.to_dataset()
+    if meta_dict is not None:
+        pathlist = os.path.split(os.path.abspath(dpath))[0].split(os.sep)
+        ds = ds.assign_coords(
+            **dict([(dn, pathlist[di]) for dn, di in meta_dict.items()])
+        )
+    md = {True: "a", False: "w-"}[overwrite]
+    fp = os.path.join(dpath, var.name + ".zarr")
+    if overwrite:
+        try:
+            shutil.rmtree(fp)
+        except FileNotFoundError:
+            pass
+    arr = ds.to_zarr(fp, compute=compute, mode=md)
+    if (chunks is not None) and compute:
+        chunks = {d: var.sizes[d] if v <= 0 else v for d, v in chunks.items()}
+        dst_path = os.path.join(dpath, str(uuid4()))
+        temp_path = os.path.join(dpath, str(uuid4()))
+        with da.config.set(
+            array_optimize=darr.optimization.optimize,
+            delayed_optimize=default_delay_optimize,
+        ):
+            zstore = zr.open(fp)
+            rechk = rechunker.rechunk(
+                zstore[var.name], chunks, mem_limit, dst_path, temp_store=temp_path
+            )
+            rechk.execute()
+        try:
+            shutil.rmtree(temp_path)
+        except FileNotFoundError:
+            pass
+        arr_path = os.path.join(fp, var.name)
+        for f in os.listdir(arr_path):
+            os.remove(os.path.join(arr_path, f))
+        for f in os.listdir(dst_path):
+            os.rename(os.path.join(dst_path, f), os.path.join(arr_path, f))
+        os.rmdir(dst_path)
+    if compute:
+        arr = xr.open_zarr(fp)[var.name]
+        arr.data = darr.from_zarr(os.path.join(fp, var.name), inline_array=True)
+    return arr
 
 def match_information(dpath):# Add by HF
     '''
@@ -595,6 +716,37 @@ class DataInstance:
         cents_df["width"] = cents_df["width"] * (w_rg[1] - w_rg[0]) + w_rg[0]
         return cents_df
 
+    def update_and_save_E(self, unit_id: int, spikes):
+        """
+        Update the E array with the final peaks and save it to the minian file.
+        """
+
+        # First convert final peaks into a numpy array
+        E = self.data['E']
+        new_e = np.zeros(E.shape[1])
+        for i, spike in enumerate(spikes):
+            new_e[spike[0]:spike[1]] = i+1
+        E.load() # Load into memory
+        E.loc[dict(unit_id=unit_id)] = new_e
+        # Now save the E array to disk
+        save_minian(E, self.minian_path, overwrite=True)
+    
+    def reject_cells(self, cells: List[int]):
+        """
+        Set the good_cells array to 0 for the cells in the list.
+        """
+        E = self.data['E']
+        E.load()
+        for cell in cells:
+            E['good_cells'].loc[dict(unit_id=cell)] = 0
+        save_minian(self.data['E'], self.minian_path, overwrite=True)
+
+    def approve_cells(self, cells: List[int]):
+        E = self.data['E']
+        E.load()
+        for cell in cells:
+            E['good_cells'].loc[dict(unit_id=cell)] = 1
+        save_minian(self.data['E'], self.minian_path, overwrite=True)   
 
 
         

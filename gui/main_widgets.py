@@ -374,13 +374,13 @@ class ToolWidget(QWidget):
         self.main_ref.updateCluster(result)
 
     def inspect(self, event):
-        self.main_ref.startInspection()
+        self.main_ref.start_inspection()
 
     def delete(self, event):
-        self.main_ref.deleteSelection()
+        self.main_ref.delete_selection()
 
     def explore(self, event):
-        self.main_ref.startExploration()
+        self.main_ref.start_exploration()
     
     def update(self, result, cell_list):
         self.all_cells = cell_list
