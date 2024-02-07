@@ -82,4 +82,4 @@ class GAWindowWidget(QWidget):
     
     def closeEvent(self, event):
         super(GAWindowWidget, self).closeEvent(event)
-        self.main_ref.removeWindow(self.name)
+        self.main_ref.remove_window(self.name)
