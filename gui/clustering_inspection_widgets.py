@@ -326,7 +326,7 @@ class InspectionWidget(QWidget):
 
     def closeEvent(self, event):
         super(InspectionWidget, self).closeEvent(event)
-        self.main_ref.removeWindow(self.name)
+        self.main_ref.remove_window(self.name)
 
     def refresh(self):
         self.imv.setImage(self.session.clustering_result['all']['image'])
