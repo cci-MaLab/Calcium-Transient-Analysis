@@ -419,20 +419,26 @@ class ExplorationWidget(QWidget):
         self.main_window_ref.remove_window(self.name)
     
     def clear_selected_events(self):
+        accumulated_selected_events = {}
         i = 0
         while self.w_signals.getItem(i,0) is not None:
             item = self.w_signals.getItem(i,0)
             if isinstance(item, PlotItemEnhanced):
-                item.clear_selected_events_local()
+                accumulated_selected_events[item.id] = item.clear_selected_events_local()
             i += 1
+        
+        self.session.remove_from_E(accumulated_selected_events)
 
     def create_event(self):
+        accumulated_created_events = {}
         i = 0
         while self.w_signals.getItem(i,0) is not None:
             item = self.w_signals.getItem(i,0)
             if isinstance(item, PlotItemEnhanced):
-                item.create_event_local()
+                accumulated_created_events[item.id] = item.create_event_local()
             i += 1
+
+        self.session.add_to_E(accumulated_created_events)
 
     def update_peaks(self):
         min_height = int(self.min_height_input.text()) if self.min_height_input.text() else 0
@@ -566,9 +572,13 @@ class PlotItemEnhanced(PlotItem):
         self.addItem(main_curve)
 
     def clear_selected_events_local(self):
+        accumulated_selected_events = np.array([], dtype=int)
         for item in self.selected_events:
+            accumulated_selected_events = np.concatenate([accumulated_selected_events, item.xData])
             self.removeItem(item)
         self.selected_events.clear()
+
+        return accumulated_selected_events
         
     
     def add_point(self, event):
@@ -633,16 +643,18 @@ class PlotItemEnhanced(PlotItem):
                 lower_bound = x2 - 20 if x2 - 20 >= 0 else 0
                 upper_bound = x2 + 20 if x2 + 20 <= len(self.C_signal) else len(self.C_signal)
                 x2 = np.argmax(self.C_signal[lower_bound:upper_bound]) + lower_bound
+            # x1 can be set a bit too far to the left, push it right until you find a higher value
+            while self.C_signal[x1] == self.C_signal[x1+1]:
+                x1 += 1
             # Now we can draw the event
             event_curve = PlotCurveItemEnhanced(np.arange(x1, x2+1), self.C_signal[x1:x2+1], pen='r', is_event=True, main_plot=self)
             self.addItem(event_curve)
-            
-            
-
 
         for point in self.clicked_points:
             self.removeItem(point)
         self.clicked_points = []
+
+        return event_curve.xData
 
 
 

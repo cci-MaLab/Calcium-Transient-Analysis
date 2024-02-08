@@ -724,13 +724,37 @@ class DataInstance:
         # First convert final peaks into a numpy array
         E = self.data['E']
         new_e = np.zeros(E.shape[1])
-        for i, spike in enumerate(spikes):
-            new_e[spike[0]:spike[1]] = i+1
+        for spike in spikes:
+            new_e[spike[0]:spike[1]] = 1
         E.load() # Load into memory
         E.loc[dict(unit_id=unit_id)] = new_e
         # Now save the E array to disk
         save_minian(E, self.minian_path, overwrite=True)
+
+    def remove_from_E(self, clear_selected_events_local: {}):
+        E = self.data['E']
+        E.load()
+        for unit_id, x_values in clear_selected_events_local.items():
+            events = E.sel(unit_id=unit_id).values
+            events[x_values] = 0          
+            E.loc[dict(unit_id=unit_id)] = events
+        save_minian(E, self.minian_path, overwrite=True)
+
+    def add_to_E(self, add_selected_events_local: {}):
+        E = self.data['E']
+        E.load()
+        for unit_id, x_values in add_selected_events_local.items():
+            events = E.sel(unit_id=unit_id)
+            events[x_values] = 1          
+            E.loc[dict(unit_id=unit_id)] = events
+        save_minian(E, self.minian_path, overwrite=True)
     
+    def save_E(self):
+        """
+        Save the E array to disk
+        """
+        save_minian(self.data['E'], self.minian_path, overwrite=True)
+
     def reject_cells(self, cells: List[int]):
         """
         Set the good_cells array to 0 for the cells in the list.
