@@ -770,7 +770,25 @@ class DataInstance:
         E.load()
         for cell in cells:
             E['good_cells'].loc[dict(unit_id=cell)] = 1
-        save_minian(self.data['E'], self.minian_path, overwrite=True)   
+        save_minian(self.data['E'], self.minian_path, overwrite=True)
+    
+    def check_E(self):
+        """
+        Check if the E xarray exists and if not create it.
+        """
+        if self.data['E'] is None:
+            E = xr.DataArray(
+                np.zeros(self.data['C'].shape),
+                dims=["unit_id", "frame"],
+                coords=dict(
+                    unit_id=self.data['unit_ids'],
+                    frame=self.data['C'].coords["frame"],
+                ),
+                name="E"
+            )
+            E = E.assign_coords(good_cells=("unit_id", np.ones(len(self.data['unit_ids']))))
+            save_minian(E, self.minian_path, overwrite=True)
+            self.data['E'] = E
 
 
         

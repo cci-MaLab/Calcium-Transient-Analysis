@@ -16,6 +16,7 @@ class ExplorationWidget(QWidget):
     def __init__(self, session, name, main_window_ref, timestamps=None, parent=None):
         super().__init__(parent)
         self.session = session
+        self.session.check_E()
         self.name = name
         self.main_window_ref = main_window_ref
         self.timestamps = timestamps
@@ -292,11 +293,12 @@ class ExplorationWidget(QWidget):
                 if 'E' in self.session.data:
                     events = self.session.data['E'].sel(unit_id=id).values
                     indices = events.nonzero()[0]
-                    # Split up the indices into groups
-                    indices = np.split(indices, np.where(np.diff(indices) != 1)[0]+1)
-                    # Now Split the indices into pairs of first and last indices
-                    indices = [(indices_group[0], indices_group[-1]+1) for indices_group in indices]
-                    p.draw_event_curves(indices)
+                    if indices:
+                        # Split up the indices into groups
+                        indices = np.split(indices, np.where(np.diff(indices) != 1)[0]+1)
+                        # Now Split the indices into pairs of first and last indices
+                        indices = [(indices_group[0], indices_group[-1]+1) for indices_group in indices]
+                        p.draw_event_curves(indices)
 
 
 
