@@ -761,15 +761,20 @@ class DataInstance:
         """
         E = self.data['E']
         E.load()
-        for cell in cells:
-            E['good_cells'].loc[dict(unit_id=cell)] = 0
+        E['good_cells'].loc[dict(unit_id=cells)] = 0
         save_minian(self.data['E'], self.minian_path, overwrite=True)
 
     def approve_cells(self, cells: List[int]):
         E = self.data['E']
         E.load()
+        E['good_cells'].loc[dict(unit_id=cells)] = 1
+        save_minian(self.data['E'], self.minian_path, overwrite=True)
+
+    def update_verified(self, cells: List[int]):
+        E = self.data['E']
+        E.load()
         for cell in cells:
-            E['good_cells'].loc[dict(unit_id=cell)] = 1
+            E['verified'].loc[dict(unit_id=cell)] = (E['verified'].loc[dict(unit_id=cell)].values.item() + 1) % 2
         save_minian(self.data['E'], self.minian_path, overwrite=True)
     
     def check_E(self):
@@ -786,9 +791,14 @@ class DataInstance:
                 ),
                 name="E"
             )
-            E = E.assign_coords(good_cells=("unit_id", np.ones(len(self.data['unit_ids']))))
+            E = E.assign_coords(good_cells=("unit_id", np.ones(len(self.data['unit_ids']))), verified=("unit_id", np.zeros(len(self.data['unit_ids']))))
             save_minian(E, self.minian_path, overwrite=True)
             self.data['E'] = E
+
+        # For backwards compatibility check if the verified values exist and if not create them
+        elif "verified" not in self.data['E'].coords:
+            self.data['E'] = self.data['E'].assign_coords(verified=("unit_id", np.zeros(len(self.data['unit_ids']))))
+            save_minian(self.data['E'], self.minian_path, overwrite=True)
 
 
         

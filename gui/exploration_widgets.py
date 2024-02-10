@@ -3,7 +3,7 @@ The following file will be used for doing a deeper dive into the selected sessio
 """
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAction, QStyle, 
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
-                            QApplication, QStyleFactory, QFrame, QTabWidget)
+                            QApplication, QStyleFactory, QFrame, QTabWidget, QCheckBox)
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator)
 from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem)
@@ -110,6 +110,8 @@ class ExplorationWidget(QWidget):
         btn_clear_events.clicked.connect(self.clear_selected_events)
         btn_create_event = QPushButton("Create Event")
         btn_create_event.clicked.connect(self.create_event)
+        self.btn_verified = QPushButton("Verify/Unverify")
+        self.btn_verified.clicked.connect(self.verification_state_changed)
 
 
         # Populate cell list
@@ -173,6 +175,7 @@ class ExplorationWidget(QWidget):
         layout_cells.addWidget(self.btn_cell_reset)
         layout_cells.addWidget(self.btn_cell_clear_color)
         layout_cells.addWidget(self.btn_cell_reject)
+        layout_cells.addWidget(self.btn_verified)
         w_cells = QWidget()
         w_cells.setLayout(layout_cells)
 
@@ -300,9 +303,10 @@ class ExplorationWidget(QWidget):
                         indices = [(indices_group[0], indices_group[-1]+1) for indices_group in indices]
                         p.draw_event_curves(indices)
 
-
-
-            
+    def verification_state_changed(self):
+        cell_ids = [int(item.text()) for item in self.list_cell.selectedItems()]
+        self.session.update_verified(cell_ids)
+        self.refresh_cell_list()   
 
 
     def focus_mask(self):
@@ -376,6 +380,8 @@ class ExplorationWidget(QWidget):
         for i, cell_id in enumerate(self.session.data['E']['unit_id'].values):
             if good_bad_cells[i]:
                 self.list_cell.addItem(str(cell_id))
+                if self.session.data['E']['verified'].loc[{'unit_id': cell_id}].values.item():
+                    self.list_cell.item(i).setBackground(Qt.green)
             else:
                 self.list_rejected_cell.addItem(str(cell_id))
 
