@@ -1,8 +1,8 @@
 from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout, QWidget,
                             QCheckBox, QGridLayout, QFrame, QGraphicsView, QGraphicsScene, QPushButton, 
-                            QComboBox, QMainWindow)
+                            QComboBox, QMainWindow, QBoxLayout, QSpacerItem, QSizePolicy)
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QImage, QPixmap)
-from PyQt5.QtCore import (Qt, QRect)
+from PyQt5.QtCore import (Qt)
 import bisect
 from core.backend import DataInstance
 
@@ -590,7 +590,7 @@ class GroupGridLayout(QWidget):
     
     def remove_visualization(self, mouseID, session, day):
         self.mice[mouseID].remove_visualization(session, day)
-        if self.mice[mouseID].isEmpty():
+        if self.mice[mouseID].is_empty():
             self.layout.removeWidget(self.mice[mouseID])
             self.mice[mouseID].setParent(None)
             del self.mice[mouseID]
@@ -617,10 +617,11 @@ class MouseGrid(QWidget):
         
     
     def add_visualization(self, image, session, day):
-        imageViewer = Viewer(self.main_ref, image, self.group, self.mouseID, session, day)
+        image_viewer = Viewer(self.main_ref, image, self.group, self.mouseID, session, day)
+        aspect_maintain = AspectRatioWidget(image_viewer, aspect_ratio=1.0)
         day = int(day[1:])
         session = int(session[1:])
-        self.images[f"{session}:{day}"] = imageViewer
+        self.images[f"{session}:{day}"] = aspect_maintain
 
         if day not in self.days:
             bisect.insort(self.days, day)
@@ -640,6 +641,7 @@ class MouseGrid(QWidget):
         wid = self.layout.itemAtPosition(session_index+1, day_index+1).widget()
         self.layout.removeWidget(wid)
         wid.setParent(None)
+        wid.deleteLater()
         del self.images[f"{session}:{day}"]
 
         # Now check if we need to remove the labels as well
@@ -678,7 +680,8 @@ class MouseGrid(QWidget):
             wid.setParent(None)
             wid.deleteLater()
 
-
+    def is_empty(self):
+        return self.layout.count()
 
 
             
@@ -708,7 +711,6 @@ class Viewer(QGraphicsView):
         self.m_pixmapItem = self.scene().addPixmap(QPixmap())
         self.setAlignment(Qt.AlignCenter)
         self.main_ref = main_ref
-
 
         self.p = self.palette()
         self.p.setColor(self.backgroundRole(), Qt.white)
@@ -743,13 +745,6 @@ class Viewer(QGraphicsView):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        '''
-        l = min(self.width(), self.height())
-        rect = QRect(0, 0, l, l)
-        center = self.rect().center()
-        rect.moveCenter(center)
-        self.setGeometry(rect)
-        '''
         self.fitInView(self.m_pixmapItem, Qt.KeepAspectRatio)
 
     def change_to_white(self):
@@ -778,13 +773,41 @@ class Viewer(QGraphicsView):
 
     def return_info(self):
         return self.group, self.session, self.day, self.mouseID
-    
 
+class AspectRatioWidget(QWidget):
+    def __init__(self, widget, parent=None, aspect_ratio=1.0):
+        super().__init__(parent)
+        self.aspect_ratio = aspect_ratio
+        self.widget = widget
+        self.setLayout(QBoxLayout(QBoxLayout.LeftToRight, self))
+        self.layout().addItem(QSpacerItem(0, 0))
+        self.layout().addWidget(self.widget)
+        self.layout().addItem(QSpacerItem(0, 0))
+
+    def resizeEvent(self, e):
+        w = e.size().width()
+        h = e.size().height()
+
+        if w / h > self.aspect_ratio:
+            self.layout().setDirection(QBoxLayout.LeftToRight)
+            widget_stretch = h * self.aspect_ratio
+            outer_stretch = (w - widget_stretch) / 2 + 0.5
+        else:
+            self.layout().setDirection(QBoxLayout.TopToBottom)
+            widget_stretch = w / self.aspect_ratio
+            outer_stretch = (h - widget_stretch) / 2 + 0.5
+
+        self.layout().setStretch(0, outer_stretch)
+        self.layout().setStretch(1, widget_stretch)
+        self.layout().setStretch(2, outer_stretch) 
+
+    def reset(self):
+        self.widget.reset()
 class GridQLabel(QLabel):
     def __init__(self, parent=None, *args):
         super().__init__(parent, *args)
 
-        self.setFrameStyle(QFrame.Panel | QFrame.Plain)
+        self.setFrameStyle(QFrame.Box | QFrame.Plain)
         self.setBaseSize(300,300)
         self.setStyleSheet("font-size: 14pt;")
         self.setLineWidth(2)

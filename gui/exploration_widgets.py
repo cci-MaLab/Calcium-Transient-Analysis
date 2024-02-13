@@ -3,7 +3,7 @@ The following file will be used for doing a deeper dive into the selected sessio
 """
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAction, QStyle, 
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
-                            QApplication, QStyleFactory, QFrame, QTabWidget, QCheckBox)
+                            QApplication, QStyleFactory, QFrame, QTabWidget)
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator)
 from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem)

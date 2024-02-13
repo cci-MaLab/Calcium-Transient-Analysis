@@ -1,21 +1,15 @@
-from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout, QWidget,
-                            QCheckBox, QGridLayout, QFrame, QGraphicsView, QGraphicsScene, QPushButton, 
-                            QComboBox, QListWidget, QAbstractItemView, QSplitter, QApplication, QStyleFactory,
-                            QAction, QFileDialog, QTableWidget, QTableWidgetItem)
-from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QImage, QPixmap, QPainter, QPen, QColor, QBrush, QFont)
+from PyQt5.QtWidgets import (QVBoxLayout, QLabel, QHBoxLayout, QWidget, QPushButton, QAction, QFileDialog,
+                            QComboBox, QListWidget, QAbstractItemView, QSplitter, QApplication, QStyleFactory)
+from PyQt5.QtGui import (QPixmap, QPainter, QPen, QColor, QBrush, QFont)
 from PyQt5.QtCore import Qt
 import pyqtgraph as pg
 from pyqtgraph import PlotItem
-import numpy as np
 import matplotlib
 matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 from PyQt5.QtGui import QPixmap
 import os
-import bisect
-from core.backend import DataInstance
-from core.genetic_algorithm import Genetic_Algorithm  
 
 
 class InspectionWidget(QWidget):
