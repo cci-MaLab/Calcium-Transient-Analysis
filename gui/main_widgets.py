@@ -2,8 +2,7 @@ from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLi
                             QCheckBox, QGridLayout, QFrame, QGraphicsView, QGraphicsScene, QPushButton, 
                             QComboBox, QMainWindow)
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QImage, QPixmap)
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtCore import (Qt, QRect)
 import bisect
 from core.backend import DataInstance
 
@@ -599,17 +598,6 @@ class GroupGridLayout(QWidget):
     
     def is_empty(self):
         return self.layout.count() == 0
-            
-def delete_items_of_layout(layout):
-    if layout is not None:
-        while layout.count():
-            item = layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.setParent(None)
-                widget.deleteLater()
-            else:
-                delete_items_of_layout(item.layout())
 
 class MouseGrid(QWidget):
     def __init__(self, main_ref, mouseID:str, group:str, parent=None):
@@ -755,6 +743,13 @@ class Viewer(QGraphicsView):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        '''
+        l = min(self.width(), self.height())
+        rect = QRect(0, 0, l, l)
+        center = self.rect().center()
+        rect.moveCenter(center)
+        self.setGeometry(rect)
+        '''
         self.fitInView(self.m_pixmapItem, Qt.KeepAspectRatio)
 
     def change_to_white(self):

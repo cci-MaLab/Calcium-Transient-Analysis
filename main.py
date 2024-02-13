@@ -317,5 +317,6 @@ class MainWindow(QMainWindow):
                     json.dump(extended_json, f)
     
 app = QApplication([])
+app.setStyle('Fusion')
 window = MainWindow()
 app.exec()

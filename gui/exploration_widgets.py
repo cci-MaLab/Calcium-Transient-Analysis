@@ -112,6 +112,10 @@ class ExplorationWidget(QWidget):
         btn_create_event.clicked.connect(self.create_event)
         self.btn_verified = QPushButton("Verify/Unverify")
         self.btn_verified.clicked.connect(self.verification_state_changed)
+        btn_stats_amp = QPushButton("Amplitude Frequency Histogram")
+        btn_stats_amp.clicked.connect(lambda: self.generate_stats(type="amplitude"))
+        btn_stats_iei = QPushButton("IEI Frequency Histogram")
+        btn_stats_iei.clicked.connect(lambda: self.generate_stats(type="iei"))
 
 
         # Populate cell list
@@ -190,22 +194,42 @@ class ExplorationWidget(QWidget):
         tabs.addTab(w_rejected_cells, "Rejected Cells")
 
 
+        # General plot utility
         layout_plot_utility = QVBoxLayout()
+        layout_plot_utility.addStretch()
+        layout_plot_utility.setDirection(3)
+
+        # Event Generation Algorithm
         layout_height = QHBoxLayout()
         layout_height.addWidget(self.min_height_label)
         layout_height.addWidget(self.min_height_input)
-        layout_plot_utility.addLayout(layout_height)
         layout_dist = QHBoxLayout()
         layout_dist.addWidget(self.dist_label)
         layout_dist.addWidget(self.dist_input)
-        layout_plot_utility.addLayout(layout_dist)
         layout_auc = QHBoxLayout()
         layout_auc.addWidget(self.auc_label)
         layout_auc.addWidget(self.auc_input)
-        layout_plot_utility.addLayout(layout_auc)
-        layout_plot_utility.addWidget(btn_algo_event)
-        layout_plot_utility.addWidget(btn_clear_events)
-        layout_plot_utility.addWidget(btn_create_event)
+
+        frame_algo_events = QFrame()
+        frame_algo_events.setFrameShape(QFrame.Box)
+        frame_algo_events.setFrameShadow(QFrame.Raised)
+        frame_algo_events.setLineWidth(3)
+        layout_algo_events = QVBoxLayout(frame_algo_events)
+        layout_algo_events.addLayout(layout_height)
+        layout_algo_events.addLayout(layout_dist)
+        layout_algo_events.addLayout(layout_auc)
+        layout_algo_events.addWidget(btn_algo_event)
+
+        frame_manual_events = QFrame()
+        frame_manual_events.setFrameShape(QFrame.Box)
+        frame_manual_events.setFrameShadow(QFrame.Raised)
+        frame_manual_events.setLineWidth(3)
+        layout_manual_events = QVBoxLayout(frame_manual_events)
+        layout_manual_events.addWidget(btn_create_event)
+        layout_manual_events.addWidget(btn_clear_events)
+
+        layout_plot_utility.addWidget(frame_manual_events)
+        layout_plot_utility.addWidget(frame_algo_events)
         widget_plot_utility = QWidget()
         widget_plot_utility.setLayout(layout_plot_utility)
         widget_plot_utility.setMaximumWidth(250)
