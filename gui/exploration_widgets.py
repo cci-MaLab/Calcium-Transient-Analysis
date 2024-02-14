@@ -22,13 +22,14 @@ class ExplorationWidget(QWidget):
         self.timestamps = timestamps
 
         # Set up main view
+        pg.setConfigOptions(imageAxisOrder='row-major')
         self.imv = pg.ImageView()
         self.videos = self.session.load_videos()
         self.current_video = self.videos["varr"]
         self.video_length = self.current_video.shape[0]
         self.mask = np.ones((self.current_video.shape[1], self.current_video.shape[2]))
         self.current_frame = 0
-        self.imv.setImage(self.current_video.sel(frame=self.current_frame).values.T)
+        self.imv.setImage(self.current_video.sel(frame=self.current_frame).values)
 
         # Add Context Menu Action
         self.submenu_videos = self.imv.getView().menu.addMenu('&Video Format')
@@ -282,7 +283,7 @@ class ExplorationWidget(QWidget):
 
     def highlight_cell(self, event):
         point = self.imv.getImageItem().mapFromScene(event.pos())
-        converted_point = (round(point.x()), round(point.y()))
+        converted_point = (round(point.y()), round(point.x())) # Switch x and y due to transpose
 
         if converted_point in self.A_posToCell:
             temp_ids = set()
@@ -319,8 +320,9 @@ class ExplorationWidget(QWidget):
                 p.setTitle(f"Cell {id}")
                 if 'E' in self.session.data:
                     events = self.session.data['E'].sel(unit_id=id).values
+                    events = np.nan_to_num(events, nan=0) # Sometimes saving errors can cause NaNs
                     indices = events.nonzero()[0]
-                    if indices:
+                    if indices.any():
                         # Split up the indices into groups
                         indices = np.split(indices, np.where(np.diff(indices) != 1)[0]+1)
                         # Now Split the indices into pairs of first and last indices

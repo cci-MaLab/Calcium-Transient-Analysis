@@ -188,7 +188,7 @@ def save_minian(
             shutil.rmtree(fp)
         except FileNotFoundError:
             pass
-    arr = ds.to_zarr(fp, compute=compute, mode=md)
+    arr = ds.to_zarr(fp, compute=compute, mode=md, consolidated=True)
     if (chunks is not None) and compute:
         chunks = {d: var.sizes[d] if v <= 0 else v for d, v in chunks.items()}
         dst_path = os.path.join(dpath, str(uuid4()))

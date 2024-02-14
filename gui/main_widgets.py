@@ -615,6 +615,15 @@ class MouseGrid(QWidget):
         self.setLayout(self.layout)
         self.layout.addWidget(GridQLabel(f"{self.mouseID}/{self.group}"), 0, 0, Qt.AlignCenter)
         
+        # Grid Frame
+        self.grid_frame = QFrame()
+        self.grid_frame.setFrameShape(QFrame.Box)
+        self.grid_frame.setFrameShadow(QFrame.Raised)
+        self.grid_frame.setLineWidth(3)
+
+        self.layout.addWidget(self.grid_frame, 0, 0, -1, -1)
+        
+        
     
     def add_visualization(self, image, session, day):
         image_viewer = Viewer(self.main_ref, image, self.group, self.mouseID, session, day)
@@ -797,9 +806,9 @@ class AspectRatioWidget(QWidget):
             widget_stretch = w / self.aspect_ratio
             outer_stretch = (h - widget_stretch) / 2 + 0.5
 
-        self.layout().setStretch(0, outer_stretch)
-        self.layout().setStretch(1, widget_stretch)
-        self.layout().setStretch(2, outer_stretch) 
+        self.layout().setStretch(0, int(outer_stretch))
+        self.layout().setStretch(1, int(widget_stretch))
+        self.layout().setStretch(2, int(outer_stretch)) 
 
     def reset(self):
         self.widget.reset()
@@ -807,6 +816,8 @@ class GridQLabel(QLabel):
     def __init__(self, parent=None, *args):
         super().__init__(parent, *args)
 
+        self.setAlignment(Qt.AlignCenter)
+        self.setContentsMargins(6, 4, 0, 0)
         self.setFrameStyle(QFrame.Box | QFrame.Plain)
         self.setBaseSize(300,300)
         self.setStyleSheet("font-size: 14pt;")
