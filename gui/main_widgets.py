@@ -183,7 +183,7 @@ class UpdateDialog(QDialog):
         
         return result
 
-class ToolWidget(QWidget):
+class ClusteringToolWidget(QWidget):
     def __init__(self, main_ref, event_defaults, parent=None):
         super().__init__(parent)
         self.all_cells = None
@@ -197,10 +197,10 @@ class ToolWidget(QWidget):
             self.cluster_select.addItem(str(i))
         self.cluster_select.setCurrentIndex(2)
 
-        self.button = QPushButton("Update")
-        self.button.setStyleSheet("background-color : green")
-        self.button.setEnabled(False)
-        self.button.clicked.connect(self.get_result)
+        self.btn_update = QPushButton("Update")
+        self.btn_update.setStyleSheet("background-color : green")
+        self.btn_update.setEnabled(False)
+        self.btn_update.clicked.connect(self.get_result)
 
         self.button_inspect = QPushButton("Inspect Cluster")
         self.button_inspect.setStyleSheet("background-color : green")
@@ -275,7 +275,7 @@ class ToolWidget(QWidget):
         distance_metric_layout.addWidget(self.distance_metric_combo)
 
         button_layout = QHBoxLayout()
-        button_layout.addWidget(self.button)
+        button_layout.addWidget(self.btn_update)
         button_layout.addWidget(self.button_inspect)
 
         button_layout2 = QHBoxLayout()
@@ -298,12 +298,35 @@ class ToolWidget(QWidget):
         layout_sub.addWidget(label_cluster_select)
         layout_sub.addLayout(distance_metric_layout)
 
+        # Convert into a Widget so we can hide it on command
+        self.wid_sub = QWidget()
+        self.wid_sub.setLayout(layout_sub)
+        self.wid_sub.setHidden(True)
 
-        layout_tools = QHBoxLayout()
-        layout_tools.addLayout(layout_sub)
+        # Set up default view
+        self.btn_clustering = QPushButton("Start Clustering")
+        self.btn_clustering.clicked.connect(self.init_clustering)
+        self.btn_clustering.setStyleSheet("background-color : green")
+        
 
 
-        self.setLayout(layout_tools)
+        self.layout_tools = QHBoxLayout()
+        self.layout_tools.addWidget(self.wid_sub)       
+        self.layout_tools.addWidget(self.btn_clustering) 
+
+
+        self.setLayout(self.layout_tools)
+
+    def display_params(self):
+        self.wid_sub.setHidden(False)
+        self.btn_clustering.setHidden(True)
+
+    def display_default(self):
+        self.wid_sub.setHidden(True)
+        self.btn_clustering.setHidden(False)
+
+    def init_clustering(self):
+        self.main_ref.load_clustering_params()
 
     def update_defaults(self, event_defaults):
         self.event_defaults = event_defaults
@@ -343,9 +366,9 @@ class ToolWidget(QWidget):
 
     def release_button(self):
         if self.ALP_chkbox.isChecked() or self.IALP_chkbox.isChecked() or self.RNFS_chkbox.isChecked() or self.ALP_Timeout_chkbox.isChecked():
-            self.button.setEnabled(True)
+            self.btn_update.setEnabled(True)
         else:
-            self.button.setEnabled(False)
+            self.btn_update.setEnabled(False)
 
     def get_result(self):
         result = {}
@@ -547,7 +570,7 @@ class LoadingDialog(QDialog):
         self.setLayout(self.layout)
 
 
-class VisualizeClusterWidget(QWidget):
+class VisualizeInstanceWidget(QWidget):
     def __init__(self, main_ref: QMainWindow, parent=None):
         super().__init__(parent)
         self.main_ref = main_ref
@@ -626,6 +649,10 @@ class MouseGrid(QWidget):
         
     
     def add_visualization(self, image, session, day):
+        # There is a chance that the visualization already exists. If so, just update the visualization
+        if f"{session[1:]}:{day[1:]}" in self.images:
+            self.images[f"{session[1:]}:{day[1:]}"].update_visualization(image)
+            return
         image_viewer = Viewer(self.main_ref, image, self.group, self.mouseID, session, day)
         aspect_maintain = AspectRatioWidget(image_viewer, aspect_ratio=1.0)
         day = int(day[1:])
@@ -735,6 +762,10 @@ class Viewer(QGraphicsView):
         self.image = image
         self.create_pixmap()
 
+    def update_visualization(self, image):
+        self.image = image
+        self.create_pixmap()
+
     def create_pixmap(self):
         ov = (self.image*255).astype('uint8')
         qimg = QImage(ov, ov.shape[1], ov.shape[0], ov.shape[1] * 3, QImage.Format_RGB888)
@@ -793,6 +824,9 @@ class AspectRatioWidget(QWidget):
         self.layout().addWidget(self.widget)
         self.layout().addItem(QSpacerItem(0, 0))
 
+    def update_visualization(self, image):
+        self.widget.update_visualization(image)
+
     def resizeEvent(self, e):
         w = e.size().width()
         h = e.size().height()
@@ -817,7 +851,7 @@ class GridQLabel(QLabel):
         super().__init__(parent, *args)
 
         self.setAlignment(Qt.AlignCenter)
-        self.setContentsMargins(6, 4, 0, 0)
+        self.setContentsMargins(8, 8, 0, 0)
         self.setFrameStyle(QFrame.Box | QFrame.Plain)
         self.setBaseSize(300,300)
         self.setStyleSheet("font-size: 14pt;")

@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox, QAction,
                             QVBoxLayout, QHBoxLayout, QWidget, QTabWidget)
-from gui.main_widgets import (UpdateDialog, ParamDialog, VisualizeClusterWidget, Viewer, ToolWidget,
+from gui.main_widgets import (UpdateDialog, ParamDialog, VisualizeInstanceWidget, Viewer, ClusteringToolWidget,
                             GAToolWidget)
 
 from gui.genetic_algorithm_widgets import GAWindowWidget
@@ -17,7 +17,7 @@ import dask
 class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__(*args, **kwargs)
-        self.setWindowTitle("Cell Clustering Tool")
+        self.setWindowTitle("Cell Exploration Tool")
         self.setMinimumSize(600, 800)
         
         self.windows = {}
@@ -61,21 +61,21 @@ class MainWindow(QMainWindow):
 
         # Tool Widgets        
         self.current_selection = None
-        self.w_tools = ToolWidget(self, self.event_defaults)
+        self.cl_tools = ClusteringToolWidget(self, self.event_defaults)
         self.ga_tools = GAToolWidget(self)
-        self.w_tools.setEnabled(False)
+        self.cl_tools.setEnabled(False)
 
         # Layouts and tabs
         layout_central = QHBoxLayout()
         layout_cluster = QVBoxLayout()
         tabs = QTabWidget()
         tabs.setFixedWidth(320)
-        self.cluster_viz = VisualizeClusterWidget(self)
+        self.instance_viz = VisualizeInstanceWidget(self)
 
-        tabs.addTab(self.w_tools, "Clustering and Exploration")
+        tabs.addTab(self.cl_tools, "Clustering and Exploration")
         tabs.addTab(self.ga_tools, "Genetic Algorithm")
 
-        layout_cluster.addWidget(self.cluster_viz)
+        layout_cluster.addWidget(self.instance_viz)
         layout_central.addLayout(layout_cluster)
         layout_central.addWidget(tabs)
 
@@ -89,32 +89,35 @@ class MainWindow(QMainWindow):
         if self.current_selection is None:
             self.current_selection = viewer
             self.current_selection.change_to_red()
-            self.w_tools.setEnabled(True)
+            self.cl_tools.setEnabled(True)
             self.update_params()
         elif self.current_selection == viewer:
             if viewer.selected == True:
                 viewer.change_to_white()
-                self.w_tools.setEnabled(False)
+                self.cl_tools.setEnabled(False)
             else:
                 viewer.selected = True
                 viewer.change_to_red()
-                self.w_tools.setEnabled(True)
+                self.cl_tools.setEnabled(True)
                 self.update_params()
         else:
             self.current_selection.change_to_white()
 
             self.current_selection = viewer
             self.current_selection.change_to_red()
-            self.w_tools.setEnabled(True)
+            self.cl_tools.setEnabled(True)
             self.update_params()
 
     def update_params(self):
         group, session, day, mouseID = self.current_selection.return_info()
         instance = self.instances[group][mouseID][f"{session}:{day}"]
         result = self.path_list[instance.dpath]
-        result["no_of_clusters"] = instance.no_of_clusters
-
-        self.w_tools.update(result, instance.data["unit_ids"])
+        if result is not None:
+            self.cl_tools.display_params()
+            result["no_of_clusters"] = instance.no_of_clusters
+            self.cl_tools.update(result, instance.data["unit_ids"])
+        else:
+            self.cl_tools.display_default()
 
     def update_defaults(self):
         pdg = UpdateDialog(self.event_defaults)
@@ -123,7 +126,7 @@ class MainWindow(QMainWindow):
         else:
             return
         self.event_defaults = result
-        self.w_tools.update_defaults(self.event_defaults)
+        self.cl_tools.update_defaults(self.event_defaults)
 
     def start_exploration(self, current_selection=None):
         current_selection = self.current_selection if current_selection is None else current_selection
@@ -171,7 +174,7 @@ class MainWindow(QMainWindow):
         # Visualisation stuff
         mouseID, session, day, group, cl_result = instance.get_vis_info()
         self.current_selection.update_visualization(cl_result)
-        self.setWindowTitle("Cell Clustering Tool")
+        self.setWindowTitle("Cell Exploration Tool")
 
         # Check if there is an active subwindow and update it
         name = f"{instance.mouseID} {instance.day} {instance.session}"
@@ -186,7 +189,8 @@ class MainWindow(QMainWindow):
 
         name = f"{instance.mouseID} {instance.day} {instance.session} Inspection"
 
-        if name not in self.windows:
+        # Clustering result will only contain basic if it wasn't computed
+        if name not in self.windows and "all" in instance.clustering_result:
             wid = InspectionWidget(instance, self)
             wid.setWindowTitle(name)
             self.windows[name] = wid
@@ -194,20 +198,20 @@ class MainWindow(QMainWindow):
     
     def delete_selection(self):
         group, session, day, mouseID = self.current_selection.return_info()
-        self.cluster_viz.remove_visualization(group, mouseID, session, day)
+        self.instance_viz.remove_visualization(group, mouseID, session, day)
         path = self.instances[group][mouseID][f"{session}:{day}"].dpath
         # Remove it from all references
         del self.path_list[path]
         del self.instances[group][mouseID][f"{session}:{day}"]
         if not self.instances[group][mouseID]:
             del self.instances[group][mouseID]
-        self.w_tools.setEnabled(False)
+        self.cl_tools.setEnabled(False)
         self.current_selection = None
 
 
 
     def remove_window(self, name):
-        self.windows.pop(name)
+        del self.windows[name]
 
     def print_error(self, s):
         dlg = QMessageBox(self)
@@ -228,13 +232,15 @@ class MainWindow(QMainWindow):
         )
         fname = fname[0]
         if fname != '' and fname not in self.path_list:
-            pdg = ParamDialog(self.event_defaults)
-            if pdg.exec():
-                result = pdg.get_result()
-            else:
-                return
-            self.load_instance(fname, result)
-            
+            self.load_instance(fname)
+
+    def load_clustering_params(self):
+        pdg = ParamDialog(self.event_defaults)
+        if pdg.exec():
+            result = pdg.get_result()
+        else:
+            return    
+        self.load_clustering(result)        
 
     def load_saved_state(self):
         fname = QFileDialog.getOpenFileName(
@@ -252,17 +258,21 @@ class MainWindow(QMainWindow):
                     self.event_defaults = self.path_list.pop("defaults")
                     if "distance_metric" not in self.event_defaults:
                         self.event_defaults["distance_metric"] = "euclidean"
-                    self.w_tools.update_defaults(self.event_defaults)
+                    self.cl_tools.update_defaults(self.event_defaults)
 
                 for path in self.path_list.keys():
                     results = self.path_list[path]
                     self.load_instance(path, results)
 
-                self.setWindowTitle("Cell Clustering Tool")      
+                self.setWindowTitle("Cell Exploration Tool")      
         
 
-    def load_instance(self, fname, result):
+    def load_clustering(self, result):
         self.setWindowTitle("Loading...")
+
+        current_selection = self.current_selection
+        group, session, day, mouseID = current_selection.return_info()
+        instance = self.instances[group][mouseID][f"{session}:{day}"]
 
         events = list(result.keys())
         
@@ -274,7 +284,7 @@ class MainWindow(QMainWindow):
         if "no_of_clusters" in events:
             no_of_clusters = result["no_of_clusters"]
             events.remove("no_of_clusters")
-        instance = DataInstance(fname, events)
+        instance.load_events(events)
         if no_of_clusters is not None:
             instance.no_of_clusters = no_of_clusters
         for event in events:
@@ -288,20 +298,30 @@ class MainWindow(QMainWindow):
         instance.set_vector()
         instance.compute_clustering()
 
-        self.path_list[fname] = result
+        self.path_list[instance.dpath] = result
         
 
         # Visualisation stuff
         mouseID, session, day, group, cl_result = instance.get_vis_info()
+        # Generate the Grid
+        self.instance_viz.add_visualization(group, mouseID, cl_result, session, day)
+        self.cl_tools.display_params()
+        self.current_selection.change_to_red()
+        self.update_params()
+        self.setWindowTitle("Cell Exploration Tool")
+
+    def load_instance(self, fname):
+        self.setWindowTitle("Loading...")
+        instance = DataInstance(fname)
+        mouseID, session, day, group, viz_result = instance.get_vis_info()
         if group not in self.instances:
             self.instances[group] = {}
         if instance.mouseID not in self.instances[group]:
             self.instances[group][f"{instance.mouseID}"] = {}
         self.instances[group][f"{instance.mouseID}"][f"{session}:{day}"] = instance
-        # Generate the Grid
-        self.cluster_viz.add_visualization(group, mouseID, cl_result, session, day)
-        self.setWindowTitle("Cell Clustering Tool")
-
+        self.instance_viz.add_visualization(group, mouseID, viz_result, session, day)
+        self.path_list[fname] = None
+        self.setWindowTitle("Cell Exploration Tool")
     
     def save(self):
         default_dir = os.getcwd()
@@ -316,6 +336,13 @@ class MainWindow(QMainWindow):
                 with open(filename, 'w') as f:
                     json.dump(extended_json, f)
     
+
+sys._excepthook = sys.excepthook 
+def exception_hook(exctype, value, traceback):
+    print(exctype, value, traceback)
+    sys._excepthook(exctype, value, traceback) 
+    sys.exit(1) 
+sys.excepthook = exception_hook 
 app = QApplication([])
 app.setStyle('Fusion')
 window = MainWindow()

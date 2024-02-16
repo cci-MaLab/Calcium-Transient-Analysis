@@ -441,8 +441,7 @@ class DataInstance:
     distance_metric_list = ['euclidean','cosine'] # Static variable so parameters can be read before initiating instance
     def __init__(
         self,
-        dpath: str,
-        events: list
+        dpath: str
     ):  
         self.dpath = dpath  
         self.mouseID : str
@@ -455,13 +454,14 @@ class DataInstance:
         self.A: dict    #key is unit_id,value is A. Just keep same uniform with self.value
         self.value: dict #key is the unit_id,value is the numpy array
         self.outliers_list: List[int] = []
-        # self.linkage_data:
         self.centroids: dict
         self.load_data(dpath=dpath)
-        self.load_events(events)
         self.no_of_clusters = 4
         
         self.distance_metric = 'euclidean'
+
+        # Create the default image
+        self.clustering_result = {"basic": {"image": np.stack((self.data['A'].sum("unit_id").values,)*3, axis=-1)}}
 
     def parse_file(self,dpath):# set up configure file
         config = configparser.ConfigParser()
@@ -652,7 +652,8 @@ class DataInstance:
         self.clustering_result = self.cellClustering.visualize_clusters(self.no_of_clusters)
 
     def get_vis_info(self):
-        return self.mouseID, self.session, self.day, self.group, self.clustering_result['all']['image']
+        image = self.clustering_result["all"]["image"] if "all" in self.clustering_result else self.clustering_result["basic"]["image"]
+        return self.mouseID, self.session, self.day, self.group, image
 
     def get_dendrogram(self, ax):
         self.cellClustering.visualize_dendrogram(color_threshold =self.linkage_data[(self.no_of_clusters-1),2] ,ax=ax)
