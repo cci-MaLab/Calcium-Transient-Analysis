@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox, QAction,
                             QVBoxLayout, QHBoxLayout, QWidget, QTabWidget)
 from gui.main_widgets import (UpdateDialog, ParamDialog, VisualizeInstanceWidget, Viewer, ClusteringToolWidget,
-                            GAToolWidget)
+                            GAToolWidget, ExplorationToolWidget)
 
 from gui.genetic_algorithm_widgets import GAWindowWidget
 from gui.exploration_widgets import ExplorationWidget
@@ -63,7 +63,10 @@ class MainWindow(QMainWindow):
         self.current_selection = None
         self.cl_tools = ClusteringToolWidget(self, self.event_defaults)
         self.ga_tools = GAToolWidget(self)
+        self.e_tools = ExplorationToolWidget(self)
         self.cl_tools.setEnabled(False)
+        self.e_tools.setEnabled(False)
+        self.ga_tools.setEnabled(False)
 
         # Layouts and tabs
         layout_central = QHBoxLayout()
@@ -72,7 +75,8 @@ class MainWindow(QMainWindow):
         tabs.setFixedWidth(320)
         self.instance_viz = VisualizeInstanceWidget(self)
 
-        tabs.addTab(self.cl_tools, "Clustering and Exploration")
+        tabs.addTab(self.e_tools, "Exploration")
+        tabs.addTab(self.cl_tools, "Clustering")
         tabs.addTab(self.ga_tools, "Genetic Algorithm")
 
         layout_cluster.addWidget(self.instance_viz)
@@ -90,15 +94,21 @@ class MainWindow(QMainWindow):
             self.current_selection = viewer
             self.current_selection.change_to_red()
             self.cl_tools.setEnabled(True)
+            self.e_tools.setEnabled(True)
+            self.ga_tools.setEnabled(True)
             self.update_params()
         elif self.current_selection == viewer:
             if viewer.selected == True:
                 viewer.change_to_white()
                 self.cl_tools.setEnabled(False)
+                self.e_tools.setEnabled(False)
+                self.ga_tools.setEnabled(False)
             else:
                 viewer.selected = True
                 viewer.change_to_red()
                 self.cl_tools.setEnabled(True)
+                self.e_tools.setEnabled(True)
+                self.ga_tools.setEnabled(True)
                 self.update_params()
         else:
             self.current_selection.change_to_white()
@@ -106,6 +116,8 @@ class MainWindow(QMainWindow):
             self.current_selection = viewer
             self.current_selection.change_to_red()
             self.cl_tools.setEnabled(True)
+            self.e_tools.setEnabled(True)
+            self.ga_tools.setEnabled(True)
             self.update_params()
 
     def update_params(self):
@@ -206,6 +218,8 @@ class MainWindow(QMainWindow):
         if not self.instances[group][mouseID]:
             del self.instances[group][mouseID]
         self.cl_tools.setEnabled(False)
+        self.e_tools.setEnabled(False)
+        self.ga_tools.setEnabled(False)
         self.current_selection = None
 
 

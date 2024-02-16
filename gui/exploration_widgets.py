@@ -3,7 +3,7 @@ The following file will be used for doing a deeper dive into the selected sessio
 """
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAction, QStyle, 
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
-                            QApplication, QStyleFactory, QFrame, QTabWidget)
+                            QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar)
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator)
 from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem)
@@ -11,6 +11,7 @@ import pyqtgraph as pg
 import numpy as np
 from pyqtgraph import InfiniteLine
 from scipy.signal import find_peaks
+from core.exploration_statistics import GeneralStatsWidget
 
 class ExplorationWidget(QWidget):
     def __init__(self, session, name, main_window_ref, timestamps=None, parent=None):
@@ -20,6 +21,7 @@ class ExplorationWidget(QWidget):
         self.name = name
         self.main_window_ref = main_window_ref
         self.timestamps = timestamps
+        self.gen_stats_window = None
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -41,7 +43,16 @@ class ExplorationWidget(QWidget):
                 button_video_type.setChecked(True)
             else:
                 button_video_type.setChecked(False)
-            self.submenu_videos.addAction(button_video_type)             
+            self.submenu_videos.addAction(button_video_type)   
+
+        # Menu Bar for statistics
+        menu = QMenuBar()
+        pixmapi_save = QStyle.StandardPixmap.SP_FileDialogListView
+        btn_general_stats = QAction(self.style().standardIcon(pixmapi_save), "&General Statistics", self)
+        btn_general_stats.setStatusTip("Produce General Statistics")
+        btn_general_stats.triggered.connect(self.generate_gen_stats)
+        stats_menu = menu.addMenu("&Statistics")
+        stats_menu.addAction(btn_general_stats)
         
 
         # We'll load in a copy of the visualization of the cells we are monitoring
@@ -90,6 +101,8 @@ class ExplorationWidget(QWidget):
         self.btn_cell_return.clicked.connect(self.approve_cells)
 
         # Plot utility
+        self.auto_label = QLabel("Automatic Transient Detection")
+        self.manual_label = QLabel("Manual Transient Detection")
         self.min_height_label = QLabel("Height Threshold")
         self.min_height_input = QLineEdit()
         self.min_height_input.setValidator(QDoubleValidator(0, 1000, 3))
@@ -216,6 +229,7 @@ class ExplorationWidget(QWidget):
         frame_algo_events.setFrameShadow(QFrame.Raised)
         frame_algo_events.setLineWidth(3)
         layout_algo_events = QVBoxLayout(frame_algo_events)
+        layout_algo_events.addWidget(self.auto_label)
         layout_algo_events.addLayout(layout_height)
         layout_algo_events.addLayout(layout_dist)
         layout_algo_events.addLayout(layout_auc)
@@ -226,6 +240,7 @@ class ExplorationWidget(QWidget):
         frame_manual_events.setFrameShadow(QFrame.Raised)
         frame_manual_events.setLineWidth(3)
         layout_manual_events = QVBoxLayout(frame_manual_events)
+        layout_manual_events.addWidget(self.manual_label)
         layout_manual_events.addWidget(btn_create_event)
         layout_manual_events.addWidget(btn_clear_events)
 
@@ -260,6 +275,7 @@ class ExplorationWidget(QWidget):
         main_widget.addWidget(widget_video_cells)
         main_widget.addWidget(widget_video_cells_visualize)
         layout.addWidget(main_widget)
+        layout.setMenuBar(menu)
 
         self.setLayout(layout)
         QApplication.setStyle(QStyleFactory.create('Cleanlooks'))
@@ -267,6 +283,11 @@ class ExplorationWidget(QWidget):
         self.video_timer = QTimer()
         self.video_timer.setInterval(50)
         self.video_timer.timeout.connect(self.next_frame)
+
+    def generate_gen_stats(self):
+        self.gen_stats_window = GeneralStatsWidget(self.session)
+        self.gen_stats_window.setWindowTitle("General Statistics")
+        self.gen_stats_window.show()
 
     def find_subplot(self, event):
         if event.double():

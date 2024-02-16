@@ -607,6 +607,12 @@ class DataInstance:
             events[key].switch = True
         self.events = events
 
+    def get_cell_sizes(self):
+        return (self.data["A"] > 0).sum(["height", "width"]).compute()
+    
+    def get_total_transients(self):
+        return (self.data["E"].diff(dim="frame") == 1).sum(dim="frame").compute()
+
     def set_vector(self):
         '''
         event :  str, list

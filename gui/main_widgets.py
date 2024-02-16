@@ -210,10 +210,6 @@ class ClusteringToolWidget(QWidget):
         self.button_delete.setStyleSheet("background-color : red")
         self.button_delete.clicked.connect(self.delete)
 
-        self.button_explore = QPushButton("Data Exploration")
-        self.button_explore.setStyleSheet("background-color : blue")
-        self.button_explore.clicked.connect(self.explore)
-
         self.ALP_chkbox = QCheckBox("ALP")
         self.ALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_chkbox, self.ALP_param))
         self.ALP_chkbox.stateChanged.connect(self.release_button)
@@ -280,7 +276,6 @@ class ClusteringToolWidget(QWidget):
 
         button_layout2 = QHBoxLayout()
         button_layout2.addWidget(self.button_delete)
-        button_layout2.addWidget(self.button_explore)
 
         layout_sub.addLayout(button_layout2)
         layout_sub.addLayout(button_layout)
@@ -400,9 +395,6 @@ class ClusteringToolWidget(QWidget):
 
     def delete(self, event):
         self.main_ref.delete_selection()
-
-    def explore(self, event):
-        self.main_ref.start_exploration()
     
     def update(self, result, cell_list):
         self.all_cells = cell_list
@@ -515,7 +507,29 @@ def hide_unhide(chkbox, param):
     else:
         param.setEnabled(False)
 
+class ExplorationToolWidget(QWidget):
+    def __init__(self, main_ref, parent=None):
+        super().__init__(parent)
+        self.main_ref = main_ref
 
+        self.button_explore = QPushButton("Data Exploration")
+        self.button_explore.setStyleSheet("background-color : blue")
+        self.button_explore.clicked.connect(self.explore)
+
+        self.button_delete = QPushButton("Delete Cluster")
+        self.button_delete.setStyleSheet("background-color : red")
+        self.button_delete.clicked.connect(self.delete)
+
+        self.layout = QHBoxLayout()
+        self.layout.addWidget(self.button_explore)
+        self.layout.addWidget(self.button_delete)
+        self.setLayout(self.layout)
+
+    def explore(self, event):
+        self.main_ref.start_exploration()
+
+    def delete(self, event):
+        self.main_ref.delete_selection()
 
 class ParamWidget(QWidget):
     def __init__(self, name, event_defaults, parent=None):
