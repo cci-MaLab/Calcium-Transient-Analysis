@@ -188,7 +188,7 @@ def save_minian(
             shutil.rmtree(fp)
         except FileNotFoundError:
             pass
-    arr = ds.to_zarr(fp, compute=compute, mode=md, consolidated=True)
+    arr = ds.to_zarr(fp, compute=compute, mode=md, consolidated=False)
     if (chunks is not None) and compute:
         chunks = {d: var.sizes[d] if v <= 0 else v for d, v in chunks.items()}
         dst_path = os.path.join(dpath, str(uuid4()))
@@ -344,20 +344,20 @@ class Event:
         # duration is in seconds convert to ms
         duration *= 1000
         delay *= 1000
-        start = self.data['Time Stamp (ms)'][event_frame]
-        max_length = len(self.data['Time Stamp (ms)'])
+        start = self.data['timestamp(ms)'][event_frame]
+        max_length = len(self.data['timestamp(ms)'])
         if delay > 0:
             frame_gap = 1
-            while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < delay:
+            while self.data['timestamp(ms)'][event_frame + frame_gap] - self.data['timestamp(ms)'][event_frame] < delay:
                 frame_gap += 1
             event_frame += frame_gap
         elif delay < 0:
             frame_gap = -1
-            while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] > delay and event_frame + frame_gap > 0:
+            while self.data['timestamp(ms)'][event_frame + frame_gap] - self.data['timestamp(ms)'][event_frame] > delay and event_frame + frame_gap > 0:
                 frame_gap -= 1
             event_frame += frame_gap
         frame_gap = 1
-        while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < duration and event_frame + frame_gap < max_length-1:
+        while self.data['timestamp(ms)'][event_frame + frame_gap] - self.data['timestamp(ms)'][event_frame] < duration and event_frame + frame_gap < max_length-1:
             frame_gap += 1
         if type in self.data:
             return self.data[type].sel(frame=slice(event_frame, event_frame+frame_gap)) , event_frame,event_frame+frame_gap
@@ -373,12 +373,12 @@ class Event:
         integrity = True
         duration *= 1000
         delay *= 1000
-        start = self.data['Time Stamp (ms)'][event_frame]
+        start = self.data['timestamp(ms)'][event_frame]
         frame_list = []
-        max_length = len(self.data['Time Stamp (ms)'])
+        max_length = len(self.data['timestamp(ms)'])
         if delay > 0:
             frame_gap = 0
-            while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < delay:
+            while self.data['timestamp(ms)'][event_frame + frame_gap] - self.data['timestamp(ms)'][event_frame] < delay:
                 if (event_frame + frame_gap) < (max_length-1): 
                     frame_gap += 1
                 else:
@@ -387,7 +387,7 @@ class Event:
             event_frame += frame_gap
         elif delay < 0:
             frame_gap = 0
-            while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] > delay:
+            while self.data['timestamp(ms)'][event_frame + frame_gap] - self.data['timestamp(ms)'][event_frame] > delay:
                 if(event_frame + frame_gap > 0):
                     frame_gap -= 1
                 else:
@@ -395,11 +395,11 @@ class Event:
                     break
             event_frame += frame_gap
         frame_gap = 0
-        time_flag = self.data['Time Stamp (ms)'][event_frame]
+        time_flag = self.data['timestamp(ms)'][event_frame]
         frame_list.append(event_frame)
-        while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < duration and event_frame + frame_gap < max_length-1:
-            if self.data['Time Stamp (ms)'][event_frame + frame_gap]-time_flag > interval:
-                time_flag = self.data['Time Stamp (ms)'][event_frame + frame_gap]
+        while self.data['timestamp(ms)'][event_frame + frame_gap] - self.data['timestamp(ms)'][event_frame] < duration and event_frame + frame_gap < max_length-1:
+            if self.data['timestamp(ms)'][event_frame + frame_gap]-time_flag > interval:
+                time_flag = self.data['timestamp(ms)'][event_frame + frame_gap]
                 frame_list.append(event_frame + frame_gap)
             frame_gap += 1
         if type in self.data:
@@ -508,12 +508,15 @@ class DataInstance:
         timestamp = behavior_data[["Time Stamp (ms)"]]
         timestamp.index.name = "frame"
         da_ts = timestamp["Time Stamp (ms)"].to_xarray()
-        self.dataset.coords['Time Stamp (ms)'] = da_ts
-        data.coords['Time Stamp (ms)'] = da_ts
+        self.dataset.coords['timestamp(ms)'] = da_ts
+        data.coords['timestamp(ms)'] = da_ts
 
         for dt in data_types:            
             if dt in data:
                 self.data[dt] = data[dt]
+                # Safe guard against deprecated E standard and erroneous E data
+                if dt == 'E':
+                    self.data[dt] = self.data[dt].fillna(0).where(self.data[dt] == 0, 1)
             else:
                 print("No %s data found in minian file" % (dt))
                 self.data[dt] = None
@@ -610,8 +613,63 @@ class DataInstance:
     def get_cell_sizes(self):
         return (self.data["A"] > 0).sum(["height", "width"]).compute()
     
-    def get_total_transients(self):
-        return (self.data["E"].diff(dim="frame") == 1).sum(dim="frame").compute()
+    def get_total_transients(self, unit_id=None):
+        # Diff won't capture the first transient, so we add 1 to the sum if
+        # the first frame is 1
+        if unit_id is None:
+            total_transients = (self.data["E"].diff(dim="frame") == 1).sum(dim="frame") + (self.data["E"].isel(frame=0))
+            return total_transients.compute()
+        else:
+            total_transients = (self.data["E"].sel(unit_id = unit_id).diff(dim="frame") == 1).sum(dim="frame") + (self.data["E"].sel(unit_id = unit_id).isel(frame=0))
+            return total_transients.compute()
+    
+    def get_total_rising_frames(self):
+        return (self.data["E"] != 0).sum(dim="frame").compute()
+    
+    def get_transient_frames(self):
+        '''
+        Get the inter-event interval. The approach is as follows: the diff of the E array will give us the rising edges.
+        For E this means that the start of each transient will have a value of 1. We can extrapolate the inter-event
+        by taking their corresponding frame numbers and performing another diff on them.
+        '''
+        # This will contain 1s for the start of each transient
+        rising_edges = self.data["E"].diff(dim="frame") 
+        # Each cell will have a 1 corresponding to the start of each transient and a
+        # a nan value for other frames.
+        transient_frames = rising_edges.where(rising_edges==1,drop=True)
+        # At this stage it is the most we are able to prune the data. The rest of the 
+        # pruning will be done on a per cell basis.
+        return transient_frames.compute()
+    
+    def get_mean_iei_per_cell(self, transient_frames, cell_id, total_transients, frame_rate=None):
+        '''
+        start_of_transients: xr.DataArray
+            The start of each transient for all cells taken as an output of get_mean_iei().
+        cell_id: int
+            The cell for which we want to calculate the mean inter-event interval
+        total_transients: xr.DataArray
+            This contains the total number of transients for each cell. The number of transients should 
+            correspond to the number of 1s in the frames array. If the length of frames is 1 less than
+            the number of transients, then we can assume that the first transient starting at frame 0 was
+            missed by the diff operation in get_transient_frames().
+        '''
+
+        if cell_id not in transient_frames.coords["unit_id"]:
+            return "N/A"
+        
+        frames = transient_frames.coords["frame"].where(transient_frames.sel(unit_id = cell_id) == 1, drop=True).values
+        if total_transients.sel(unit_id = cell_id) == 1:
+            return "N/A"
+        if len(frames) == total_transients.sel(unit_id = cell_id).item()-1:
+            frames = np.insert(frames, 0, 0)
+
+        
+        if frame_rate is None:
+            return str(round(np.mean(np.diff(frames))))
+        else:
+            return str(round(np.mean(np.diff(frames))/frame_rate, 3))
+        
+
 
     def set_vector(self):
         '''
@@ -799,8 +857,9 @@ class DataInstance:
                 name="E"
             )
             E = E.assign_coords(good_cells=("unit_id", np.ones(len(self.data['unit_ids']))), verified=("unit_id", np.zeros(len(self.data['unit_ids']))))
-            save_minian(E, self.minian_path, overwrite=True)
-            self.data['E'] = E
+            E.coords['timestamp(ms)'] = self.dataset.coords['timestamp(ms)']
+            self.data['E'] = save_minian(E, self.minian_path, overwrite=True)
+            
 
         # For backwards compatibility check if the verified values exist and if not create them
         elif "verified" not in self.data['E'].coords:

@@ -11,7 +11,7 @@ import pyqtgraph as pg
 import numpy as np
 from pyqtgraph import InfiniteLine
 from scipy.signal import find_peaks
-from core.exploration_statistics import GeneralStatsWidget
+from core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget)
 
 class ExplorationWidget(QWidget):
     def __init__(self, session, name, main_window_ref, timestamps=None, parent=None):
@@ -22,6 +22,7 @@ class ExplorationWidget(QWidget):
         self.main_window_ref = main_window_ref
         self.timestamps = timestamps
         self.gen_stats_window = None
+        self.local_stats_windows = {}
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -47,8 +48,8 @@ class ExplorationWidget(QWidget):
 
         # Menu Bar for statistics
         menu = QMenuBar()
-        pixmapi_save = QStyle.StandardPixmap.SP_FileDialogListView
-        btn_general_stats = QAction(self.style().standardIcon(pixmapi_save), "&General Statistics", self)
+        pixmapi_tools = QStyle.StandardPixmap.SP_FileDialogListView
+        btn_general_stats = QAction(self.style().standardIcon(pixmapi_tools), "&General Statistics", self)
         btn_general_stats.setStatusTip("Produce General Statistics")
         btn_general_stats.triggered.connect(self.generate_gen_stats)
         stats_menu = menu.addMenu("&Statistics")
@@ -88,13 +89,15 @@ class ExplorationWidget(QWidget):
         self.btn_cell_reject = QPushButton("Reject Cell")
         self.btn_cell_reject.clicked.connect(self.reject_cells)
 
-        tabs = QTabWidget()
-        tabs.setFixedWidth(320)
+        tabs_video = QTabWidget()
+        tabs_video.setFixedWidth(320)
+        tabs_signal = QTabWidget()
+        tabs_signal.setFixedWidth(320)
 
         # Rejected Cells
         w_rejected_cell_label = QLabel("Rejected Cells:")
         self.list_rejected_cell = QListWidget()
-        self.list_rejected_cell.setMaximumSize(250, 600)
+        self.list_rejected_cell.setMaximumSize(320, 600)
         self.list_rejected_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
         
         self.btn_cell_return = QPushButton("Return Cell")
@@ -104,6 +107,7 @@ class ExplorationWidget(QWidget):
         self.auto_label = QLabel("Automatic Transient Detection")
         self.manual_label = QLabel("Manual Transient Detection")
         self.min_height_label = QLabel("Height Threshold")
+        local_stats_label = QLabel("Local Statistics")
         self.min_height_input = QLineEdit()
         self.min_height_input.setValidator(QDoubleValidator(0, 1000, 3))
         self.min_height_input.setText("0")
@@ -124,12 +128,16 @@ class ExplorationWidget(QWidget):
         btn_clear_events.clicked.connect(self.clear_selected_events)
         btn_create_event = QPushButton("Create Event")
         btn_create_event.clicked.connect(self.create_event)
-        self.btn_verified = QPushButton("Verify/Unverify")
-        self.btn_verified.clicked.connect(self.verification_state_changed)
+        btn_verified = QPushButton("Verify/Unverify")
+        btn_verified.clicked.connect(self.verification_state_changed)
+
         btn_stats_amp = QPushButton("Amplitude Frequency Histogram")
         btn_stats_amp.clicked.connect(lambda: self.generate_stats(type="amplitude"))
         btn_stats_iei = QPushButton("IEI Frequency Histogram")
         btn_stats_iei.clicked.connect(lambda: self.generate_stats(type="iei"))
+
+        btn_generate_stats = QPushButton("Generate Local Statistics")
+        btn_generate_stats.clicked.connect(self.generate_local_stats)
 
 
         # Populate cell list
@@ -193,7 +201,7 @@ class ExplorationWidget(QWidget):
         layout_cells.addWidget(self.btn_cell_reset)
         layout_cells.addWidget(self.btn_cell_clear_color)
         layout_cells.addWidget(self.btn_cell_reject)
-        layout_cells.addWidget(self.btn_verified)
+        layout_cells.addWidget(btn_verified)
         w_cells = QWidget()
         w_cells.setLayout(layout_cells)
 
@@ -204,8 +212,8 @@ class ExplorationWidget(QWidget):
         w_rejected_cells = QWidget()
         w_rejected_cells.setLayout(layout_rejected_cells)
 
-        tabs.addTab(w_cells, "Approved Cells")
-        tabs.addTab(w_rejected_cells, "Rejected Cells")
+        tabs_video.addTab(w_cells, "Approved Cells")
+        tabs_video.addTab(w_rejected_cells, "Rejected Cells")
 
 
         # General plot utility
@@ -244,14 +252,29 @@ class ExplorationWidget(QWidget):
         layout_manual_events.addWidget(btn_create_event)
         layout_manual_events.addWidget(btn_clear_events)
 
+        # Statistics buttons
+        frame_stats = QFrame()
+        frame_stats.setFrameShape(QFrame.Box)
+        frame_stats.setFrameShadow(QFrame.Raised)
+        frame_stats.setLineWidth(3)
+        layout_stats = QVBoxLayout(frame_stats)
+        layout_stats.addStretch()
+        layout_stats.setDirection(3)
+
+        layout_stats.addWidget(btn_generate_stats)
+        layout_stats.addWidget(local_stats_label)
+
         layout_plot_utility.addWidget(frame_manual_events)
         layout_plot_utility.addWidget(frame_algo_events)
         widget_plot_utility = QWidget()
         widget_plot_utility.setLayout(layout_plot_utility)
-        widget_plot_utility.setMaximumWidth(250)
+        widget_plot_utility.setMaximumWidth(320)
+
+        tabs_signal.addTab(widget_plot_utility, "Event Detection")
+        tabs_signal.addTab(frame_stats, "Statistics")
 
         layout_video_cells.addLayout(layout_video)
-        layout_video_cells.addWidget(tabs)
+        layout_video_cells.addWidget(tabs_video)
         widget_video_cells = QWidget()
         widget_video_cells.setLayout(layout_video_cells)
 
@@ -259,7 +282,7 @@ class ExplorationWidget(QWidget):
 
         layout_plot = QHBoxLayout()
         layout_plot.addWidget(self.w_signals)
-        layout_plot.addWidget(widget_plot_utility)
+        layout_plot.addWidget(tabs_signal)
         widget_plot = QWidget()
         widget_plot.setLayout(layout_plot)
         layout_video_cells_visualize.addWidget(widget_plot)
@@ -349,6 +372,26 @@ class ExplorationWidget(QWidget):
                         # Now Split the indices into pairs of first and last indices
                         indices = [(indices_group[0], indices_group[-1]+1) for indices_group in indices]
                         p.draw_event_curves(indices)
+
+    def generate_local_stats(self):
+        # Iterate through the current plots and generate local statistics windows
+        cell_ids = []
+        i = 0
+        while self.w_signals.getItem(i,0) is not None:
+            item = self.w_signals.getItem(i,0)
+            if isinstance(item, PlotItemEnhanced):
+                cell_ids.append(item.id)
+            i += 1
+        
+        for cell_id in cell_ids:
+            if cell_id not in self.local_stats_windows:
+                self.local_stats_windows[cell_id] = LocalStatsWidget(self.session, cell_id, self)
+                self.local_stats_windows[cell_id].setWindowTitle(f"Statistics for Cell {cell_id}")
+                self.local_stats_windows[cell_id].show()
+
+    def delete_local_stats_win(self, cell_id):
+        del self.local_stats_windows[cell_id]
+
 
     def verification_state_changed(self):
         cell_ids = [int(item.text()) for item in self.list_cell.selectedItems()]
@@ -490,7 +533,9 @@ class ExplorationWidget(QWidget):
         while self.w_signals.getItem(i,0) is not None:
             item = self.w_signals.getItem(i,0)
             if isinstance(item, PlotItemEnhanced):
-                accumulated_created_events[item.id] = item.create_event_local()
+                event_local = item.create_event_local()
+                if event_local is not None:
+                    accumulated_created_events[item.id] = event_local
             i += 1
 
         self.session.add_to_E(accumulated_created_events)
@@ -651,6 +696,7 @@ class PlotItemEnhanced(PlotItem):
         self.clicked_points.append(point)
         
     def create_event_local(self):
+        event_curve = None
         if len(self.clicked_points) == 2:
             x1 = self.clicked_points[0].data[0][0]
             x2 = self.clicked_points[1].data[0][0]
@@ -705,11 +751,15 @@ class PlotItemEnhanced(PlotItem):
             event_curve = PlotCurveItemEnhanced(np.arange(x1, x2+1), self.C_signal[x1:x2+1], pen='r', is_event=True, main_plot=self)
             self.addItem(event_curve)
 
+
         for point in self.clicked_points:
             self.removeItem(point)
         self.clicked_points = []
 
-        return event_curve.xData
+        if event_curve is not None:
+            return event_curve.xData
+        else:
+            return None
 
 
 
