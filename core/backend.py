@@ -20,16 +20,14 @@ import rechunker
 import zarr as zr
 from uuid import uuid4
 
+from core.caiman_utils import detrend_df_f
 
 from scipy.signal import welch
-from scipy.signal import savgol_filter
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
-from scipy.ndimage import gaussian_filter1d
 from scipy.ndimage.measurements import center_of_mass
 from skimage.measure import find_contours
 
 from matplotlib import cm
-from matplotlib import colors 
 import matplotlib.pyplot as plt
 from scipy.stats import zscore
 
@@ -503,12 +501,12 @@ class DataInstance:
                 self.data[dt] = None
 
         data = open_minian(minian_path)
-        data_types = ['A', 'C', 'S', 'E']
+        data_types = ['A', 'C', 'S', 'E', 'b', 'f', 'DFF']
         self.dataset = data
         timestamp = behavior_data[["Time Stamp (ms)"]]
         timestamp.index.name = "frame"
         da_ts = timestamp["Time Stamp (ms)"].to_xarray()
-        self.dataset.coords['timestamp(ms)'] = da_ts
+        self.dataset.coords['timestamp(ms)'] = da_ts # Has to be renamed to timestamp(ms) as xarray complains about the space in a coordinate name
         data.coords['timestamp(ms)'] = da_ts
 
         for dt in data_types:            
@@ -847,6 +845,7 @@ class DataInstance:
         Check if the E xarray exists and if not create it.
         """
         if self.data['E'] is None:
+            print("Creating E array")
             E = xr.DataArray(
                 np.zeros(self.data['C'].shape),
                 dims=["unit_id", "frame"],
@@ -865,6 +864,46 @@ class DataInstance:
         elif "verified" not in self.data['E'].coords:
             self.data['E'] = self.data['E'].assign_coords(verified=("unit_id", np.zeros(len(self.data['unit_ids']))))
             save_minian(self.data['E'], self.minian_path, overwrite=True)
+
+    def check_DFF(self):
+        """
+        Check if the DFF xarray exists and if not create it.
+        """
+        if self.data['DFF'] is None:
+            print("Creating DFF array. Sit tight this could take a while.")
+            dff_array = np.zeros(self.data['C'].shape)
+            # load in the necessary data
+            C = self.data['C'].values
+            A = self.data['A'].values
+            f = self.data['f'].values
+            b = self.data['b'].values
+            for i in range(len(C)):
+                dff_array[i] = detrend_df_f(A[i], b, C[i], f)
+                
+            DFF = xr.DataArray(
+                dff_array,
+                dims=["unit_id", "frame"],
+                coords=dict(
+                    unit_id=self.data['unit_ids'],
+                    frame=self.data['C'].coords["frame"],
+                ),
+                name="DFF"
+            ).chunk(dict(frame=-1, unit_id="auto"))
+            self.data['DFF'] = save_minian(DFF, self.minian_path, overwrite=True)
+
+    def check_essential_data(self):
+        '''
+        Create a list of essential data that is required for the analysis.
+        '''
+        essential_data = ["A", "C", "S", "b", "f"]
+        got_data = True
+
+        for data_type in essential_data:
+            if self.data[data_type] is None:
+                print("Missing essential data: %s" % data_type)
+                got_data = False
+
+        return got_data
 
 
         

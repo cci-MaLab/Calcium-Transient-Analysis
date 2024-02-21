@@ -10,7 +10,6 @@ import os
 import json
 sys.path.insert(0, ".")
 from core.backend import DataInstance
-from gui.exploration_widgets import ExplorationWidget
 from gui.clustering_inspection_widgets import InspectionWidget
 import dask
 
@@ -153,9 +152,10 @@ class MainWindow(QMainWindow):
 
         if name not in self.windows:
             wid = ExplorationWidget(instance, name, self)
-            wid.setWindowTitle(name)
-            self.windows[name] = wid
-            wid.show()
+            if wid is not None:
+                wid.setWindowTitle(name)
+                self.windows[name] = wid
+                wid.show()
 
     def start_ga(self, ga):
         name = "Genetic Algorithm"
@@ -331,14 +331,19 @@ class MainWindow(QMainWindow):
     def load_instance(self, fname):
         self.setWindowTitle("Loading...")
         instance = DataInstance(fname)
-        mouseID, session, day, group, viz_result = instance.get_vis_info()
-        if group not in self.instances:
-            self.instances[group] = {}
-        if instance.mouseID not in self.instances[group]:
-            self.instances[group][f"{instance.mouseID}"] = {}
-        self.instances[group][f"{instance.mouseID}"][f"{session}:{day}"] = instance
-        self.instance_viz.add_visualization(group, mouseID, viz_result, session, day)
-        self.path_list[fname] = None
+        # Check if the instance is valid
+        if instance.check_essential_data():
+            mouseID, session, day, group, viz_result = instance.get_vis_info()
+            if group not in self.instances:
+                self.instances[group] = {}
+            if instance.mouseID not in self.instances[group]:
+                self.instances[group][f"{instance.mouseID}"] = {}
+            self.instances[group][f"{instance.mouseID}"][f"{session}:{day}"] = instance
+            self.instance_viz.add_visualization(group, mouseID, viz_result, session, day)
+            self.path_list[fname] = None
+            # Initially there might be no E and DFF data, check and create it if necessary
+            instance.check_E()
+            instance.check_DFF()
         self.setWindowTitle("Cell Exploration Tool")
     
     def save(self):

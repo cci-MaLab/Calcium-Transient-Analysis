@@ -17,7 +17,6 @@ class ExplorationWidget(QWidget):
     def __init__(self, session, name, main_window_ref, timestamps=None, parent=None):
         super().__init__(parent)
         self.session = session
-        self.session.check_E()
         self.name = name
         self.main_window_ref = main_window_ref
         self.timestamps = timestamps
@@ -28,7 +27,10 @@ class ExplorationWidget(QWidget):
         pg.setConfigOptions(imageAxisOrder='row-major')
         self.imv = pg.ImageView()
         self.videos = self.session.load_videos()
-        self.current_video = self.videos["varr"]
+        if not self.videos:
+            print("Missing Videos")
+            return None
+        self.current_video = self.videos[list(self.videos.keys())[0]]
         self.video_length = self.current_video.shape[0]
         self.mask = np.ones((self.current_video.shape[1], self.current_video.shape[2]))
         self.current_frame = 0

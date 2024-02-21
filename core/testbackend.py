@@ -1,14 +1,9 @@
 import sys
 import os
 sys.path.insert(0, ".")
-<<<<<<< Updated upstream:core/testbackend.py
-from core.backend import DataInstance
-from core.backend import Event
-=======
 from backend import DataInstance
 from backend import Event
 from genetic_algorithm import Genetic_Algorithm
->>>>>>> Stashed changes:testbackend.py
 import matplotlib.pyplot as plt
 
 
