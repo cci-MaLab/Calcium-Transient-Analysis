@@ -512,18 +512,19 @@ class ExplorationToolWidget(QWidget):
         super().__init__(parent)
         self.main_ref = main_ref
 
-        self.button_explore = QPushButton("Data Exploration")
-        self.button_explore.setStyleSheet("background-color : blue")
-        self.button_explore.clicked.connect(self.explore)
+        button_explore = QPushButton("Data Exploration")
+        button_explore.setStyleSheet("background-color : blue")
+        button_explore.clicked.connect(self.explore)
 
-        self.button_delete = QPushButton("Delete Cluster")
-        self.button_delete.setStyleSheet("background-color : red")
-        self.button_delete.clicked.connect(self.delete)
+        button_delete = QPushButton("Delete Cluster")
+        button_delete.setStyleSheet("background-color : red")
+        button_delete.clicked.connect(self.delete)
 
-        self.layout = QHBoxLayout()
-        self.layout.addWidget(self.button_explore)
-        self.layout.addWidget(self.button_delete)
-        self.setLayout(self.layout)
+        layout = QVBoxLayout()
+        layout.addWidget(button_explore)
+        layout.addWidget(button_delete)
+        layout.addStretch()
+        self.setLayout(layout)
 
     def explore(self, event):
         self.main_ref.start_exploration()

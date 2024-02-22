@@ -3,7 +3,7 @@ The following file will be used for doing a deeper dive into the selected sessio
 """
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAction, QStyle, 
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
-                            QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar)
+                            QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar, QCheckBox)
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator)
 from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem)
@@ -30,7 +30,7 @@ class ExplorationWidget(QWidget):
         if not self.videos:
             print("Missing Videos")
             return None
-        self.current_video = self.videos[list(self.videos.keys())[0]]
+        self.current_video = self.videos[list(self.videos.keys())[-1]]
         self.video_length = self.current_video.shape[0]
         self.mask = np.ones((self.current_video.shape[1], self.current_video.shape[2]))
         self.current_frame = 0
@@ -42,7 +42,7 @@ class ExplorationWidget(QWidget):
             button_video_type = QAction(f"&{type}", self.submenu_videos)
             button_video_type.triggered.connect(lambda state, x=type: self.change_video(x))
             button_video_type.setCheckable(True)
-            if type == "varr":
+            if type == list(self.videos.keys())[-1]:
                 button_video_type.setChecked(True)
             else:
                 button_video_type.setChecked(False)
@@ -141,6 +141,24 @@ class ExplorationWidget(QWidget):
         btn_generate_stats = QPushButton("Generate Local Statistics")
         btn_generate_stats.clicked.connect(self.generate_local_stats)
 
+        self.chkbox_plot_options_C = QCheckBox("C Signal")
+        self.chkbox_plot_options_S = QCheckBox("S Signal")
+        self.chkbox_plot_options_YrA = QCheckBox("Raw Signal")
+        self.chkbox_plot_options_dff = QCheckBox("Delta F/F")
+        self.chkbox_plot_options_C.clicked.connect(self.visualize_signals)
+        self.chkbox_plot_options_S.clicked.connect(self.visualize_signals)
+        self.chkbox_plot_options_YrA.clicked.connect(self.visualize_signals)
+        self.chkbox_plot_options_dff.clicked.connect(self.visualize_signals)
+        self.chkbox_plot_options_C.clicked.connect(self.enable_disable_event_buttons)
+        self.chkbox_plot_options_C.setChecked(True)
+
+        # Plot Colors
+        self.color_mapping = {
+            "C": "w",
+            "S": "m",
+            "YrA": "c",
+            "DFF": "y"
+        }
 
         # Populate cell list
         self.refresh_cell_list()
@@ -234,25 +252,26 @@ class ExplorationWidget(QWidget):
         layout_auc.addWidget(self.auc_label)
         layout_auc.addWidget(self.auc_input)
 
-        frame_algo_events = QFrame()
-        frame_algo_events.setFrameShape(QFrame.Box)
-        frame_algo_events.setFrameShadow(QFrame.Raised)
-        frame_algo_events.setLineWidth(3)
-        layout_algo_events = QVBoxLayout(frame_algo_events)
+        self.frame_algo_events = QFrame()
+        self.frame_algo_events.setFrameShape(QFrame.Box)
+        self.frame_algo_events.setFrameShadow(QFrame.Raised)
+        self.frame_algo_events.setLineWidth(3)
+        layout_algo_events = QVBoxLayout(self.frame_algo_events)
         layout_algo_events.addWidget(self.auto_label)
         layout_algo_events.addLayout(layout_height)
         layout_algo_events.addLayout(layout_dist)
         layout_algo_events.addLayout(layout_auc)
         layout_algo_events.addWidget(btn_algo_event)
 
-        frame_manual_events = QFrame()
-        frame_manual_events.setFrameShape(QFrame.Box)
-        frame_manual_events.setFrameShadow(QFrame.Raised)
-        frame_manual_events.setLineWidth(3)
-        layout_manual_events = QVBoxLayout(frame_manual_events)
+        # Manual Event Generation
+        self.frame_manual_events = QFrame()
+        self.frame_manual_events.setFrameShape(QFrame.Box)
+        self.frame_manual_events.setFrameShadow(QFrame.Raised)
+        self.frame_manual_events.setLineWidth(3)
+        layout_manual_events = QVBoxLayout(self.frame_manual_events)
         layout_manual_events.addWidget(self.manual_label)
         layout_manual_events.addWidget(btn_create_event)
-        layout_manual_events.addWidget(btn_clear_events)
+        layout_manual_events.addWidget(btn_clear_events)        
 
         # Statistics buttons
         frame_stats = QFrame()
@@ -262,12 +281,26 @@ class ExplorationWidget(QWidget):
         layout_stats = QVBoxLayout(frame_stats)
         layout_stats.addStretch()
         layout_stats.setDirection(3)
-
         layout_stats.addWidget(btn_generate_stats)
         layout_stats.addWidget(local_stats_label)
 
-        layout_plot_utility.addWidget(frame_manual_events)
-        layout_plot_utility.addWidget(frame_algo_events)
+        # Plot options
+        frame_plot_options = QFrame()
+        frame_plot_options.setFrameShape(QFrame.Box)
+        frame_plot_options.setFrameShadow(QFrame.Raised)
+        frame_plot_options.setLineWidth(3)
+        layout_plot_options = QVBoxLayout(frame_plot_options)
+        layout_plot_options.addStretch()
+        layout_plot_options.setDirection(3)
+        layout_plot_options.addWidget(self.chkbox_plot_options_C)
+        layout_plot_options.addWidget(self.chkbox_plot_options_S)
+        layout_plot_options.addWidget(self.chkbox_plot_options_YrA)
+        layout_plot_options.addWidget(self.chkbox_plot_options_dff)
+
+
+        layout_plot_utility.addWidget(self.frame_manual_events)
+        layout_plot_utility.addWidget(self.frame_algo_events)
+        layout_plot_utility.addWidget(frame_plot_options)
         widget_plot_utility = QWidget()
         widget_plot_utility.setLayout(layout_plot_utility)
         widget_plot_utility.setMaximumWidth(320)
@@ -342,38 +375,60 @@ class ExplorationWidget(QWidget):
             for id in self.video_cell_selection:
                 self.video_selection_mask  += self.A[id].values
             self.video_selection_mask[self.video_selection_mask  > 0] = 1
-            self.visualizeSignals(self.video_cell_selection)
+            self.visualize_signals()
             if not self.btn_play.isChecked():
                 self.current_frame -= 1
                 self.next_frame()
+    def enable_disable_event_buttons(self):
+        if self.chkbox_plot_options_C.isChecked():
+            self.frame_algo_events.setEnabled(True)
+            self.frame_manual_events.setEnabled(True)
+        else:
+            self.frame_algo_events.setEnabled(False)
+            self.frame_manual_events.setEnabled(False)
 
 
+    def get_selected_data_type(self):
+        selected_data_type = []
+        if self.chkbox_plot_options_C.isChecked():
+            selected_data_type.append('C')
+        if self.chkbox_plot_options_S.isChecked():
+            selected_data_type.append('S')
+        if self.chkbox_plot_options_YrA.isChecked():
+            selected_data_type.append('YrA')
+        if self.chkbox_plot_options_dff.isChecked():
+            selected_data_type.append('DFF')
 
-    def visualizeSignals(self, cell_ids):
+        return selected_data_type
+
+    def visualize_signals(self):
+        cell_ids = self.video_cell_selection
         self.w_signals.clear()
         try:
             self.w_signals.scene().sigMouseClicked.disconnect(self.find_subplot)
         except:
             pass
         if cell_ids:
+
             self.w_signals.scene().sigMouseClicked.connect(self.find_subplot)
             for i, id in enumerate(cell_ids):
-                data = self.session.data['C'].sel(unit_id=id).values
-                p = PlotItemEnhanced(data, id=id)
-                self.w_signals.addItem(p, row=i, col=0)
-                p.add_main_curve()
+                p = PlotItemEnhanced(id=id)
                 p.plotLine.setPos(self.scroll_video.value())
                 p.setTitle(f"Cell {id}")
-                if 'E' in self.session.data:
-                    events = self.session.data['E'].sel(unit_id=id).values
-                    events = np.nan_to_num(events, nan=0) # Sometimes saving errors can cause NaNs
-                    indices = events.nonzero()[0]
-                    if indices.any():
-                        # Split up the indices into groups
-                        indices = np.split(indices, np.where(np.diff(indices) != 1)[0]+1)
-                        # Now Split the indices into pairs of first and last indices
-                        indices = [(indices_group[0], indices_group[-1]+1) for indices_group in indices]
-                        p.draw_event_curves(indices)
+                self.w_signals.addItem(p, row=i, col=0)
+                for data_type in self.get_selected_data_type():
+                    data = self.session.data[data_type].sel(unit_id=id).values
+                    p.add_main_curve(data, is_C=(data_type == 'C'), pen=self.color_mapping[data_type])
+                    if 'E' in self.session.data and data_type == 'C':
+                        events = self.session.data['E'].sel(unit_id=id).values
+                        events = np.nan_to_num(events, nan=0) # Sometimes saving errors can cause NaNs
+                        indices = events.nonzero()[0]
+                        if indices.any():
+                            # Split up the indices into groups
+                            indices = np.split(indices, np.where(np.diff(indices) != 1)[0]+1)
+                            # Now Split the indices into pairs of first and last indices
+                            indices = [(indices_group[0], indices_group[-1]+1) for indices_group in indices]
+                            p.draw_event_curves(indices)
 
     def generate_local_stats(self):
         # Iterate through the current plots and generate local statistics windows
@@ -648,9 +703,9 @@ class ExplorationWidget(QWidget):
 
 
 class PlotItemEnhanced(PlotItem):
-    def __init__(self, C_signal, **kwargs):
+    def __init__(self, **kwargs):
         super(PlotItemEnhanced, self).__init__(**kwargs)
-        self.C_signal = C_signal
+        self.C_signal = None
         self.id = kwargs["id"] if "id" in kwargs else None
         self.plotLine = InfiniteLine(pos=0, angle=90, pen='g')
         self.addItem(self.plotLine)
@@ -669,9 +724,11 @@ class PlotItemEnhanced(PlotItem):
             event_curve = PlotCurveItemEnhanced(np.arange(beg, end), self.C_signal[beg:end], pen='r', is_event=True, main_plot=self)
             self.addItem(event_curve)
 
-    def add_main_curve(self):
-        main_curve = PlotCurveItemEnhanced(np.arange(len(self.C_signal)), self.C_signal, pen='w', is_event=False)
-        self.addItem(main_curve)
+    def add_main_curve(self, data, is_C=False, pen='w'):
+        if is_C:
+            self.C_signal = data
+        curve = PlotCurveItemEnhanced(np.arange(len(data)), data, pen=pen, is_event=False)
+        self.addItem(curve)
 
     def clear_selected_events_local(self):
         accumulated_selected_events = np.array([], dtype=int)

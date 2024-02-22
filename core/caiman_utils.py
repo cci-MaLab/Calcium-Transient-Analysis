@@ -263,3 +263,41 @@ def fixed_point(t, M, I, a2):
         time = (2 * const * K0 / M / f)**(2 / (3 + 2 * s))
         f = 2 * scipy.pi**(2 * s) * scipy.sum(I**s * a2 * scipy.exp(-I * scipy.pi**2 * time))
     return t - (2 * M * scipy.sqrt(scipy.pi) * f)**(-2 / 5)
+
+
+def minian_to_caiman(A, b, C, f, Yra) -> tuple:
+        """
+        Convert the minian data to caiman format
+
+        Parameters
+        ----------
+        A : xr.DataArray
+            Spatial footprints.
+        b : xr.DataArray
+            Background footprint.
+        C : xr.DataArray
+            Temporal Calcium Signal.
+        f : xr.DataArray
+            Temporal Fluorescence Signal.
+        Yra : xr.DataArray
+            Residuals.
+        """
+        # Minian data is in the format (unit_id, height, width) -> (height x width, unit_id) for caiman
+        A = A.values
+        A = np.reshape(A, (A.shape[0], -1), order="F").T
+        A = scipy.sparse.csc_matrix(A) # Needs to be converted to csc_matrix for caiman
+
+        C = C.values # Needs no change (unit_id, time) is the same in both
+
+        # Minian data has one estimate of the background, whilst caiman can have several. To make it compatible, we
+        # add a new axis to the background and make it the last axis, so the conversion is (height, width) -> (height x width, 1)
+        b = b.values
+        b = np.expand_dims(b.flatten(order="F"), axis=1)
+
+        # With the aforementioned change, we just need to insert a new axis at the beginning
+        f = f.values
+        f = np.expand_dims(f, axis=0)
+
+        Yra = Yra.values # Needs no change
+
+        return A, b, C, f, Yra

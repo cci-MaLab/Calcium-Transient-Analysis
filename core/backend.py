@@ -20,7 +20,7 @@ import rechunker
 import zarr as zr
 from uuid import uuid4
 
-from core.caiman_utils import detrend_df_f
+from core.caiman_utils import detrend_df_f, minian_to_caiman
 
 from scipy.signal import welch
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
@@ -501,7 +501,7 @@ class DataInstance:
                 self.data[dt] = None
 
         data = open_minian(minian_path)
-        data_types = ['A', 'C', 'S', 'E', 'b', 'f', 'DFF']
+        data_types = ['A', 'C', 'S', 'E', 'b', 'f', 'DFF', 'YrA']
         self.dataset = data
         timestamp = behavior_data[["Time Stamp (ms)"]]
         timestamp.index.name = "frame"
@@ -621,6 +621,10 @@ class DataInstance:
             total_transients = (self.data["E"].sel(unit_id = unit_id).diff(dim="frame") == 1).sum(dim="frame") + (self.data["E"].sel(unit_id = unit_id).isel(frame=0))
             return total_transients.compute()
     
+    def get_amplitude_dff(self, unit_id=None):
+        if unit_id is None:
+            return self.data["DFF"].where(self.data["E"] == 1).sum(dim="frame").compute()
+
     def get_total_rising_frames(self):
         return (self.data["E"] != 0).sum(dim="frame").compute()
     
@@ -631,7 +635,7 @@ class DataInstance:
         by taking their corresponding frame numbers and performing another diff on them.
         '''
         # This will contain 1s for the start of each transient
-        rising_edges = self.data["E"].diff(dim="frame") 
+        rising_edges = self.data["E"].diff(dim="frame").compute()
         # Each cell will have a 1 corresponding to the start of each transient and a
         # a nan value for other frames.
         transient_frames = rising_edges.where(rising_edges==1,drop=True)
@@ -871,14 +875,9 @@ class DataInstance:
         """
         if self.data['DFF'] is None:
             print("Creating DFF array. Sit tight this could take a while.")
-            dff_array = np.zeros(self.data['C'].shape)
-            # load in the necessary data
-            C = self.data['C'].values
-            A = self.data['A'].values
-            f = self.data['f'].values
-            b = self.data['b'].values
-            for i in range(len(C)):
-                dff_array[i] = detrend_df_f(A[i], b, C[i], f)
+            # Convert the data into caiman format
+            A, b, C, f, YrA = minian_to_caiman(self.data['A'], self.data['b'], self.data['C'], self.data['f'], self.data['YrA'])
+            dff_array = detrend_df_f(A, b, C, f, YrA)
                 
             DFF = xr.DataArray(
                 dff_array,
@@ -891,11 +890,12 @@ class DataInstance:
             ).chunk(dict(frame=-1, unit_id="auto"))
             self.data['DFF'] = save_minian(DFF, self.minian_path, overwrite=True)
 
+
     def check_essential_data(self):
         '''
         Create a list of essential data that is required for the analysis.
         '''
-        essential_data = ["A", "C", "S", "b", "f"]
+        essential_data = ["A", "C", "S", "b", "f", "YrA"]
         got_data = True
 
         for data_type in essential_data:

@@ -1,7 +1,10 @@
-from PyQt5.QtWidgets import (QVBoxLayout, QWidget, QAction, QStyle, 
-                            QApplication, QTableWidgetItem, QTableWidget, QMenuBar)
+from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QAction, QStyle, QLabel, QComboBox,
+                            QApplication, QTableWidgetItem, QTableWidget, QMenuBar, QLineEdit)
+
+from PyQt5.QtGui import QIntValidator
 
 import numpy as np
+from gui.clustering_inspection_widgets import MplCanvas
 
 
 class GeneralStatsWidget(QWidget):
@@ -45,6 +48,7 @@ class GeneralStatsWidget(QWidget):
         timestamps = E.coords["timestamp(ms)"].values
         total_time = timestamps[-1] - timestamps[0]
         average_frequency = total_transients / total_time * 1000
+        average_amplitude = session.get_amplitude_dff() / total_transients
         total_rising_frames = session.get_total_rising_frames()
         average_rising_frames = total_rising_frames / total_transients
         frames_per_second = len(timestamps) / total_time * 1000
@@ -59,14 +63,17 @@ class GeneralStatsWidget(QWidget):
             self.table.setItem(1, i, QTableWidgetItem(str((round(session.centroids[id][0]),
                                                       round(session.centroids[id][1])))))
             # 3.) Total Ca2+ transient #
-            self.table.setItem(2, i, QTableWidgetItem(str(total_transients.sel(unit_id=id).item())))
+            self.table.setItem(2, i, QTableWidgetItem(str(int(total_transients.sel(unit_id=id).item()))))
 
             # 4.) Average Frequency (Hz)
             self.table.setItem(3, i, QTableWidgetItem(str(round(average_frequency.sel(unit_id=id).item(), 5))))
 
             # 5.) Average Amplitude (ΔF/F)
             # DOUBLE CHECK THIS. For the time being fill with N/A
-            self.table.setItem(4, i, QTableWidgetItem("N/A"))
+            if average_amplitude.sel(unit_id=id).isnull().item():
+                self.table.setItem(4, i, QTableWidgetItem("N/A"))
+            else:
+                self.table.setItem(4, i, QTableWidgetItem(str(round(average_amplitude.sel(unit_id=id).item(), 3))))
 
             # 6.) Average Rising (# of frames)
             if average_rising_frames.sel(unit_id=id).isnull().item():
@@ -86,7 +93,8 @@ class GeneralStatsWidget(QWidget):
             
             # 9.) Average interval (seconds)
             self.table.setItem(8, i, QTableWidgetItem(session.get_mean_iei_per_cell(transient_frames, id, total_transients, frame_rate=frames_per_second)))
-                
+
+        self.table.resizeColumnsToContents()   
 
 class LocalStatsWidget(QWidget):
     def __init__(self, session, unit_id, main_win_ref, parent=None):
@@ -101,11 +109,13 @@ class LocalStatsWidget(QWidget):
 
         self.unit_id = unit_id
 
-        total_transients = session.get_total_transients(unit_id=unit_id)
+        total_transients = int(session.get_total_transients(unit_id=unit_id).item())
+
+        self.iei_win = None
 
         E = session.data['E'].sel(unit_id=unit_id).values
         C = session.data['C'].sel(unit_id=unit_id)
-        timestamps = session['E'].coords["timestamp(ms)"].values
+        timestamps = session.data['E'].coords["timestamp(ms)"].values
         total_time = timestamps[-1] - timestamps[0]
         
         transients = E.nonzero()[0]
@@ -116,16 +126,24 @@ class LocalStatsWidget(QWidget):
             transients = [(indices_group[0], indices_group[-1]+1) for indices_group in transients]
 
         # Rows will indicate the feature we are interested in and columns indicate the corresponding neuron
-        self.table = QTableWidget(8, total_transients)
+        self.table = QTableWidget(total_transients, 8)
 
         # Menu Bar for Tools
         menu = QMenuBar()
-        pixmapi_tools = QStyle.StandardPixmap.SP_FileDialogListView
-        btn_copy = QAction(self.style().standardIcon(pixmapi_tools), "&Copy Data to Clipboard", self)
+        btn_copy = QAction("&Copy Data to Clipboard", self)
         btn_copy.setStatusTip("Data related utilities")
         btn_copy.triggered.connect(lambda: copy_to_clipboard(self.table, self.clipboard))
-        stats_menu = menu.addMenu("&Tools")
-        stats_menu.addAction(btn_copy)
+
+        btn_stats_amp = QAction("&Amplitude Frequency Histogram", self)
+
+        btn_stats_iei = QAction("IEI Frequency Histogram", self)
+        btn_stats_iei.triggered.connect(self.generate_iei_histogram)
+
+        tools_menu = menu.addMenu("&Tools")
+        tools_menu.addAction(btn_copy)
+        visualization_menu = menu.addMenu("&Visualization")
+        visualization_menu.addAction(btn_stats_amp)
+        visualization_menu.addAction(btn_stats_iei)
 
         layout = QVBoxLayout()
         layout.addWidget(self.table)
@@ -139,6 +157,7 @@ class LocalStatsWidget(QWidget):
                                        "Interval with Previous Transient (frames)", "Interval with Previous Transient (seconds)"])
         previous_transient = -1
         # Fill out the self.table with data
+        self.iei_msec = []
         for i, transient in enumerate(transients):
             rising_start = transient[0]+1
             rising_stop = transient[1]+1
@@ -154,6 +173,8 @@ class LocalStatsWidget(QWidget):
             else:
                 interval_frames = transient[0]+1 - previous_transient
                 interval_seconds = (timestamps[transient[0]] - timestamps[previous_transient]) / 1000
+                self.iei_msec.append(interval_seconds * 1000)
+                interval_seconds = str(round(interval_seconds, 3))
                 previous_transient = transient[0]+1
             
             self.table.setItem(i, 0, QTableWidgetItem(str(rising_start)))
@@ -163,10 +184,13 @@ class LocalStatsWidget(QWidget):
             self.table.setItem(i, 4, QTableWidgetItem(str(round(rising_stop_seconds, 3))))
             self.table.setItem(i, 5, QTableWidgetItem(str(round(rising_total_seconds, 3))))
             self.table.setItem(i, 6, QTableWidgetItem(str(interval_frames)))
-            self.table.setItem(i, 7, QTableWidgetItem(str(round(interval_seconds, 3))))
+            self.table.setItem(i, 7, QTableWidgetItem(interval_seconds))
 
 
+        self.table.resizeColumnsToContents()
 
+    def generate_iei_histogram(self):
+        pass
         
     def closeEvent(self, event):
         super(LocalStatsWidget, self).closeEvent(event)
@@ -186,3 +210,32 @@ def copy_to_clipboard(table, clipboard):
         text += "\t".join(row) + "\n"
     
     clipboard.setText(text)
+
+
+
+class LocalIEIWidget(QWidget):
+    def __init__(self, iei_values, parent=None):
+        super(LocalIEIWidget, self).__init__(parent)
+        self.iei_values = iei_values
+
+        layout_type = QHBoxLayout()
+        label_type = QLabel("Select type of visualization:")
+        dropdown_type = QComboBox()
+        dropdown_type.addItems(["Histogram", "CDF"])
+        layout_type.addWidget(label_type)
+        layout_type.addWidget(dropdown_type)
+
+        layout_bins = QHBoxLayout()
+        label_bins = QLabel("Select size of bins (msec):")
+        input_bins = QLineEdit()
+        input_bins.setPlaceholderText("100")
+        input_bins.setValidator(QIntValidator(1, 10000))
+        layout_bins.addWidget(label_bins)
+        layout_bins.addWidget(input_bins)
+
+        self.visualization = MplCanvas()
+
+        layout  = QVBoxLayout()
+        layout.addLayout(layout_type)
+        layout.addLayout(layout_bins)
+        layout.addWidget(self.visualization)
