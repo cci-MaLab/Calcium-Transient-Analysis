@@ -621,9 +621,9 @@ class DataInstance:
             total_transients = (self.data["E"].sel(unit_id = unit_id).diff(dim="frame") == 1).sum(dim="frame") + (self.data["E"].sel(unit_id = unit_id).isel(frame=0))
             return total_transients.compute()
     
-    def get_amplitude_dff(self, unit_id=None):
-        if unit_id is None:
-            return self.data["DFF"].where(self.data["E"] == 1).sum(dim="frame").compute()
+    def get_amplitude_dff(self):
+        return self.data["DFF"].where(self.data["E"] == 1).sum(dim="frame").compute()
+
 
     def get_total_rising_frames(self):
         return (self.data["E"] != 0).sum(dim="frame").compute()

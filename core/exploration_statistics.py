@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QAction, QStyle, QLabel, QComboBox,
-                            QApplication, QTableWidgetItem, QTableWidget, QMenuBar, QLineEdit)
+                            QApplication, QTableWidgetItem, QTableWidget, QMenuBar, QLineEdit, QPushButton)
 
-from PyQt5.QtGui import QIntValidator
+from PyQt5.QtGui import (QIntValidator, QDoubleValidator)
 
 import numpy as np
 from gui.clustering_inspection_widgets import MplCanvas
@@ -69,7 +69,6 @@ class GeneralStatsWidget(QWidget):
             self.table.setItem(3, i, QTableWidgetItem(str(round(average_frequency.sel(unit_id=id).item(), 5))))
 
             # 5.) Average Amplitude (ΔF/F)
-            # DOUBLE CHECK THIS. For the time being fill with N/A
             if average_amplitude.sel(unit_id=id).isnull().item():
                 self.table.setItem(4, i, QTableWidgetItem("N/A"))
             else:
@@ -112,11 +111,12 @@ class LocalStatsWidget(QWidget):
         total_transients = int(session.get_total_transients(unit_id=unit_id).item())
 
         self.iei_win = None
+        self.amp_win = None
 
         E = session.data['E'].sel(unit_id=unit_id).values
-        C = session.data['C'].sel(unit_id=unit_id)
+        DFF = session.data['DFF'].sel(unit_id=unit_id)
         timestamps = session.data['E'].coords["timestamp(ms)"].values
-        total_time = timestamps[-1] - timestamps[0]
+        self.frames_per_msec = len(timestamps) / (timestamps[-1] - timestamps[0])
         
         transients = E.nonzero()[0]
         if transients.any():
@@ -126,7 +126,7 @@ class LocalStatsWidget(QWidget):
             transients = [(indices_group[0], indices_group[-1]+1) for indices_group in transients]
 
         # Rows will indicate the feature we are interested in and columns indicate the corresponding neuron
-        self.table = QTableWidget(total_transients, 8)
+        self.table = QTableWidget(total_transients, 10)
 
         # Menu Bar for Tools
         menu = QMenuBar()
@@ -135,6 +135,7 @@ class LocalStatsWidget(QWidget):
         btn_copy.triggered.connect(lambda: copy_to_clipboard(self.table, self.clipboard))
 
         btn_stats_amp = QAction("&Amplitude Frequency Histogram", self)
+        btn_stats_amp.triggered.connect(self.generate_amp_histogram)
 
         btn_stats_iei = QAction("IEI Frequency Histogram", self)
         btn_stats_iei.triggered.connect(self.generate_iei_histogram)
@@ -154,10 +155,12 @@ class LocalStatsWidget(QWidget):
         self.table.setVerticalHeaderLabels([f"Transient #{i}"for i in range(1, total_transients+1)])
         self.table.setHorizontalHeaderLabels(["Rising-Start(frames)", "Rising-Stop(frames)", "Total # of Rising Frames", 
                                        "Rising-Start(seconds)", "Rising-Stop(seconds)", "Total # of Rising Frames (seconds)",
-                                       "Interval with Previous Transient (frames)", "Interval with Previous Transient (seconds)"])
+                                       "Interval with Previous Transient (frames)", "Interval with Previous Transient (seconds)",
+                                       "Peak Amplitude (ΔF/F)", "Total Amplitude (ΔF/F)"])
         previous_transient = -1
         # Fill out the self.table with data
         self.iei_msec = []
+        self.total_amplitude_list = []
         for i, transient in enumerate(transients):
             rising_start = transient[0]+1
             rising_stop = transient[1]+1
@@ -176,6 +179,10 @@ class LocalStatsWidget(QWidget):
                 self.iei_msec.append(interval_seconds * 1000)
                 interval_seconds = str(round(interval_seconds, 3))
                 previous_transient = transient[0]+1
+
+            peak_amplitude = DFF.sel(frame=slice(rising_start, rising_stop)).max().values.item()
+            total_amplitude = DFF.sel(frame=slice(rising_start, rising_stop)).sum().values.item()
+            self.total_amplitude_list.append(total_amplitude)
             
             self.table.setItem(i, 0, QTableWidgetItem(str(rising_start)))
             self.table.setItem(i, 1, QTableWidgetItem(str(rising_stop)))
@@ -185,12 +192,21 @@ class LocalStatsWidget(QWidget):
             self.table.setItem(i, 5, QTableWidgetItem(str(round(rising_total_seconds, 3))))
             self.table.setItem(i, 6, QTableWidgetItem(str(interval_frames)))
             self.table.setItem(i, 7, QTableWidgetItem(interval_seconds))
+            self.table.setItem(i, 8, QTableWidgetItem(str(round(peak_amplitude, 3))))
+            self.table.setItem(i, 9, QTableWidgetItem(str(round(total_amplitude, 3))))
 
 
         self.table.resizeColumnsToContents()
 
     def generate_iei_histogram(self):
-        pass
+        self.iei_win = LocalIEIWidget(self.iei_msec)
+        self.iei_win.setWindowTitle(f"IEI Histogram for Neuron {self.unit_id}")
+        self.iei_win.show()
+
+    def generate_amp_histogram(self):
+        self.amp_win = LocalAmpWidget(self.total_amplitude_list)
+        self.amp_win.setWindowTitle(f"Amplitude Histogram for Neuron {self.unit_id}")
+        self.amp_win.show()
         
     def closeEvent(self, event):
         super(LocalStatsWidget, self).closeEvent(event)
@@ -200,7 +216,7 @@ def copy_to_clipboard(table, clipboard):
     '''
     Copy the data from the self.table to the clipboard.
     '''
-    text = ""
+    text = "\t"
     col_headers = [table.horizontalHeaderItem(i).text() for i in range(table.columnCount())]
     text += "\t".join(col_headers) + "\n"
     for i in range(table.rowCount()):
@@ -214,28 +230,130 @@ def copy_to_clipboard(table, clipboard):
 
 
 class LocalIEIWidget(QWidget):
-    def __init__(self, iei_values, parent=None):
+    def __init__(self, iei_msec, parent=None):
         super(LocalIEIWidget, self).__init__(parent)
-        self.iei_values = iei_values
+        self.iei_msec = iei_msec
 
         layout_type = QHBoxLayout()
         label_type = QLabel("Select type of visualization:")
-        dropdown_type = QComboBox()
-        dropdown_type.addItems(["Histogram", "CDF"])
+        self.dropdown_type = QComboBox()
+        self.dropdown_type.addItems(["Histogram", "CDF"])
+        self.dropdown_type.setCurrentIndex(0)
+        self.dropdown_type.currentIndexChanged.connect(self.enable_disable_input)
+        self.dropdown_type.currentIndexChanged.connect(self.update_visualization)
         layout_type.addWidget(label_type)
-        layout_type.addWidget(dropdown_type)
+        layout_type.addWidget(self.dropdown_type)
 
         layout_bins = QHBoxLayout()
         label_bins = QLabel("Select size of bins (msec):")
-        input_bins = QLineEdit()
-        input_bins.setPlaceholderText("100")
-        input_bins.setValidator(QIntValidator(1, 10000))
+        self.input_bins = QLineEdit()
+        self.input_bins.setPlaceholderText("100")
+        self.input_bins.setValidator(QIntValidator(10, 100000))
         layout_bins.addWidget(label_bins)
-        layout_bins.addWidget(input_bins)
+        layout_bins.addWidget(self.input_bins)
+
+        btn_visualize = QPushButton("Visualize")
+        btn_visualize.clicked.connect(self.update_visualization)
+        btn_visualize.setFixedWidth(300)
 
         self.visualization = MplCanvas()
 
         layout  = QVBoxLayout()
         layout.addLayout(layout_type)
         layout.addLayout(layout_bins)
+        layout.addWidget(btn_visualize)
         layout.addWidget(self.visualization)
+        self.setLayout(layout)
+
+        self.update_visualization()
+
+    def update_visualization(self):
+        self.visualization.axes.clear()
+        if self.dropdown_type.currentText() == "Histogram":
+            bin_size = int(self.input_bins.text()) if self.input_bins.text() else 1000
+
+            no_of_bins = int((max(self.iei_msec) - min(self.iei_msec)) / bin_size)
+
+            self.visualization.axes.hist(self.iei_msec, no_of_bins, rwidth=0.8)
+
+            self.visualization.axes.set_xlabel("IEI (msec)")
+            self.visualization.axes.set_ylabel("No. of Events")
+        
+        elif self.dropdown_type.currentText() == "CDF":
+            self.visualization.axes.ecdf(self.iei_msec)
+
+            self.visualization.axes.set_xlabel("IEI (msec)")
+            self.visualization.axes.set_ylabel("Cumulative Fraction")
+
+        self.visualization.draw()
+
+    def enable_disable_input(self):
+        if self.dropdown_type.currentText() == "Histogram":
+            self.input_bins.setEnabled(True)
+        else:
+            self.input_bins.setEnabled(False)
+
+
+class LocalAmpWidget(QWidget):
+    def __init__(self, total_amplitude_list, parent=None):
+        super(LocalAmpWidget, self).__init__(parent)
+        self.total_amplitude_list = total_amplitude_list
+
+        layout_type = QHBoxLayout()
+        label_type = QLabel("Select type of visualization:")
+        self.dropdown_type = QComboBox()
+        self.dropdown_type.addItems(["Histogram", "CDF"])
+        self.dropdown_type.setCurrentIndex(0)
+        self.dropdown_type.currentIndexChanged.connect(self.enable_disable_input)
+        self.dropdown_type.currentIndexChanged.connect(self.update_visualization)
+        layout_type.addWidget(label_type)
+        layout_type.addWidget(self.dropdown_type)
+
+        layout_bins = QHBoxLayout()
+        label_bins = QLabel("Select size of bins (ΔF/F):")
+        self.input_bins = QLineEdit()
+        self.input_bins.setPlaceholderText("10.0")
+        self.input_bins.setValidator(QDoubleValidator(1.0, 100.0, 3))
+        layout_bins.addWidget(label_bins)
+        layout_bins.addWidget(self.input_bins)
+
+        btn_visualize = QPushButton("Visualize")
+        btn_visualize.clicked.connect(self.update_visualization)
+        btn_visualize.setFixedWidth(300)
+
+        self.visualization = MplCanvas()
+
+        layout  = QVBoxLayout()
+        layout.addLayout(layout_type)
+        layout.addLayout(layout_bins)
+        layout.addWidget(btn_visualize)
+        layout.addWidget(self.visualization)
+        self.setLayout(layout)
+
+        self.update_visualization()
+
+    def update_visualization(self):
+        self.visualization.axes.clear()
+        if self.dropdown_type.currentText() == "Histogram":
+            bin_size = float(self.input_bins.text()) if self.input_bins.text() else 10.0
+
+            no_of_bins = int((max(self.total_amplitude_list) - min(self.total_amplitude_list)) / bin_size)
+
+            self.visualization.axes.hist(self.total_amplitude_list, no_of_bins, rwidth=0.8)
+
+            self.visualization.axes.set_xlabel("Amplitude (ΔF/F)")
+            self.visualization.axes.set_ylabel("No. of Events")
+        
+        elif self.dropdown_type.currentText() == "CDF":
+            self.visualization.axes.ecdf(self.total_amplitude_list)
+
+            self.visualization.axes.set_xlabel("Amplitude (ΔF/F)")
+            self.visualization.axes.set_ylabel("Cumulative Fraction")
+        
+        self.visualization.draw()
+
+    def enable_disable_input(self):
+        if self.dropdown_type.currentText() == "Histogram":
+            self.input_bins.setEnabled(True)
+        else:
+            self.input_bins.setEnabled(False)
