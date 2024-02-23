@@ -105,6 +105,17 @@ class ExplorationWidget(QWidget):
         self.btn_cell_return = QPushButton("Return Cell")
         self.btn_cell_return.clicked.connect(self.approve_cells)
 
+        # Missed Cells
+        w_rejected_cell_label = QLabel("Missed Cells:")
+        self.list_missed_cell = QListWidget()
+        self.list_missed_cell.setMaximumSize(320, 600)
+        self.list_missed_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
+
+        self.btn_missed_select = QPushButton("Select Cell")
+        self.btn_missed_select.clicked.connect(self.add_missed_cell)
+        self.btn_missed_remove = QPushButton("Remove Cell")
+        self.btn_missed_remove.clicked.connect(self.remove_missed_cells)
+
         # Plot utility
         self.auto_label = QLabel("Automatic Transient Detection")
         self.manual_label = QLabel("Manual Transient Detection")
