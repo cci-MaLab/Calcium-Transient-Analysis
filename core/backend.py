@@ -129,6 +129,19 @@ def save_xarray(
         arr.data = darr.from_zarr(os.path.join(fp_orig, var.name), inline_array=True)
     return arr
 
+def delete_missing_xarray(
+        dpath: str,
+        var_name: str = "M"):
+    """
+    This is necessary for missing cells as there might be added and removed.
+    """
+    fp = os.path.join(dpath, var_name + ".zarr")
+    try:
+        shutil.rmtree(fp)
+    except FileNotFoundError:
+        pass
+
+
 def match_information(dpath):# Add by HF
     '''
     Parameters 
@@ -369,11 +382,54 @@ class DataInstance:
         self.centroids: dict
         self.load_data(dpath=dpath)
         self.no_of_clusters = 4
-        
+        self._missed_cells = {} # At no point should this be accessed directly. Use the add_missed and remove_missed functions
+        self.load_missed_cells()      
         self.distance_metric = 'euclidean'
 
         # Create the default image
         self.clustering_result = {"basic": {"image": np.stack((self.data['A'].sum("unit_id").values,)*3, axis=-1)}}
+
+    def add_missed(self, pos: tuple, radius:float=1.0):
+        id = max(self._missed_cells.keys()) + 1 if self._missed_cells else 0
+        self._missed_cells[id] = MissedCell(id, pos, radius)
+        self.save_missed_cells()
+        return id
+
+    def remove_missed(self, ids: List[int]):
+        for id in ids:
+            del self._missed_cells[id]
+        self.save_missed_cells()
+
+    def save_missed_cells(self):
+        if self._missed_cells:
+            # Create a new xarray. I am aware that this is quite inefficient but it is the only way to save the data
+            # to account for the varying number of missed cells and the fact that they might be completely excluded.
+            # The xarray however is very small so the inefficiency is not a big deal.
+            arr = np.empty((len(self.data['unit_ids']), 3)) # x, y, radius
+            ids = list(self._missed_cells.keys())
+            for i, id in enumerate(ids):
+                _, x, y, radius = self._missed_cells[id].get_values()
+                arr[i] = [x, y, radius]
+            
+            da = xr.DataArray(arr, dims=["unit_id", "dim"], coords={"unit_id": ids, "dim": ["x", "y", "radius"]}, name="M")
+            save_xarray(da, self.minian_path, compute=True)
+
+        else:
+            delete_missing_xarray(self.minian_path, "M")
+
+    def load_missed_cells(self):
+        arr = self.data["M"]
+        if arr is not None:            
+            for id in arr.coords["unit_id"]:
+                x, y, radius = arr.sel(unit_id=id).values
+                self._missed_cells[id] = MissedCell(id, (x, y), radius)
+    
+    def get_missed_cells(self):
+        return self._missed_cells
+    
+    def get_missed_cells_ids(self):
+        return list(self._missed_cells.keys())
+
 
     def parse_file(self,dpath):# set up configure file
         config = configparser.ConfigParser()
@@ -920,3 +976,16 @@ class CellClustering:
         return plt.imshow(final_image)
 
 
+class MissedCell:
+    """
+    Necessary class to keep track of missed cells.
+    Since the number of cells can vary we may constantly need to add and remove cells from the list.
+    Therefore we will convert it to and from an xarray when loading and saving.
+    """
+    def __init__(self, id: int, pos: tuple, radius:float=1.0):
+        self.id = id
+        self.pos = pos
+        self.radius = radius
+
+    def get_values():
+        return self.id, self.pos[0], self.pos[1], self.radius

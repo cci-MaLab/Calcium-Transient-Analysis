@@ -22,6 +22,8 @@ class ExplorationWidget(QWidget):
         self.timestamps = timestamps
         self.gen_stats_window = None
         self.local_stats_windows = {}
+        self.select_missed_mode = False
+        self.missed_cells_items - {}
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -35,6 +37,7 @@ class ExplorationWidget(QWidget):
         self.mask = np.ones((self.current_video.shape[1], self.current_video.shape[2]))
         self.current_frame = 0
         self.imv.setImage(self.current_video.sel(frame=self.current_frame).values)
+        self.missed_cell_init()
 
         # Add Context Menu Action
         self.submenu_videos = self.imv.getView().menu.addMenu('&Video Format')
@@ -111,8 +114,8 @@ class ExplorationWidget(QWidget):
         self.list_missed_cell.setMaximumSize(320, 600)
         self.list_missed_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
 
-        self.btn_missed_select = QPushButton("Select Cell")
-        self.btn_missed_select.clicked.connect(self.add_missed_cell)
+        self.btn_missed_select = QPushButton("Enable Select Cell")
+        self.btn_missed_select.clicked.connect(self.missed_cell_mode)
         self.btn_missed_remove = QPushButton("Remove Cell")
         self.btn_missed_remove.clicked.connect(self.remove_missed_cells)
 
@@ -245,6 +248,7 @@ class ExplorationWidget(QWidget):
 
         tabs_video.addTab(w_cells, "Approved Cells")
         tabs_video.addTab(w_rejected_cells, "Rejected Cells")
+        tabs_video.currentChanged.connect(self.enable_disable_missed_cell_mode)
 
 
         # General plot utility
@@ -353,6 +357,52 @@ class ExplorationWidget(QWidget):
         self.video_timer.setInterval(50)
         self.video_timer.timeout.connect(self.next_frame)
 
+    def enable_disable_missed_cell_mode(self):
+        if self.tabs_video.currentIndex() != 2:
+            self.select_missed_mode = False
+            self.btn_missed_select.setText("Enable Select Cell")
+
+    def missed_cell_mode(self):
+        self.select_missed_mode = True
+        self.btn_missed_select.setText("Disable Missed Cell")
+        
+    def add_missed_cell(self, pos):
+        id = self.session.add_missed(pos)
+        x, y = pos
+        point = ScatterPlotItem([y], [x], pen='r', symbol='x', size=10)
+        self.imv.getView().addItem(point)
+        self.missed_cells_items[id] = point
+        self.refresh_missed_list()
+
+
+    def remove_missed_cells(self):
+        # Extract the cell ids but remove non-numeric characters
+        cell_ids = []
+        for item in self.list_missed_cell.selectedItems():
+            id = int(''.join(filter(str.isdigit, item.text())))
+            cell_ids.append(id)
+            # Remove from image view
+            self.imv.getView().removeItem(self.missed_cells_items[id])
+            del self.missed_cells_items[id]
+        self.session.remove_missed_cells(cell_ids)
+        self.refresh_missed_list()
+
+    def refresh_missed_list(self):
+        missed_ids = self.session.get_missed_cells_ids()
+        self.list_missed_cell.clear()
+        for missed_id in missed_ids:
+            self.list_missed_cell.addItem(f"Missing Cell {missed_id}")
+
+    def missed_cell_init(self):
+        missed_cells = self.session.get_missed_cells()
+        # Draw the missed cells
+        for missed_cell in missed_cells:
+            x, y = missed_cell.pos
+            point = ScatterPlotItem([y], [x], pen='r', symbol='x', size=10)
+            self.imv.getView().addItem(point)
+            self.missed_cells_items[missed_cell] = point
+
+
     def generate_gen_stats(self):
         self.gen_stats_window = GeneralStatsWidget(self.session)
         self.gen_stats_window.setWindowTitle("General Statistics")
@@ -390,6 +440,10 @@ class ExplorationWidget(QWidget):
             if not self.btn_play.isChecked():
                 self.current_frame -= 1
                 self.next_frame()
+        elif self.select_missed_mode:
+            self.session.add_missed_cell(converted_point)
+            self.refresh_missed_list()
+    
     def enable_disable_event_buttons(self):
         if self.chkbox_plot_options_C.isChecked():
             self.frame_algo_events.setEnabled(True)
