@@ -23,7 +23,7 @@ class ExplorationWidget(QWidget):
         self.gen_stats_window = None
         self.local_stats_windows = {}
         self.select_missed_mode = False
-        self.missed_cells_items - {}
+        self.missed_cells_items = {}
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -37,7 +37,6 @@ class ExplorationWidget(QWidget):
         self.mask = np.ones((self.current_video.shape[1], self.current_video.shape[2]))
         self.current_frame = 0
         self.imv.setImage(self.current_video.sel(frame=self.current_frame).values)
-        self.missed_cell_init()
 
         # Add Context Menu Action
         self.submenu_videos = self.imv.getView().menu.addMenu('&Video Format')
@@ -79,7 +78,7 @@ class ExplorationWidget(QWidget):
 
 
         # Select Cells
-        w_cell_label = QLabel("Pick which cells to focus (Hold ctrl):")
+        w_cell_label = QLabel("Pick which cells to focus (Hold ctrl/shift for multi):")
         self.list_cell = QListWidget()
         self.list_cell.setMaximumSize(250, 600)
         self.list_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -94,8 +93,8 @@ class ExplorationWidget(QWidget):
         self.btn_cell_reject = QPushButton("Reject Cell")
         self.btn_cell_reject.clicked.connect(self.reject_cells)
 
-        tabs_video = QTabWidget()
-        tabs_video.setFixedWidth(320)
+        self.tabs_video = QTabWidget()
+        self.tabs_video.setFixedWidth(330)
         tabs_signal = QTabWidget()
         tabs_signal.setFixedWidth(320)
 
@@ -113,6 +112,7 @@ class ExplorationWidget(QWidget):
         self.list_missed_cell = QListWidget()
         self.list_missed_cell.setMaximumSize(320, 600)
         self.list_missed_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.list_missed_cell.itemSelectionChanged.connect(self.highlight_selected_missed_cells)
 
         self.btn_missed_select = QPushButton("Enable Select Cell")
         self.btn_missed_select.clicked.connect(self.missed_cell_mode)
@@ -246,9 +246,17 @@ class ExplorationWidget(QWidget):
         w_rejected_cells = QWidget()
         w_rejected_cells.setLayout(layout_rejected_cells)
 
-        tabs_video.addTab(w_cells, "Approved Cells")
-        tabs_video.addTab(w_rejected_cells, "Rejected Cells")
-        tabs_video.currentChanged.connect(self.enable_disable_missed_cell_mode)
+        layout_missed_cells = QVBoxLayout()
+        layout_missed_cells.addWidget(self.list_missed_cell)
+        layout_missed_cells.addWidget(self.btn_missed_select)
+        layout_missed_cells.addWidget(self.btn_missed_remove)
+        w_missed_cells = QWidget()
+        w_missed_cells.setLayout(layout_missed_cells)        
+
+        self.tabs_video.addTab(w_cells, "Approved Cells")
+        self.tabs_video.addTab(w_rejected_cells, "Rejected Cells")
+        self.tabs_video.addTab(w_missed_cells, "Missed Cells")
+        self.tabs_video.currentChanged.connect(self.enable_disable_missed_cell_mode)
 
 
         # General plot utility
@@ -324,7 +332,7 @@ class ExplorationWidget(QWidget):
         tabs_signal.addTab(frame_stats, "Statistics")
 
         layout_video_cells.addLayout(layout_video)
-        layout_video_cells.addWidget(tabs_video)
+        layout_video_cells.addWidget(self.tabs_video)
         widget_video_cells = QWidget()
         widget_video_cells.setLayout(layout_video_cells)
 
@@ -357,14 +365,20 @@ class ExplorationWidget(QWidget):
         self.video_timer.setInterval(50)
         self.video_timer.timeout.connect(self.next_frame)
 
+        self.missed_cell_init()
+
     def enable_disable_missed_cell_mode(self):
         if self.tabs_video.currentIndex() != 2:
             self.select_missed_mode = False
-            self.btn_missed_select.setText("Enable Select Cell")
+            self.btn_missed_select.setText("Enable Select Cell Mode")
 
     def missed_cell_mode(self):
-        self.select_missed_mode = True
-        self.btn_missed_select.setText("Disable Missed Cell")
+        if self.select_missed_mode:
+            self.select_missed_mode = False
+            self.btn_missed_select.setText("Enable Select Cell Mode")
+        else:
+            self.select_missed_mode = True
+            self.btn_missed_select.setText("Disable Missed Cell Mode")
         
     def add_missed_cell(self, pos):
         id = self.session.add_missed(pos)
@@ -373,6 +387,8 @@ class ExplorationWidget(QWidget):
         self.imv.getView().addItem(point)
         self.missed_cells_items[id] = point
         self.refresh_missed_list()
+        self.select_missed_mode = False
+        self.btn_missed_select.setText("Enable Select Cell Mode")
 
 
     def remove_missed_cells(self):
@@ -384,7 +400,7 @@ class ExplorationWidget(QWidget):
             # Remove from image view
             self.imv.getView().removeItem(self.missed_cells_items[id])
             del self.missed_cells_items[id]
-        self.session.remove_missed_cells(cell_ids)
+        self.session.remove_missed(cell_ids)
         self.refresh_missed_list()
 
     def refresh_missed_list(self):
@@ -396,11 +412,13 @@ class ExplorationWidget(QWidget):
     def missed_cell_init(self):
         missed_cells = self.session.get_missed_cells()
         # Draw the missed cells
-        for missed_cell in missed_cells:
+        for id, missed_cell in missed_cells.items():
             x, y = missed_cell.pos
             point = ScatterPlotItem([y], [x], pen='r', symbol='x', size=10)
             self.imv.getView().addItem(point)
-            self.missed_cells_items[missed_cell] = point
+            self.missed_cells_items[id] = point
+
+        self.refresh_missed_list()
 
 
     def generate_gen_stats(self):
@@ -441,8 +459,7 @@ class ExplorationWidget(QWidget):
                 self.current_frame -= 1
                 self.next_frame()
         elif self.select_missed_mode:
-            self.session.add_missed_cell(converted_point)
-            self.refresh_missed_list()
+            self.add_missed_cell(converted_point)
     
     def enable_disable_event_buttons(self):
         if self.chkbox_plot_options_C.isChecked():
@@ -608,6 +625,21 @@ class ExplorationWidget(QWidget):
         self.session.approve_cells(cell_ids)
         self.refresh_cell_list()
 
+    def highlight_selected_missed_cells(self):
+        all_items = [self.list_missed_cell.item(x) for x in range(self.list_missed_cell.count())]
+        all_items = [int(''.join(filter(str.isdigit, item.text())))for item in all_items]
+        selected = self.list_missed_cell.selectedItems()
+        selected = [int(''.join(filter(str.isdigit, item.text()))) for item in selected]
+
+        non_selected = list(set(all_items) - set(selected))
+
+        for id in selected:
+            self.missed_cells_items[id].setPen('g')
+        for id in non_selected:
+            self.missed_cells_items[id].setPen('r')
+
+        
+        
     
     def pause_video(self):
         self.video_timer.stop()

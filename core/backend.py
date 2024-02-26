@@ -405,13 +405,13 @@ class DataInstance:
             # Create a new xarray. I am aware that this is quite inefficient but it is the only way to save the data
             # to account for the varying number of missed cells and the fact that they might be completely excluded.
             # The xarray however is very small so the inefficiency is not a big deal.
-            arr = np.empty((len(self.data['unit_ids']), 3)) # x, y, radius
             ids = list(self._missed_cells.keys())
+            arr = np.empty((len(ids), 3)) # x, y, radius
             for i, id in enumerate(ids):
                 _, x, y, radius = self._missed_cells[id].get_values()
                 arr[i] = [x, y, radius]
             
-            da = xr.DataArray(arr, dims=["unit_id", "dim"], coords={"unit_id": ids, "dim": ["x", "y", "radius"]}, name="M")
+            da = xr.DataArray(arr, dims=["missed_id", "dim"], coords={"missed_id": ids, "dim": ["x", "y", "radius"]}, name="M")
             save_xarray(da, self.minian_path, compute=True)
 
         else:
@@ -420,9 +420,9 @@ class DataInstance:
     def load_missed_cells(self):
         arr = self.data["M"]
         if arr is not None:            
-            for id in arr.coords["unit_id"]:
-                x, y, radius = arr.sel(unit_id=id).values
-                self._missed_cells[id] = MissedCell(id, (x, y), radius)
+            for id in arr.coords["missed_id"]:
+                x, y, radius = arr.sel(missed_id=id).values
+                self._missed_cells[id.item()] = MissedCell(id.item(), (x, y), radius)
     
     def get_missed_cells(self):
         return self._missed_cells
@@ -987,5 +987,5 @@ class MissedCell:
         self.pos = pos
         self.radius = radius
 
-    def get_values():
+    def get_values(self):
         return self.id, self.pos[0], self.pos[1], self.radius
