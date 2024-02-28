@@ -12,6 +12,7 @@ import numpy as np
 from pyqtgraph import InfiniteLine
 from scipy.signal import find_peaks
 from core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget)
+from core.pyqtgraph_override import ImageViewOverride
 
 class ExplorationWidget(QWidget):
     def __init__(self, session, name, main_window_ref, timestamps=None, parent=None):
@@ -24,10 +25,12 @@ class ExplorationWidget(QWidget):
         self.local_stats_windows = {}
         self.select_missed_mode = False
         self.missed_cells_items = {}
+        self.prev_video_tab_idx = 0
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
-        self.imv = pg.ImageView()
+        self.imv = ImageViewOverride()
+
         self.videos = self.session.load_videos()
         if not self.videos:
             print("Missing Videos")
@@ -206,7 +209,8 @@ class ExplorationWidget(QWidget):
         self.scroll_video.valueChanged.connect(self.update_plot_lines)
 
         # Video interaction elements
-        self.imv.scene.sigMouseClicked.connect(self.highlight_cell)
+        #self.imv.scene.sigMouseClicked.connect(self.video_click)
+        self.imv.scene.sigMousePressMove.connect(self.video_click)
         self.video_cell_selection = set()
         self.video_selection_mask = np.zeros((self.current_video.shape[1], self.current_video.shape[2]))
 
@@ -256,7 +260,7 @@ class ExplorationWidget(QWidget):
         self.tabs_video.addTab(w_cells, "Approved Cells")
         self.tabs_video.addTab(w_rejected_cells, "Rejected Cells")
         self.tabs_video.addTab(w_missed_cells, "Missed Cells")
-        self.tabs_video.currentChanged.connect(self.enable_disable_missed_cell_mode)
+        self.tabs_video.currentChanged.connect(self.switched_tabs)
 
 
         # General plot utility
@@ -367,18 +371,42 @@ class ExplorationWidget(QWidget):
 
         self.missed_cell_init()
 
-    def enable_disable_missed_cell_mode(self):
+    def switched_tabs(self):
+        '''
+        This function is necessary due to the fact that the video will have different functionality on click depending
+        on the tab, missed cells vs. others.
+        '''
         if self.tabs_video.currentIndex() != 2:
             self.select_missed_mode = False
             self.btn_missed_select.setText("Enable Select Cell Mode")
+            self.imv.getView().setMenuEnabled(True)
+            self.imv.getView().setMouseEnabled(x=True, y=True)
+            if self.prev_video_tab_idx == 2: # Switching between 0 and 1 should not reset the state
+                self.reset_state()
+        else:
+            self.reset_state()
+        self.prev_video_tab_idx = self.tabs_video.currentIndex()
+
+    def reset_state(self):
+        '''
+        Clear selected cells, reset mask, and clear signals.
+        '''
+        self.video_cell_selection = set()
+        self.reset_mask()
+        self.w_signals.clear()
 
     def missed_cell_mode(self):
         if self.select_missed_mode:
             self.select_missed_mode = False
             self.btn_missed_select.setText("Enable Select Cell Mode")
+            self.imv.getView().setMenuEnabled(True)
+            self.imv.getView().setMouseEnabled(x=True, y=True)
         else:
             self.select_missed_mode = True
             self.btn_missed_select.setText("Disable Missed Cell Mode")
+            self.imv.getView().setMenuEnabled(False)
+            self.imv.getView().setMouseEnabled(x=False, y=False)
+
         
     def add_missed_cell(self, pos):
         id = self.session.add_missed(pos)
@@ -439,27 +467,29 @@ class ExplorationWidget(QWidget):
                 plot_item.add_point(event)
         
 
-    def highlight_cell(self, event):
-        point = self.imv.getImageItem().mapFromScene(event.pos())
-        converted_point = (round(point.y()), round(point.x())) # Switch x and y due to transpose
+    def video_click(self, event):
+        #point = self.imv.getImageItem().mapFromScene(event.pos())
+        #converted_point = (round(point.y()), round(point.x())) # Switch x and y due to transpose
+        converted_point = None
+        
+        if self.select_missed_mode:
+            print(self.imv.getImageItem().mapFromScene(event))
+        else:
+            if converted_point in self.A_posToCell:
+                temp_ids = set()
+                for cell_id in self.A_posToCell[converted_point]:
+                    temp_ids.add(cell_id)
 
-        if converted_point in self.A_posToCell:
-            temp_ids = set()
-            for cell_id in self.A_posToCell[converted_point]:
-                temp_ids.add(cell_id)
-
-            # We add selected cells and deactivate already selected cells
-            self.video_cell_selection = (self.video_cell_selection | temp_ids) - (self.video_cell_selection & temp_ids)
-            self.video_selection_mask = np.zeros(self.mask.shape)
-            for id in self.video_cell_selection:
-                self.video_selection_mask  += self.A[id].values
-            self.video_selection_mask[self.video_selection_mask  > 0] = 1
-            self.visualize_signals()
-            if not self.btn_play.isChecked():
-                self.current_frame -= 1
-                self.next_frame()
-        elif self.select_missed_mode:
-            self.add_missed_cell(converted_point)
+                # We add selected cells and deactivate already selected cells
+                self.video_cell_selection = (self.video_cell_selection | temp_ids) - (self.video_cell_selection & temp_ids)
+                self.video_selection_mask = np.zeros(self.mask.shape)
+                for id in self.video_cell_selection:
+                    self.video_selection_mask  += self.A[id].values
+                self.video_selection_mask[self.video_selection_mask  > 0] = 1
+                self.visualize_signals()
+                if not self.btn_play.isChecked():
+                    self.current_frame -= 1
+                    self.next_frame()
     
     def enable_disable_event_buttons(self):
         if self.chkbox_plot_options_C.isChecked():
@@ -491,7 +521,6 @@ class ExplorationWidget(QWidget):
         except:
             pass
         if cell_ids:
-
             self.w_signals.scene().sigMouseClicked.connect(self.find_subplot)
             for i, id in enumerate(cell_ids):
                 p = PlotItemEnhanced(id=id)
@@ -940,5 +969,3 @@ class PlotCurveItemEnhanced(PlotCurveItem):
             else:
                 self.setPen('r')
                 self.main_plot.selected_events.remove(self)
-
-
