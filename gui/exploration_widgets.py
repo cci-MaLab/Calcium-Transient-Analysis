@@ -13,6 +13,7 @@ from pyqtgraph import InfiniteLine
 from scipy.signal import find_peaks
 from core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget)
 from core.pyqtgraph_override import ImageViewOverride
+from skimage.segmentation import flood_fill
 
 class ExplorationWidget(QWidget):
     def __init__(self, session, name, main_window_ref, timestamps=None, parent=None):
@@ -24,7 +25,8 @@ class ExplorationWidget(QWidget):
         self.gen_stats_window = None
         self.local_stats_windows = {}
         self.select_missed_mode = False
-        self.missed_cells_items = {}
+        self.missed_cell_indices = set()
+        self.missed_cells_selection = set()
         self.prev_video_tab_idx = 0
 
         # Set up main view
@@ -68,15 +70,16 @@ class ExplorationWidget(QWidget):
         for outlier in self.session.outliers_list:
             self.A.pop(outlier)
 
-        self.A_posToCell = {}
+
+        self.A_pos_to_missed_cell = {}
+        self.A_pos_to_cell = {}
         for cell_id, cell_ROI in self.A.items():
             indices = np.argwhere(cell_ROI.values > 0)
             for pair in indices:
-                if tuple(pair) in self.A_posToCell:
-                    # We need to switch x and y positions because of how the image is displayed
-                    self.A_posToCell[tuple(pair)].append(cell_id)
+                if tuple(pair) in self.A_pos_to_cell:
+                    self.A_pos_to_cell[tuple(pair)].append(cell_id)
                 else:
-                    self.A_posToCell[tuple(pair)] = [cell_id]
+                    self.A_pos_to_cell[tuple(pair)] = [cell_id]
                     
 
 
@@ -115,12 +118,29 @@ class ExplorationWidget(QWidget):
         self.list_missed_cell = QListWidget()
         self.list_missed_cell.setMaximumSize(320, 600)
         self.list_missed_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.list_missed_cell.itemSelectionChanged.connect(self.highlight_selected_missed_cells)
 
-        self.btn_missed_select = QPushButton("Enable Select Cell")
+        self.btn_missed_select = QPushButton("Enable Select Cell Mode")
         self.btn_missed_select.clicked.connect(self.missed_cell_mode)
         self.btn_missed_remove = QPushButton("Remove Cell")
         self.btn_missed_remove.clicked.connect(self.remove_missed_cells)
+
+        btn_missed_clear = QPushButton("Clear Selected Pixels")
+        btn_missed_clear.setStyleSheet("background-color: yellow")
+        btn_missed_clear.clicked.connect(self.clear_selected_pixels)
+        btn_missed_confirm = QPushButton("Confirm Selected Pixels")
+        btn_missed_confirm.setStyleSheet("background-color: green")
+        btn_missed_confirm.clicked.connect(self.confirm_selected_pixels)
+        layout_missed_utility = QHBoxLayout()
+        layout_missed_utility.addWidget(btn_missed_clear)
+        layout_missed_utility.addWidget(btn_missed_confirm)
+        self.w_missed_utility = QWidget()
+        self.w_missed_utility.setLayout(layout_missed_utility)
+        self.w_missed_utility.hide()
+
+        btn_missed_reset_mask = QPushButton("Reset Mask")
+        btn_missed_reset_mask.clicked.connect(self.reset_mask)
+        btn_missed_focus_mask = QPushButton("Focus Mask")
+        btn_missed_focus_mask.clicked.connect(self.focus_mask)
 
         # Plot utility
         self.auto_label = QLabel("Automatic Transient Detection")
@@ -209,10 +229,9 @@ class ExplorationWidget(QWidget):
         self.scroll_video.valueChanged.connect(self.update_plot_lines)
 
         # Video interaction elements
-        #self.imv.scene.sigMouseClicked.connect(self.video_click)
-        self.imv.scene.sigMousePressMove.connect(self.video_click)
+        self.imv.scene.sigMouseClicked.connect(self.video_click)
         self.video_cell_selection = set()
-        self.video_selection_mask = np.zeros((self.current_video.shape[1], self.current_video.shape[2]))
+        self.video_cell_mask = np.zeros((self.current_video.shape[1], self.current_video.shape[2]))
 
         # Visualize signals selected in video
         self.w_signals = pg.GraphicsLayoutWidget()
@@ -253,6 +272,9 @@ class ExplorationWidget(QWidget):
         layout_missed_cells = QVBoxLayout()
         layout_missed_cells.addWidget(self.list_missed_cell)
         layout_missed_cells.addWidget(self.btn_missed_select)
+        layout_missed_cells.addWidget(btn_missed_reset_mask)
+        layout_missed_cells.addWidget(btn_missed_focus_mask)
+        layout_missed_cells.addWidget(self.w_missed_utility)
         layout_missed_cells.addWidget(self.btn_missed_remove)
         w_missed_cells = QWidget()
         w_missed_cells.setLayout(layout_missed_cells)        
@@ -383,6 +405,11 @@ class ExplorationWidget(QWidget):
             self.imv.getView().setMouseEnabled(x=True, y=True)
             if self.prev_video_tab_idx == 2: # Switching between 0 and 1 should not reset the state
                 self.reset_state()
+                self.missed_cell_signals_disabled()
+                self.video_missed_mask = np.zeros(self.mask.shape)
+                self.missed_cell_indices = set()
+                self.current_frame -= 1
+                self.next_frame()
         else:
             self.reset_state()
         self.prev_video_tab_idx = self.tabs_video.currentIndex()
@@ -401,22 +428,34 @@ class ExplorationWidget(QWidget):
             self.btn_missed_select.setText("Enable Select Cell Mode")
             self.imv.getView().setMenuEnabled(True)
             self.imv.getView().setMouseEnabled(x=True, y=True)
+            self.missed_cell_indices = set()
+            self.video_missed_mask = np.zeros(self.mask.shape)
+            self.current_frame -= 1
+            self.next_frame()
+            self.missed_cell_signals_disabled()
+            self.w_missed_utility.hide()
         else:
             self.select_missed_mode = True
             self.btn_missed_select.setText("Disable Missed Cell Mode")
             self.imv.getView().setMenuEnabled(False)
             self.imv.getView().setMouseEnabled(x=False, y=False)
+            self.video_missed_mask = np.zeros(self.mask.shape)
+            self.missed_cell_signals_enabled()
+            self.w_missed_utility.show()
 
-        
-    def add_missed_cell(self, pos):
-        id = self.session.add_missed(pos)
-        x, y = pos
-        point = ScatterPlotItem([y], [x], pen='r', symbol='x', size=10)
-        self.imv.getView().addItem(point)
-        self.missed_cells_items[id] = point
-        self.refresh_missed_list()
-        self.select_missed_mode = False
-        self.btn_missed_select.setText("Enable Select Cell Mode")
+    def missed_cell_signals_enabled(self):
+        self.missed_cell_signals_disabled()
+        self.imv.scene.sigMousePressMove.connect(self.draw_trace)
+        self.imv.scene.sigMousePressAltMove.connect(self.remove_trace)
+        self.imv.scene.sigMouseRelease.connect(self.finished_trace)
+
+    def missed_cell_signals_disabled(self):
+        try:
+            self.imv.scene.sigMousePressMove.disconnect(self.draw_trace)
+            self.imv.scene.sigMousePressAltMove.disconnect(self.remove_trace)
+            self.imv.scene.sigMouseRelease.disconnect(self.finished_trace)
+        except:
+            pass
 
 
     def remove_missed_cells(self):
@@ -432,22 +471,47 @@ class ExplorationWidget(QWidget):
         self.refresh_missed_list()
 
     def refresh_missed_list(self):
-        missed_ids = self.session.get_missed_cells_ids()
+        missed_ids = self.session.data["M"].coords["missed_id"].values
         self.list_missed_cell.clear()
         for missed_id in missed_ids:
             self.list_missed_cell.addItem(f"Missing Cell {missed_id}")
 
     def missed_cell_init(self):
-        missed_cells = self.session.get_missed_cells()
-        # Draw the missed cells
-        for id, missed_cell in missed_cells.items():
-            x, y = missed_cell.pos
-            point = ScatterPlotItem([y], [x], pen='r', symbol='x', size=10)
-            self.imv.getView().addItem(point)
-            self.missed_cells_items[id] = point
+        if self.session.data["M"] is not None:    
+            M = self.session.data["M"].load()
+            missed_ids = M.coords["missed_id"].values
+            for missed_id in missed_ids:
+                indices = np.argwhere(M.sel(missed_id=missed_id).values == 1)
+                for pair in indices:
+                    if tuple(pair) in self.A_pos_to_cell:
+                        self.A_pos_to_cell[tuple(pair)].append(missed_id)
+                    else:
+                        self.A_pos_to_cell[tuple(pair)] = [missed_id]
+
+            self.refresh_missed_list()
+
+    def clear_selected_pixels(self):
+        self.missed_cell_indices = set()
+        self.video_missed_mask = np.zeros(self.mask.shape)
+        if not self.btn_play.isChecked():
+            self.current_frame -= 1
+            self.next_frame()
+
+    def confirm_selected_pixels(self):
+        # Extract all the current indices from the mask
+        indices = np.argwhere(self.video_missed_mask == 1)
+        id = self.session.add_missed(self.video_missed_mask)
+        for pair in indices:
+            if tuple(pair) in self.A_pos_to_cell:
+                self.A_pos_to_cell[tuple(pair)].append(id)
+            else:
+                self.A_pos_to_cell[tuple(pair)] = [id]
 
         self.refresh_missed_list()
+        self.missed_cell_mode()
+        self.clear_selected_pixels()
 
+        
 
     def generate_gen_stats(self):
         self.gen_stats_window = GeneralStatsWidget(self.session)
@@ -465,32 +529,86 @@ class ExplorationWidget(QWidget):
                     break
             if plot_item is not None and isinstance(event.currentItem, PlotCurveItemEnhanced):
                 plot_item.add_point(event)
-        
 
-    def video_click(self, event):
-        #point = self.imv.getImageItem().mapFromScene(event.pos())
-        #converted_point = (round(point.y()), round(point.x())) # Switch x and y due to transpose
-        converted_point = None
-        
-        if self.select_missed_mode:
-            print(self.imv.getImageItem().mapFromScene(event))
-        else:
-            if converted_point in self.A_posToCell:
-                temp_ids = set()
-                for cell_id in self.A_posToCell[converted_point]:
-                    temp_ids.add(cell_id)
 
-                # We add selected cells and deactivate already selected cells
-                self.video_cell_selection = (self.video_cell_selection | temp_ids) - (self.video_cell_selection & temp_ids)
-                self.video_selection_mask = np.zeros(self.mask.shape)
-                for id in self.video_cell_selection:
-                    self.video_selection_mask  += self.A[id].values
-                self.video_selection_mask[self.video_selection_mask  > 0] = 1
-                self.visualize_signals()
-                if not self.btn_play.isChecked():
-                    self.current_frame -= 1
-                    self.next_frame()
-    
+    def draw_trace(self, event):
+        point = self.imv.getImageItem().mapFromScene(event)
+        pos_rounded = (round(point.y()-0.5), round(point.x()-0.5)) # Switch x and y due to transpose
+
+        self.missed_cell_indices.add(pos_rounded)
+        x, y = pos_rounded
+
+        self.video_missed_mask[x, y] = 1
+        if not self.btn_play.isChecked():
+            self.current_frame -= 1
+            self.next_frame()
+            
+
+    def remove_trace(self, event):
+        point = self.imv.getImageItem().mapFromScene(event)
+        x, y = (round(point.y()-0.5), round(point.x()-0.5))
+        if self.video_missed_mask[x, y] == 1:
+            self.video_missed_mask[x, y] = 0
+            if not self.btn_play.isChecked():
+                self.current_frame -= 1
+                self.next_frame()
+
+
+    def finished_trace(self, event):
+        # Once the trace is finished let's check if the area can be filled
+        copy_mask = self.video_missed_mask.copy()
+        if self.missed_cell_indices:
+            # Get the mean index of the missed cell
+            mean = np.mean([[x, y] for x, y in self.missed_cell_indices], axis=0).astype(int)
+            # Flood fill
+            filled = flood_fill(copy_mask, tuple(mean), 1, connectivity=1)
+            # It could be that the filling might not be successful and fill the entire image
+            # therefore if the sum exceeds 500 we'll use the original mask.
+            if np.sum(filled) < 500:
+                self.video_missed_mask = filled
+            
+            self.missed_cell_indices = set()
+            self.current_frame -= 1
+            self.next_frame()
+
+    def video_click(self, event):       
+        point = self.imv.getImageItem().mapFromScene(event.pos())
+        converted_point = (round(point.y()), round(point.x())) # Switch x and y due to transpose
+        if converted_point in self.A_pos_to_cell:
+            temp_ids = set()
+            for cell_id in self.A_pos_to_cell[converted_point]:
+                temp_ids.add(cell_id)
+
+            # We add selected cells and deactivate already selected cells
+            self.video_cell_selection = (self.video_cell_selection | temp_ids) - (self.video_cell_selection & temp_ids)
+            self.video_cell_mask = np.zeros(self.mask.shape)
+            for id in self.video_cell_selection:
+                self.video_cell_mask  += self.A[id].values
+            self.video_cell_mask[self.video_cell_mask  > 0] = 1
+            self.visualize_signals()
+            if not self.btn_play.isChecked():
+                self.current_frame -= 1
+                self.next_frame()
+        
+        elif converted_point in self.A_pos_to_missed_cell:
+            temp_ids = set()
+            for missed_id in self.A_pos_to_missed_cell[converted_point]:
+                temp_ids.add(missed_id)
+
+            self.missed_cells_selection = (self.missed_cells_selection | temp_ids) - (self.missed_cells_selection & temp_ids)
+            self.video_cell_mask = np.zeros(self.mask.shape)
+            for id in self.missed_cells_selection:
+                self.video_cell_mask  += self.A[id].values
+            self.visualize_signals()
+            if not self.btn_play.isChecked():
+                self.current_frame -= 1
+                self.next_frame()
+            
+
+
+            
+
+
     def enable_disable_event_buttons(self):
         if self.chkbox_plot_options_C.isChecked():
             self.frame_algo_events.setEnabled(True)
@@ -515,7 +633,9 @@ class ExplorationWidget(QWidget):
 
     def visualize_signals(self):
         cell_ids = self.video_cell_selection
+        missed_ids = self.missed_cells_selection
         self.w_signals.clear()
+        last_i = 0
         try:
             self.w_signals.scene().sigMouseClicked.disconnect(self.find_subplot)
         except:
@@ -540,6 +660,19 @@ class ExplorationWidget(QWidget):
                             # Now Split the indices into pairs of first and last indices
                             indices = [(indices_group[0], indices_group[-1]+1) for indices_group in indices]
                             p.draw_event_curves(indices)
+
+                last_i = i
+
+        if missed_ids:
+            for i, id in enumerate(missed_ids):
+                p = PlotItemEnhanced(id=id)
+                p.plotLine.setPos(self.scroll_video.value())
+                p.setTitle(f"Missed Cell {id}")
+                self.w_signals.addItem(p, row=i+last_i, col=0)
+                for data_type in self.get_selected_data_type():
+                    data = self.session.get_missed_signal(id)
+                    p.add_main_curve(data)
+
 
     def generate_local_stats(self):
         # Iterate through the current plots and generate local statistics windows
@@ -568,21 +701,36 @@ class ExplorationWidget(QWidget):
 
 
     def focus_mask(self):
-        cell_ids = [int(item.text()) for item in self.list_cell.selectedItems()]
-        new_mask = np.zeros(self.mask.shape)
-        if cell_ids:
-            for cell_id in cell_ids:
-                new_mask += self.A[cell_id].values
         
-        new_mask[new_mask > 0] = 1
-        new_mask[new_mask == 0] = 3
-        self.mask = new_mask
-        if not self.btn_play.isChecked():
-            self.current_frame -= 1
-            self.next_frame()
+        if self.prev_video_tab_idx == 0:            
+            cell_ids = [int(item.text()) for item in self.list_cell.selectedItems()]
+            new_mask = np.zeros(self.mask.shape)
+            if cell_ids:
+                for cell_id in cell_ids:
+                    new_mask += self.A[cell_id].values
+            
+            new_mask[new_mask > 0] = 1
+            new_mask[new_mask == 0] = 3
+            self.mask = new_mask
+            if not self.btn_play.isChecked():
+                self.current_frame -= 1
+                self.next_frame()
+        else:
+            missed_ids = [int(item.text()) for item in self.list_rejected_cell.selectedItems()]
+            new_mask = np.zeros(self.mask.shape)
+            if missed_ids:
+                for missed_id in missed_ids:
+                    new_mask += self.data["M"].sel(missed_id=missed_ids).values
+            
+            new_mask[new_mask == 0] = 3
+            self.mask = new_mask
+            if not self.btn_play.isChecked():
+                self.current_frame -= 1
+                self.next_frame()
 
     def reset_mask(self):
         self.mask = np.ones(self.mask.shape)
+        self.video_missed_mask = np.zeros(self.mask.shape)
         if not self.btn_play.isChecked():
             self.current_frame -= 1
             self.next_frame()
@@ -621,10 +769,12 @@ class ExplorationWidget(QWidget):
 
     def generate_image(self):
         image = self.current_video.sel(frame=self.current_frame).values // self.mask
-        if self.video_cell_selection:
+        if self.video_cell_selection or self.select_missed_mode:
             image = np.stack((image,)*3, axis=-1)
             if not self.btn_cell_clear_color.isChecked():
-                image[:,:,:2][self.video_selection_mask == 1] = 0
+                image[:,:,0][self.video_cell_mask == 1] = 0
+            if self.select_missed_mode:
+                image[:,:,1][self.video_missed_mask == 1] = 0
         return image
     
     def refresh_image(self):
@@ -653,19 +803,6 @@ class ExplorationWidget(QWidget):
         cell_ids = [int(item.text()) for item in self.list_rejected_cell.selectedItems()]
         self.session.approve_cells(cell_ids)
         self.refresh_cell_list()
-
-    def highlight_selected_missed_cells(self):
-        all_items = [self.list_missed_cell.item(x) for x in range(self.list_missed_cell.count())]
-        all_items = [int(''.join(filter(str.isdigit, item.text())))for item in all_items]
-        selected = self.list_missed_cell.selectedItems()
-        selected = [int(''.join(filter(str.isdigit, item.text()))) for item in selected]
-
-        non_selected = list(set(all_items) - set(selected))
-
-        for id in selected:
-            self.missed_cells_items[id].setPen('g')
-        for id in non_selected:
-            self.missed_cells_items[id].setPen('r')
 
         
         

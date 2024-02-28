@@ -24,6 +24,7 @@ getMillis = lambda: perf_counter_ns() // 10 ** 6
 
 class GraphicsSceneOverride(GraphicsScene):
     sigMousePressMove = QtCore.Signal(object)
+    sigMousePressAltMove = QtCore.Signal(object)
     sigMouseRelease = QtCore.Signal(object)
     def __init__(self, *args, **kwargs):
         super(GraphicsSceneOverride, self).__init__(*args, **kwargs)
@@ -32,11 +33,14 @@ class GraphicsSceneOverride(GraphicsScene):
         super(GraphicsSceneOverride, self).mouseMoveEvent(ev)
         if (ev.buttons() & QtCore.Qt.MouseButton.LeftButton):
             self.sigMousePressMove.emit(ev.scenePos())
+        elif (ev.buttons() & QtCore.Qt.MouseButton.RightButton):
+            self.sigMousePressAltMove.emit(ev.scenePos())
 
     def mouseReleaseEvent(self, ev):
         super(GraphicsSceneOverride, self).mouseReleaseEvent(ev)
         if (ev.button() == QtCore.Qt.MouseButton.LeftButton):
             self.sigMouseRelease.emit(ev)
+        
 
 class PlotROI(ROI):
     def __init__(self, size):
@@ -147,7 +151,7 @@ class ImageViewOverride(ImageView):
         self.roiCurves = []
         self.timeLine = InfiniteLine(0, movable=True)
         if getConfigOption('background')=='w':
-            self.timeLine.setPen((20, 80,80, 200))
+            self.timeLine.setPen((20, 80, 80, 200))
         else:
             self.timeLine.setPen((255, 255, 0, 200))
         self.timeLine.setZValue(1)

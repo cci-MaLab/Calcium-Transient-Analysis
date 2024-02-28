@@ -13,10 +13,6 @@ from core.backend import DataInstance
 from gui.clustering_inspection_widgets import InspectionWidget
 import dask
 
-"""
-TODO: Double check the save mechanic. Add S and raw signal to plots. Adding a new cell that wasn't detected. Other plots requested.
-"""
-
 class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__(*args, **kwargs)

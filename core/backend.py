@@ -381,54 +381,33 @@ class DataInstance:
         self.outliers_list: List[int] = []
         self.centroids: dict
         self.load_data(dpath=dpath)
-        self.no_of_clusters = 4
-        self._missed_cells = {} # At no point should this be accessed directly. Use the add_missed and remove_missed functions
-        self.load_missed_cells()      
+        self.no_of_clusters = 4     
         self.distance_metric = 'euclidean'
+        self.missed_signals = {}
 
         # Create the default image
         self.clustering_result = {"basic": {"image": np.stack((self.data['A'].sum("unit_id").values,)*3, axis=-1)}}
 
-    def add_missed(self, pos: tuple, radius:float=1.0):
-        id = max(self._missed_cells.keys()) + 1 if self._missed_cells else 0
-        self._missed_cells[id] = MissedCell(id, pos, radius)
-        self.save_missed_cells()
+    def add_missed(self, A: np.array):          
+        id = max(self.data["M"].coords["missed_id"].values) + 1 if self.data["M"] is not None else 1
+        M = xr.DataArray(np.expand_dims(A, axis=0), dims=["missed_id", "height", "width"], coords={"missed_id": [id], "height": self.data['A'].coords["height"].values, "width": self.data['A'].coords["width"].values}, name="M")
+        if self.data["M"] is not None:
+            M_old = self.data["M"].load()
+            M = xr.concat([M_old, M], dim="missed_id")
+            
+
+        self.data["M"] = save_xarray(M, self.minian_path, compute=True)
         return id
 
     def remove_missed(self, ids: List[int]):
-        for id in ids:
-            del self._missed_cells[id]
-        self.save_missed_cells()
+        M = self.data["M"].load()
+        M = M.drop_sel(missed_id=ids)
 
-    def save_missed_cells(self):
-        if self._missed_cells:
-            # Create a new xarray. I am aware that this is quite inefficient but it is the only way to save the data
-            # to account for the varying number of missed cells and the fact that they might be completely excluded.
-            # The xarray however is very small so the inefficiency is not a big deal.
-            ids = list(self._missed_cells.keys())
-            arr = np.empty((len(ids), 3)) # x, y, radius
-            for i, id in enumerate(ids):
-                _, x, y, radius = self._missed_cells[id].get_values()
-                arr[i] = [x, y, radius]
-            
-            da = xr.DataArray(arr, dims=["missed_id", "dim"], coords={"missed_id": ids, "dim": ["x", "y", "radius"]}, name="M")
-            save_xarray(da, self.minian_path, compute=True)
-
-        else:
+        if M.size == 0:
             delete_missing_xarray(self.minian_path, "M")
+        else:
+            self.data["M"] = save_xarray(M, self.minian_path, compute=True)
 
-    def load_missed_cells(self):
-        arr = self.data["M"]
-        if arr is not None:            
-            for id in arr.coords["missed_id"]:
-                x, y, radius = arr.sel(missed_id=id).values
-                self._missed_cells[id.item()] = MissedCell(id.item(), (x, y), radius)
-    
-    def get_missed_cells(self):
-        return self._missed_cells
-    
-    def get_missed_cells_ids(self):
-        return list(self._missed_cells.keys())
 
 
     def parse_file(self,dpath):# set up configure file
@@ -451,6 +430,7 @@ class DataInstance:
             else:
                 print("No %s data found in minian intermediate folder" % (video_type))
         
+        self.video_files = video_files
         return video_files        
 
     def load_data(self,dpath):
@@ -580,6 +560,17 @@ class DataInstance:
 
     def get_cell_sizes(self):
         return (self.data["A"] > 0).sum(["height", "width"]).compute()
+    
+    def get_missed_signal(self, missed_id: int):
+        if missed_id in self.missed_signals:
+            return self.missed_signals[missed_id]
+        mask = self.data["M"].sel(missed_id=missed_id).compute()
+        Y = self.video_files["Y_fm_chk"]
+        averaged_signal = (Y * mask).mean(["height", "width"]).compute()
+        self.missed_signals[missed_id] = averaged_signal.values
+
+        return averaged_signal
+
     
     def get_total_transients(self, unit_id=None):
         # Diff won't capture the first transient, so we add 1 to the sum if
@@ -974,18 +965,3 @@ class CellClustering:
             final_image += np.stack((self.A[list(self.A.keys())[idx]].values,)*3, axis=-1) * viridis(color_mapping[idx])[:3]
         
         return plt.imshow(final_image)
-
-
-class MissedCell:
-    """
-    Necessary class to keep track of missed cells.
-    Since the number of cells can vary we may constantly need to add and remove cells from the list.
-    Therefore we will convert it to and from an xarray when loading and saving.
-    """
-    def __init__(self, id: int, pos: tuple, radius:float=1.0):
-        self.id = id
-        self.pos = pos
-        self.radius = radius
-
-    def get_values(self):
-        return self.id, self.pos[0], self.pos[1], self.radius
