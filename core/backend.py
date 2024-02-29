@@ -1,7 +1,6 @@
 # This is where all the ultility functions are stored
 
 # The first function is to load in the data
-import dask as da
 import dask.array as darr
 import numpy as np
 import pandas as pd
@@ -13,12 +12,7 @@ from typing import Callable, List, Optional, Union
 import os
 import re
 import shutil
-from pathlib import Path
 from dask.diagnostics import ProgressBar
-from dask.delayed import optimize as default_delay_optimize
-import rechunker
-import zarr as zr
-from uuid import uuid4
 
 from core.caiman_utils import detrend_df_f, minian_to_caiman
 
@@ -29,7 +23,6 @@ from skimage.measure import find_contours
 
 from matplotlib import cm
 import matplotlib.pyplot as plt
-from scipy.stats import zscore
 
 import configparser
 
@@ -569,7 +562,7 @@ class DataInstance:
         averaged_signal = (Y * mask).mean(["height", "width"]).compute()
         self.missed_signals[missed_id] = averaged_signal.values
 
-        return averaged_signal
+        return self.missed_signals[missed_id]
 
     
     def get_total_transients(self, unit_id=None):
