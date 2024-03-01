@@ -354,7 +354,7 @@ class DataInstance:
         1. load_data and load_events will be automatically excuted.
         2. You may call function set_vector,each time you change the switch of the events.
         3. After you set vectors, call the function compute_clustering, self.linkage_data will be updated. Then you can draw the dendrogram.
-        4. Footprint in A. A is a dict. the key is the neuron ID.
+        4. Footprint in A. A is a dict. the key is the cell ID.
     '''
     distance_metric_list = ['euclidean','cosine'] # Static variable so parameters can be read before initiating instance
     def __init__(
@@ -479,13 +479,13 @@ class DataInstance:
     
         self.data['filtered_C'] = self.get_filtered_C
 
-        neurons = self.data['unit_ids']
+        cells = self.data['unit_ids']
 
         cent = self.centroid(self.data['A'])
         
         self.A = {}
         self.centroids = {}
-        for i in neurons:
+        for i in cells:
             self.A[i] = self.data['A'].sel(unit_id = i)
             self.centroids[i] = tuple(cent.loc[cent['unit_id'] == i].values[0][1:])
 
@@ -521,17 +521,17 @@ class DataInstance:
     def get_pdf_format(self, unit_ids, cluster, path):
         contours = []
         for id in unit_ids:
-            neuron = self.A[id].values
+            cell = self.A[id].values
             yaoying_param = 6
-            thresholded_roi = 1 * neuron > (np.mean(neuron) + yaoying_param * np.std(neuron))
+            thresholded_roi = 1 * cell > (np.mean(cell) + yaoying_param * np.std(cell))
             contours.append(find_contours(thresholded_roi, 0)[0])
         
         fig, ax = plt.subplots(figsize=(10, 10))
         cluster = "all" if cluster == 0 else cluster
         ax.imshow(self.clustering_result[cluster]['image'])
-        for neuron, unit_id in zip(contours, unit_ids):
-            ax.plot(neuron[:, 1], neuron[:, 0], color='xkcd:azure', alpha=0.5, linewidth=1)
-            ax.text(np.mean(neuron[:, 1]), np.mean(neuron[:, 0]), unit_id, color='xkcd:azure',
+        for cell, unit_id in zip(contours, unit_ids):
+            ax.plot(cell[:, 1], cell[:, 0], color='xkcd:azure', alpha=0.5, linewidth=1)
+            ax.text(np.mean(cell[:, 1]), np.mean(cell[:, 0]), unit_id, color='xkcd:azure',
                     ha='center', va='center', fontsize="small")
         ax.axis('off')
         fig.savefig(path)
@@ -581,6 +581,14 @@ class DataInstance:
 
     def get_total_rising_frames(self):
         return (self.data["E"] != 0).sum(dim="frame").compute()
+    
+    def get_std(self):
+        return self.data["DFF"].std(dim="frame").compute()
+    
+    def get_mad(self):
+        mean = self.data["DFF"].mean(dim="frame").compute()
+        mad = abs(self.data["DFF"] - mean).median(dim="frame").compute()
+        return (1 / 0.67) * mad
     
     def get_transient_frames(self):
         '''

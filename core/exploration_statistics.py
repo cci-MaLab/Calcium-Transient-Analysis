@@ -5,41 +5,119 @@ from PyQt5.QtGui import (QIntValidator, QDoubleValidator)
 
 import numpy as np
 from gui.clustering_inspection_widgets import MplCanvas
+import pandas as pd
 
+class StatsWidget(QWidget):
+    def __init__(self, parent=None):
+        super(StatsWidget, self).__init__(parent)
+        '''
+        This is the parent class for the statistics window. It shouldn't be directly called but rather
+        the children classes should be called, i.e. GeneralStatsWidget and LocalStatsWidget.
+        '''
+        self.clipboard = QApplication.clipboard()
 
-class GeneralStatsWidget(QWidget):
+        self.menu = QMenuBar()
+        pixmapi_tools = QStyle.StandardPixmap.SP_FileDialogListView
+        btn_copy = QAction(self.style().standardIcon(pixmapi_tools), "&Copy Data to Clipboard", self)
+        btn_copy.setStatusTip("Data related utilities")
+        btn_copy.triggered.connect(self.copy_to_clipboard)
+        stats_menu = self.menu.addMenu("&Tools")
+        stats_menu.addAction(btn_copy)
+
+    def pandas_to_table(self):
+        '''
+        Convert a pandas dataframe to a QTableWidget.
+        '''
+        self.table.clear()
+        self.table.setRowCount(self.pd_table.shape[0])
+        self.table.setColumnCount(self.pd_table.shape[1])
+        self.table.setHorizontalHeaderLabels(self.pd_table.columns)
+        self.table.setVerticalHeaderLabels([f"Cell {idx}" for idx in self.pd_table.index])
+        for i in range(self.pd_table.shape[0]):
+            for j in range(self.pd_table.shape[1]):
+                val = self.pd_table.iloc[i, j]
+                val = val if not pd.isnull(val) else "N/A"
+                self.table.setItem(i, j, QTableWidgetItem(str(val)))
+        self.table.resizeColumnsToContents()
+        self.table.resizeRowsToContents()
+
+    def copy_to_clipboard(self):
+        '''
+        Copy the data from the self.table to the clipboard.
+        '''
+        text = "\t"
+        col_headers = [self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())]
+        text += "\t".join(col_headers) + "\n"
+        for i in range(self.table.rowCount()):
+            row = [self.table.verticalHeaderItem(i).text()]
+            for j in range(self.table.columnCount()):
+                row.append(self.table.item(i, j).text())
+            text += "\t".join(row) + "\n"
+        
+        self.clipboard.setText(text)
+
+    def finalize_window(self):
+        '''
+        Last thing to call in init.
+        '''
+        # Set it up that double clicking on a header will sort the table for the double clicked column
+        self.table.horizontalHeader().sectionDoubleClicked.connect(self.sort_column)
+        # If double clicking a row, then sort by row index
+        self.table.verticalHeader().sectionDoubleClicked.connect(self.sort_row)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.table)
+        layout.setMenuBar(self.menu)
+        self.setLayout(layout)
+
+    def sort_column(self, logical_index):
+        '''
+        Sort the table by the double clicked column.
+        '''
+        col_name = self.table.horizontalHeaderItem(logical_index).text()
+        # If location then skip
+        if col_name == "Location (x,y)":
+            return
+        # If the column is already sorted, reverse the order
+        if self.pd_table[col_name].is_monotonic_increasing:
+            self.pd_table = self.pd_table.sort_values(by=col_name, ascending=False)
+        else:
+            self.pd_table = self.pd_table.sort_values(by=col_name)
+
+        self.pandas_to_table()
+
+    def sort_row(self, logical_index):
+        '''
+        Sort the table by the double clicked row.
+        If already sorted, reverse the order.
+        '''
+        if self.pd_table.index.is_monotonic_increasing:
+            self.pd_table = self.pd_table.sort_index(ascending=False)
+        else:
+            self.pd_table = self.pd_table.sort_index()
+
+        self.pandas_to_table()
+        
+
+class GeneralStatsWidget(StatsWidget):
     def __init__(self, session, parent=None):
         super(GeneralStatsWidget, self).__init__(parent)
         '''
         The window will display from the exploration window and will display general statistics
         related to results from a specific mouse.
         '''
-        self.clipboard = QApplication.clipboard()
 
         unit_ids = session.data["unit_ids"]
 
-        # Rows will indicate the feature we are interested in and columns indicate the corresponding neuron
-        self.table = QTableWidget(9, len(unit_ids))
+        # Rows will indicate the feature we are interested in and columns indicate the corresponding cell
+        self.table = QTableWidget(len(unit_ids), 11)
 
-        # Menu Bar for Tools
-        menu = QMenuBar()
-        pixmapi_tools = QStyle.StandardPixmap.SP_FileDialogListView
-        btn_copy = QAction(self.style().standardIcon(pixmapi_tools), "&Copy Data to Clipboard", self)
-        btn_copy.setStatusTip("Data related utilities")
-        btn_copy.triggered.connect(lambda: copy_to_clipboard(self.table, self.clipboard))
-        stats_menu = menu.addMenu("&Tools")
-        stats_menu.addAction(btn_copy)
-
-        layout = QVBoxLayout()
-        layout.addWidget(self.table)
-        layout.setMenuBar(menu)
-        self.setLayout(layout)
-
-        # Fill out the self.table with headers
-        self.table.setHorizontalHeaderLabels([f"Neuron ID #{id}"for id in unit_ids])
-        self.table.setVerticalHeaderLabels(["Cell Size(pixel)", "Location (x,y)", "Total Ca2+ transient #", 
+        self.pd_table = pd.DataFrame(index=unit_ids, columns=["Cell Size(pixel)", "Location (x,y)", "Total Ca2+ transient #", 
                                        "Average Frequency (Hz)", "Average Amplitude (ΔF/F)", "Average Rising (# of frames)",
-                                       "Average Rising Time (seconds)", "Average Ca2+ transient-interval (# of frames)", "Average interval (seconds)"])
+                                       "Average Rising Time (seconds)", "Average Ca2+ transient-interval (# of frames)", "Average interval (seconds)",
+                                       "Std(ΔF/F)", "MAD(ΔF/F)"])
+        
+
 
         # Fill out the self.table with data
         E = session.data['E']
@@ -54,46 +132,60 @@ class GeneralStatsWidget(QWidget):
         frames_per_second = len(timestamps) / total_time * 1000
         average_rising_time = average_rising_frames / frames_per_second
         transient_frames = session.get_transient_frames()
+        std_dff = session.get_std()
+        mad_dff = session.get_mad()
+
 
         
         for i, id in enumerate(unit_ids):
             # 1.) Cell Size
-            self.table.setItem(0, i, QTableWidgetItem(str(sizes.sel(unit_id=id).item())))
+            self.pd_table.at[id, "Cell Size(pixel)"] = sizes.sel(unit_id=id).item()
             # 2.) Location (x,y)
-            self.table.setItem(1, i, QTableWidgetItem(str((round(session.centroids[id][0]),
-                                                      round(session.centroids[id][1])))))
+            self.pd_table.at[id, "Location (x,y)"] = (round(session.centroids[id][0]), round(session.centroids[id][1]))
             # 3.) Total Ca2+ transient #
-            self.table.setItem(2, i, QTableWidgetItem(str(int(total_transients.sel(unit_id=id).item()))))
+            self.pd_table.at[id, "Total Ca2+ transient #"] = int(total_transients.sel(unit_id=id).item())
 
             # 4.) Average Frequency (Hz)
-            self.table.setItem(3, i, QTableWidgetItem(str(round(average_frequency.sel(unit_id=id).item(), 5))))
+            self.pd_table.at[id, "Average Frequency (Hz)"] = round(average_frequency.sel(unit_id=id).item(), 5)
 
             # 5.) Average Amplitude (ΔF/F)
             if average_amplitude.sel(unit_id=id).isnull().item():
-                self.table.setItem(4, i, QTableWidgetItem("N/A"))
+                self.pd_table.at[id, "Average Amplitude (ΔF/F)"] = np.NaN
             else:
-                self.table.setItem(4, i, QTableWidgetItem(str(round(average_amplitude.sel(unit_id=id).item(), 3))))
+                self.pd_table.at[id, "Average Amplitude (ΔF/F)"] = str(round(average_amplitude.sel(unit_id=id).item(), 3))
 
             # 6.) Average Rising (# of frames)
             if average_rising_frames.sel(unit_id=id).isnull().item():
-                self.table.setItem(5, i, QTableWidgetItem("N/A"))
+                self.pd_table.at[id, "Average Rising (# of frames)"] = np.NaN
             else:
-                self.table.setItem(5, i, QTableWidgetItem(str(round(average_rising_frames.sel(unit_id=id).item()))))
+                self.pd_table.at[id, "Average Rising (# of frames)"] = str(round(average_rising_frames.sel(unit_id=id).item()))
 
             # 7.) Average Rising Time (seconds)
             if average_rising_time.sel(unit_id=id).isnull().item():
-                self.table.setItem(6, i, QTableWidgetItem("N/A"))
+                self.pd_table.at[id, "Average Rising Time (seconds)"] = np.NaN
             else:
-                self.table.setItem(6, i, QTableWidgetItem(str(round(average_rising_time.sel(unit_id=id).item(), 3))))
+                self.pd_table.at[id, "Average Rising Time (seconds)"] = str(round(average_rising_time.sel(unit_id=id).item(), 3))
 
             # 8.) Average Ca2+ transient-interval (# of frames)
-            self.table.setItem(7, i, QTableWidgetItem(session.get_mean_iei_per_cell(transient_frames, id, total_transients)))
+            self.pd_table.at[id, "Average Ca2+ transient-interval (# of frames)"] = session.get_mean_iei_per_cell(transient_frames, id, total_transients)
                 
             
             # 9.) Average interval (seconds)
-            self.table.setItem(8, i, QTableWidgetItem(session.get_mean_iei_per_cell(transient_frames, id, total_transients, frame_rate=frames_per_second)))
+            self.pd_table.at[id, "Average interval (seconds)"] = session.get_mean_iei_per_cell(transient_frames, id, total_transients, frame_rate=frames_per_second)
 
-        self.table.resizeColumnsToContents()   
+            # 10.) Std(ΔF/F)
+            self.pd_table.at[id, "Std(ΔF/F)"] = round(std_dff.sel(unit_id=id).item(), 3)
+
+            # 11.) MAD(ΔF/F)
+            self.pd_table.at[id, "MAD(ΔF/F)"] = round(mad_dff.sel(unit_id=id).item(), 3)
+
+        self.pandas_to_table()
+        self.table.resizeColumnsToContents()       
+
+
+        self.finalize_window()
+
+
 
 class LocalStatsWidget(QWidget):
     def __init__(self, session, unit_id, main_win_ref, parent=None):
@@ -103,8 +195,6 @@ class LocalStatsWidget(QWidget):
         related to results from a specific mouse.
         '''
         self.main_window_ref = main_win_ref
-
-        self.clipboard = QApplication.clipboard()
 
         self.unit_id = unit_id
 
@@ -125,14 +215,8 @@ class LocalStatsWidget(QWidget):
             # Now Split the indices into pairs of first and last indices
             transients = [(indices_group[0], indices_group[-1]+1) for indices_group in transients]
 
-        # Rows will indicate the feature we are interested in and columns indicate the corresponding neuron
+        # Rows will indicate the feature we are interested in and columns indicate the corresponding cell
         self.table = QTableWidget(total_transients, 10)
-
-        # Menu Bar for Tools
-        menu = QMenuBar()
-        btn_copy = QAction("&Copy Data to Clipboard", self)
-        btn_copy.setStatusTip("Data related utilities")
-        btn_copy.triggered.connect(lambda: copy_to_clipboard(self.table, self.clipboard))
 
         btn_stats_amp = QAction("&Amplitude Frequency Histogram", self)
         btn_stats_amp.triggered.connect(self.generate_amp_histogram)
@@ -140,15 +224,13 @@ class LocalStatsWidget(QWidget):
         btn_stats_iei = QAction("IEI Frequency Histogram", self)
         btn_stats_iei.triggered.connect(self.generate_iei_histogram)
 
-        tools_menu = menu.addMenu("&Tools")
-        tools_menu.addAction(btn_copy)
-        visualization_menu = menu.addMenu("&Visualization")
+        visualization_menu = self.menu.addMenu("&Visualization")
         visualization_menu.addAction(btn_stats_amp)
         visualization_menu.addAction(btn_stats_iei)
 
         layout = QVBoxLayout()
         layout.addWidget(self.table)
-        layout.setMenuBar(menu)
+        layout.setMenuBar(self.menu)
         self.setLayout(layout)
 
         # Fill out the self.table with headers
@@ -200,32 +282,17 @@ class LocalStatsWidget(QWidget):
 
     def generate_iei_histogram(self):
         self.iei_win = LocalIEIWidget(self.iei_msec)
-        self.iei_win.setWindowTitle(f"IEI Histogram for Neuron {self.unit_id}")
+        self.iei_win.setWindowTitle(f"IEI Histogram for cell {self.unit_id}")
         self.iei_win.show()
 
     def generate_amp_histogram(self):
         self.amp_win = LocalAmpWidget(self.total_amplitude_list)
-        self.amp_win.setWindowTitle(f"Amplitude Histogram for Neuron {self.unit_id}")
+        self.amp_win.setWindowTitle(f"Amplitude Histogram for cell {self.unit_id}")
         self.amp_win.show()
         
     def closeEvent(self, event):
         super(LocalStatsWidget, self).closeEvent(event)
         self.main_window_ref.delete_local_stats_win(self.unit_id)     
-        
-def copy_to_clipboard(table, clipboard):
-    '''
-    Copy the data from the self.table to the clipboard.
-    '''
-    text = "\t"
-    col_headers = [table.horizontalHeaderItem(i).text() for i in range(table.columnCount())]
-    text += "\t".join(col_headers) + "\n"
-    for i in range(table.rowCount()):
-        row = [table.verticalHeaderItem(i).text()]
-        for j in range(table.columnCount()):
-            row.append(table.item(i, j).text())
-        text += "\t".join(row) + "\n"
-    
-    clipboard.setText(text)
 
 
 
