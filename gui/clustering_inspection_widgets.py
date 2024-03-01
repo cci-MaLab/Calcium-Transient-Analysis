@@ -16,7 +16,7 @@ class InspectionWidget(QWidget):
     def __init__(self, session, main_ref, parent=None):
         super().__init__(parent)
         self.session = session
-        self.total_neurons = len(self.session.clustering_result["all"]["ids"]) - len(self.session.outliers_list)
+        self.total_cells = len(self.session.clustering_result["all"]["ids"]) - len(self.session.outliers_list)
         self.selected_plot = 0
         self.cell_ids = None
         self.displaying = "None"
@@ -73,8 +73,8 @@ class InspectionWidget(QWidget):
         self.w_cell_average_button = QPushButton("Visualize Average")
         self.w_cell_average_button.clicked.connect(self.createAverageSignals)
 
-        self.total_neurons_label = QLabel(f"Looking at {self.total_neurons} out of {self.total_neurons} neurons")
-        self.total_neurons_label.setWordWrap(True)
+        self.total_cells_label = QLabel(f"Looking at {self.total_cells} out of {self.total_cells} cells")
+        self.total_cells_label.setWordWrap(True)
 
         # Legend
         ALP_label = self.generate_legend_element("ALP")
@@ -138,7 +138,7 @@ class InspectionWidget(QWidget):
         mid_layout.addWidget(self.w_cell_button)
         mid_layout.addWidget(self.w_cell_list)
         mid_layout.addWidget(w_cell_label)
-        mid_layout.addWidget(self.total_neurons_label)
+        mid_layout.addWidget(self.total_cells_label)
 
         mpl_widget = QWidget()
         mpl_widget.setLayout(layout_mpl)
@@ -257,7 +257,7 @@ class InspectionWidget(QWidget):
                 self.w_cell_list.addItem(str(id))
                 total_in_group += 1
         
-        self.total_neurons_label.setText(f"Looking at {total_in_group} out of {self.total_neurons} neurons")
+        self.total_cells_label.setText(f"Looking at {total_in_group} out of {self.total_cells} cells")
 
     def visualizeSignals(self, event):
         self.cell_ids = [int(item.text()) for item in self.w_cell_list.selectedItems()]
