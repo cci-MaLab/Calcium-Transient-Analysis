@@ -117,7 +117,15 @@ class GeneralStatsWidget(StatsWidget):
                                        "Average Rising Time (seconds)", "Average Ca2+ transient-interval (# of frames)", "Average interval (seconds)",
                                        "Std(ΔF/F)", "MAD(ΔF/F)"])
         
+        btn_stats_amp = QAction("&Amplitude Frequency Boxplot", self)
+        btn_stats_amp.triggered.connect(self.generate_amp_boxplot)
 
+        btn_stats_iei = QAction("IEI Frequency Boxplot", self)
+        btn_stats_iei.triggered.connect(self.generate_iei_boxplot)      
+        
+        visualization_menu = self.menu.addMenu("&Visualization")
+        visualization_menu.addAction(btn_stats_amp)
+        visualization_menu.addAction(btn_stats_iei)
 
         # Fill out the self.table with data
         E = session.data['E']
@@ -180,11 +188,44 @@ class GeneralStatsWidget(StatsWidget):
             self.pd_table.at[id, "MAD(ΔF/F)"] = round(mad_dff.sel(unit_id=id).item(), 3)
 
         self.pandas_to_table()
-        self.table.resizeColumnsToContents()       
-
+        self.table.resizeColumnsToContents()  
 
         self.finalize_window()
 
+    def generate_amp_boxplot(self):
+        data = self.pd_table["Average Amplitude (ΔF/F)"].dropna()
+        if data.empty:
+            return
+        self.amp_win = GeneralVizWidget(data, "Amplitude")
+        self.amp_win.setWindowTitle("Amplitude Box Plot")
+        self.amp_win.show()
+
+    def generate_iei_boxplot(self):
+        data = self.pd_table["Average interval (seconds)"].dropna()
+        if data.empty:
+            return
+        self.iei_win = GeneralVizWidget(data * 1000, "IEI")
+        self.iei_win.setWindowTitle("IEI Box Plot")
+        self.iei_win.show()
+
+class GeneralVizWidget(QWidget):
+    def __init__(self, data: pd.Series, viz_type: str, parent=None):
+        super(GeneralVizWidget, self).__init__(parent)
+        '''
+        The window will display either IEI or amplitude box plots for all cells.
+        '''
+        visualization = MplCanvas()
+        layout = QVBoxLayout()
+        layout.addWidget(visualization)
+        self.setLayout(layout)
+
+        data = data.astype(float)
+        bp = data.plot.box(ax=visualization.axes)
+        bp.set_title(f"{viz_type} Box Plot")
+        bp.set_ylabel(f"{viz_type} (msec)" if viz_type == "IEI" else f"{viz_type} (ΔF/F)")
+        # Add jitter to the box plot
+        for point in data:
+            visualization.axes.plot([np.random.normal(1, 0.04)], point, 'r.', alpha=0.2)
 
 
 class LocalStatsWidget(QWidget):
@@ -217,6 +258,10 @@ class LocalStatsWidget(QWidget):
 
         # Rows will indicate the feature we are interested in and columns indicate the corresponding cell
         self.table = QTableWidget(total_transients, 10)
+        self.df_table = pd.DataFrame(index=range(1, total_transients+1), columns=["Rising-Start(frames)", "Rising-Stop(frames)", "Total # of Rising Frames",
+                                        "Rising-Start(seconds)", "Rising-Stop(seconds)", "Total # of Rising Frames (seconds)",
+                                        "Interval with Previous Transient (frames)", "Interval with Previous Transient (seconds)",
+                                        "Peak Amplitude (ΔF/F)", "Total Amplitude (ΔF/F)"])
 
         btn_stats_amp = QAction("&Amplitude Frequency Histogram", self)
         btn_stats_amp.triggered.connect(self.generate_amp_histogram)
@@ -228,17 +273,6 @@ class LocalStatsWidget(QWidget):
         visualization_menu.addAction(btn_stats_amp)
         visualization_menu.addAction(btn_stats_iei)
 
-        layout = QVBoxLayout()
-        layout.addWidget(self.table)
-        layout.setMenuBar(self.menu)
-        self.setLayout(layout)
-
-        # Fill out the self.table with headers
-        self.table.setVerticalHeaderLabels([f"Transient #{i}"for i in range(1, total_transients+1)])
-        self.table.setHorizontalHeaderLabels(["Rising-Start(frames)", "Rising-Stop(frames)", "Total # of Rising Frames", 
-                                       "Rising-Start(seconds)", "Rising-Stop(seconds)", "Total # of Rising Frames (seconds)",
-                                       "Interval with Previous Transient (frames)", "Interval with Previous Transient (seconds)",
-                                       "Peak Amplitude (ΔF/F)", "Total Amplitude (ΔF/F)"])
         previous_transient = -1
         # Fill out the self.table with data
         self.iei_msec = []
@@ -266,19 +300,21 @@ class LocalStatsWidget(QWidget):
             total_amplitude = DFF.sel(frame=slice(rising_start, rising_stop)).sum().values.item()
             self.total_amplitude_list.append(total_amplitude)
             
-            self.table.setItem(i, 0, QTableWidgetItem(str(rising_start)))
-            self.table.setItem(i, 1, QTableWidgetItem(str(rising_stop)))
-            self.table.setItem(i, 2, QTableWidgetItem(str(rising_total_frames)))
-            self.table.setItem(i, 3, QTableWidgetItem(str(round(rising_start_seconds, 3))))
-            self.table.setItem(i, 4, QTableWidgetItem(str(round(rising_stop_seconds, 3))))
-            self.table.setItem(i, 5, QTableWidgetItem(str(round(rising_total_seconds, 3))))
-            self.table.setItem(i, 6, QTableWidgetItem(str(interval_frames)))
-            self.table.setItem(i, 7, QTableWidgetItem(interval_seconds))
-            self.table.setItem(i, 8, QTableWidgetItem(str(round(peak_amplitude, 3))))
-            self.table.setItem(i, 9, QTableWidgetItem(str(round(total_amplitude, 3))))
+            self.df_table.at[i+1, "Rising-Start(frames)"] = rising_start
+            self.df_table.at[i+1, "Rising-Stop(frames)"] = rising_stop
+            self.df_table.at[i+1, "Total # of Rising Frames"] = rising_total_frames
+            self.df_table.at[i+1, "Rising-Start(seconds)"] = round(rising_start_seconds, 3)
+            self.df_table.at[i+1, "Rising-Stop(seconds)"] = round(rising_stop_seconds, 3)
+            self.df_table.at[i+1, "Total # of Rising Frames (seconds)"] = round(rising_total_seconds, 3)
+            self.df_table.at[i+1, "Interval with Previous Transient (frames)"] = interval_frames
+            self.df_table.at[i+1, "Interval with Previous Transient (seconds)"] = interval_seconds
+            self.df_table.at[i+1, "Peak Amplitude (ΔF/F)"] = round(peak_amplitude, 3)
+            self.df_table.at[i+1, "Total Amplitude (ΔF/F)"] = round(total_amplitude, 3)
 
-
+        self.pandas_to_table()
         self.table.resizeColumnsToContents()
+
+        self.finalize_window()
 
     def generate_iei_histogram(self):
         self.iei_win = LocalIEIWidget(self.iei_msec)
