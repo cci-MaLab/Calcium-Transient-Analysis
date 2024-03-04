@@ -11,6 +11,7 @@ from os import listdir
 from typing import Callable, List, Optional, Union
 import os
 import re
+import json
 import shutil
 from dask.diagnostics import ProgressBar
 
@@ -543,6 +544,19 @@ class DataInstance:
         """
         return np.flatnonzero(self.data[type])
 
+    def save_justifications(self, justifications):
+        filename = "justifications-{self.mouseID}-{self.day}-{self.session}.json"
+        with open(os.path.join(self.output_path, filename), "w") as f:
+            json.dump(justifications, f)
+
+    def load_justifactions(self):
+        filename = "justifications-{self.mouseID}-{self.day}-{self.session}.json"
+        if os.path.exists(os.path.join(self.output_path, filename)):
+            with open(os.path.join(self.output_path, filename), "r") as f:
+                return json.load(f)
+        else:
+            return {}
+
     
     def load_events(self, keys):
         events = {}
@@ -585,10 +599,21 @@ class DataInstance:
     def get_std(self):
         return self.data["DFF"].std(dim="frame").compute()
     
-    def get_mad(self):
-        mean = self.data["DFF"].mean(dim="frame").compute()
-        mad = abs(self.data["DFF"] - mean).median(dim="frame").compute()
-        return (1 / 0.67) * mad
+    def get_mad(self, id=None):
+        if id is None:
+            median = self.data["DFF"].median(dim="frame").compute()
+            mad = abs(self.data["DFF"] - median).median(dim="frame").compute()
+        else:
+            # It throws an error when trying to extract the median from a single cell therefore convert to numpy first
+            dff = self.data["DFF"].sel(unit_id=id).values
+            median = np.nanmedian(dff)
+            mad = np.nanmedian(abs(dff - median))
+        return (1 / 0.6745) * mad
+    
+    def get_zscore(self, id):
+        data = self.data["DFF"].sel(unit_id=id).values
+        mad = self.get_mad(id)
+        return (data - np.nanmedian(data)) / mad
     
     def get_transient_frames(self):
         '''

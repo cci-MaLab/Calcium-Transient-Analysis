@@ -3,9 +3,10 @@ The following file will be used for doing a deeper dive into the selected sessio
 """
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAction, QStyle, 
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
-                            QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar, QCheckBox)
+                            QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar, QCheckBox,
+                            QTextEdit)
 from PyQt5.QtCore import (Qt, QTimer)
-from PyQt5.QtGui import (QIntValidator, QDoubleValidator)
+from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QPen, QColor)
 from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem)
 import pyqtgraph as pg
 import numpy as np
@@ -28,6 +29,8 @@ class ExplorationWidget(QWidget):
         self.missed_cell_indices = set()
         self.missed_cells_selection = set()
         self.prev_video_tab_idx = 0
+        self.show_justification = False
+        self.rejected_justification = self.session.load_justifactions()
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -99,7 +102,7 @@ class ExplorationWidget(QWidget):
         self.btn_cell_clear_color = QPushButton("Clear Color")
         self.btn_cell_clear_color.setCheckable(True)
         self.btn_cell_clear_color.clicked.connect(self.refresh_image)
-        self.btn_cell_reject = QPushButton("Reject Cell")
+        self.btn_cell_reject = QPushButton("Reject Cell(s)")
         self.btn_cell_reject.clicked.connect(self.reject_cells)
 
         self.tabs_video = QTabWidget()
@@ -112,9 +115,23 @@ class ExplorationWidget(QWidget):
         self.list_rejected_cell = QListWidget()
         self.list_rejected_cell.setMaximumSize(320, 600)
         self.list_rejected_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.list_rejected_cell.itemSelectionChanged.connect(lambda: self.enable_disable_justification(True))
         
         self.btn_cell_return = QPushButton("Return Cell")
         self.btn_cell_return.clicked.connect(self.approve_cells)
+        self.btn_justification_start = QPushButton("Show/Justify Rejection")
+        self.btn_justification_start.setEnabled(False)
+        self.btn_justification_start.clicked.connect(self.start_justification)
+        self.btn_justification_save = QPushButton("Save")
+        self.btn_justification_save.clicked.connect(lambda: self.session.save_justifications(self.rejected_justification))
+        self.btn_justification_save.hide()
+        self.btn_justification_cancel = QPushButton("Cancel")
+        self.btn_justification_cancel.clicked.connect(lambda: self.enable_disable_justification(False))
+        self.btn_justification_cancel.hide()
+
+        self.input_justification = QTextEdit()
+        self.input_justification.textChanged.connect(self.backup_text)
+        self.input_justification.hide()
 
         # Missed Cells
         w_rejected_cell_label = QLabel("Missed Cells:")
@@ -123,7 +140,7 @@ class ExplorationWidget(QWidget):
         self.list_missed_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
 
         self.btn_missed_select = QPushButton("Enable Select Cell Mode")
-        self.btn_missed_select.clicked.connect(self.missed_cell_mode)
+        self.btn_missed_select.clicked.connect(self.switch_missed_cell_mode)
         self.btn_missed_remove = QPushButton("Remove Cell")
         self.btn_missed_remove.clicked.connect(self.remove_missed_cells)
 
@@ -184,11 +201,13 @@ class ExplorationWidget(QWidget):
         self.chkbox_plot_options_C = QCheckBox("C Signal")
         self.chkbox_plot_options_S = QCheckBox("S Signal")
         self.chkbox_plot_options_YrA = QCheckBox("Raw Signal")
-        self.chkbox_plot_options_dff = QCheckBox("Delta F/F")
+        self.chkbox_plot_options_dff = QCheckBox("ΔF/F")
+        self.chkbox_plot_options_zscore = QCheckBox("Z-Score (ΔF/F)")
         self.chkbox_plot_options_C.clicked.connect(self.visualize_signals)
         self.chkbox_plot_options_S.clicked.connect(self.visualize_signals)
         self.chkbox_plot_options_YrA.clicked.connect(self.visualize_signals)
         self.chkbox_plot_options_dff.clicked.connect(self.visualize_signals)
+        self.chkbox_plot_options_zscore.clicked.connect(self.visualize_signals)
         self.chkbox_plot_options_C.clicked.connect(self.enable_disable_event_buttons)
         self.chkbox_plot_options_C.setChecked(True)
 
@@ -197,7 +216,8 @@ class ExplorationWidget(QWidget):
             "C": "w",
             "S": "m",
             "YrA": "c",
-            "DFF": "y"
+            "DFF": "y",
+            "ZScore": QPen(QColor(139,69,19)) # Brown
         }
 
         # Populate cell list
@@ -265,9 +285,17 @@ class ExplorationWidget(QWidget):
         w_cells = QWidget()
         w_cells.setLayout(layout_cells)
 
+
+        # Rejected
+        layout_rejected_justification_utility = QHBoxLayout()
+        layout_rejected_justification_utility.addWidget(self.btn_justification_save)
+        layout_rejected_justification_utility.addWidget(self.btn_justification_cancel)
         layout_rejected_cells = QVBoxLayout()
         layout_rejected_cells.addWidget(w_rejected_cell_label)
         layout_rejected_cells.addWidget(self.list_rejected_cell)
+        layout_rejected_cells.addWidget(self.btn_justification_start)
+        layout_rejected_cells.addWidget(self.input_justification)
+        layout_rejected_cells.addLayout(layout_rejected_justification_utility)
         layout_rejected_cells.addWidget(self.btn_cell_return)
         w_rejected_cells = QWidget()
         w_rejected_cells.setLayout(layout_rejected_cells)
@@ -348,6 +376,7 @@ class ExplorationWidget(QWidget):
         layout_plot_options.addWidget(self.chkbox_plot_options_S)
         layout_plot_options.addWidget(self.chkbox_plot_options_YrA)
         layout_plot_options.addWidget(self.chkbox_plot_options_dff)
+        layout_plot_options.addWidget(self.chkbox_plot_options_zscore)
 
 
         layout_plot_utility.addWidget(self.frame_manual_events)
@@ -425,7 +454,15 @@ class ExplorationWidget(QWidget):
         self.reset_mask()
         self.w_signals.clear()
 
-    def missed_cell_mode(self):
+    def start_justification(self):
+        self.show_justification = True
+        self.btn_justification_start.hide()
+        self.btn_justification_save.show()
+        self.btn_justification_cancel.show()
+        self.input_justification.show()
+
+
+    def switch_missed_cell_mode(self):
         if self.select_missed_mode:
             self.select_missed_mode = False
             self.btn_missed_select.setText("Enable Select Cell Mode")
@@ -467,9 +504,6 @@ class ExplorationWidget(QWidget):
         for item in self.list_missed_cell.selectedItems():
             id = int(''.join(filter(str.isdigit, item.text())))
             cell_ids.append(id)
-            # Remove from image view
-            self.imv.getView().removeItem(self.missed_cells_items[id])
-            del self.missed_cells_items[id]
         self.session.remove_missed(cell_ids)
         self.refresh_missed_list()
 
@@ -511,7 +545,7 @@ class ExplorationWidget(QWidget):
                 self.A_pos_to_missed_cell[tuple(pair)] = [id]
 
         self.refresh_missed_list()
-        self.missed_cell_mode()
+        self.switch_missed_cell_mode()
         self.clear_selected_pixels()
 
         
@@ -533,6 +567,10 @@ class ExplorationWidget(QWidget):
             if plot_item is not None and isinstance(event.currentItem, PlotCurveItemEnhanced):
                 plot_item.add_point(event)
 
+    def backup_text(self):
+        if len(self.list_rejected_cell.selectedItems()) == 1:
+            id = int(''.join(filter(str.isdigit, self.list_rejected_cell.selectedItems()[0].text())))
+            self.rejected_justification[id] = self.input_justification.toPlainText()
 
     def draw_trace(self, event):
         point = self.imv.getImageItem().mapFromScene(event)
@@ -606,9 +644,23 @@ class ExplorationWidget(QWidget):
             self.visualize_signals()
             
             
-
-
-            
+    def enable_disable_justification(self, enable=True):
+        if len(self.list_rejected_cell.selectedItems()) == 1 and enable:
+            self.btn_justification_start.setEnabled(True)
+            id = ''.join(filter(str.isdigit, self.list_rejected_cell.selectedItems()[0].text()))
+            if id not in self.rejected_justification:
+                self.rejected_justification[id] = ""
+            else:
+                self.input_justification.setText(self.rejected_justification[id])
+        else:
+            if len(self.list_rejected_cell.selectedItems()) == 1:
+                self.btn_justification_start.setEnabled(True)
+            else:
+                self.btn_justification_start.setEnabled(False)
+            self.btn_justification_start.show()
+            self.btn_justification_cancel.hide()
+            self.btn_justification_save.hide()
+            self.input_justification.hide()
 
 
     def enable_disable_event_buttons(self):
@@ -630,6 +682,8 @@ class ExplorationWidget(QWidget):
             selected_data_type.append('YrA')
         if self.chkbox_plot_options_dff.isChecked():
             selected_data_type.append('DFF')
+        if self.chkbox_plot_options_zscore.isChecked():
+            selected_data_type.append('ZScore')
 
         return selected_data_type
 
@@ -650,7 +704,10 @@ class ExplorationWidget(QWidget):
                 p.setTitle(f"Cell {id}")
                 self.w_signals.addItem(p, row=i, col=0)
                 for data_type in self.get_selected_data_type():
-                    data = self.session.data[data_type].sel(unit_id=id).values
+                    if data_type in self.session.data:
+                        data = self.session.data[data_type].sel(unit_id=id).values
+                    elif data_type == 'ZScore':
+                        data = self.session.get_zscore(id)
                     p.add_main_curve(data, is_C=(data_type == 'C'), pen=self.color_mapping[data_type])
                     if 'E' in self.session.data and data_type == 'C':
                         events = self.session.data['E'].sel(unit_id=id).values
@@ -672,7 +729,10 @@ class ExplorationWidget(QWidget):
                 p.setTitle(f"Missed Cell {id}")
                 self.w_signals.addItem(p, row=i+last_i, col=0)
                 for data_type in self.get_selected_data_type():
-                    data = self.session.get_missed_signal(id)
+                    if data_type in self.session.data:
+                        data = self.session.data[data_type].sel(unit_id=id).values
+                    elif data_type == 'ZScore':
+                        data = self.session.get_zscore(id)
                     p.add_main_curve(data)
 
 
@@ -771,12 +831,12 @@ class ExplorationWidget(QWidget):
 
     def generate_image(self):
         image = self.current_video.sel(frame=self.current_frame).values // self.mask
-        if self.video_cell_selection or self.missed_cells_selection:
+        if self.video_cell_selection or self.missed_cells_selection or self.select_missed_mode:
             image = np.stack((image,)*3, axis=-1)
             if not self.btn_cell_clear_color.isChecked():
                 image[:,:,0][self.video_cell_mask == 1] = 0
                 image[:,:,1][self.video_missed_mask == 1] = 0
-            if self.missed_cell_mode:
+            if self.select_missed_mode:
                 image[:,:,1][self.video_missed_mask_candidate == 1] = 0                
         return image
     
