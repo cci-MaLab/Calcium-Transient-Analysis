@@ -228,7 +228,7 @@ class GeneralVizWidget(QWidget):
             visualization.axes.plot([np.random.normal(1, 0.04)], point, 'r.', alpha=0.2)
 
 
-class LocalStatsWidget(QWidget):
+class LocalStatsWidget(StatsWidget):
     def __init__(self, session, unit_id, main_win_ref, parent=None):
         super(LocalStatsWidget, self).__init__(parent)
         '''
@@ -258,7 +258,7 @@ class LocalStatsWidget(QWidget):
 
         # Rows will indicate the feature we are interested in and columns indicate the corresponding cell
         self.table = QTableWidget(total_transients, 10)
-        self.df_table = pd.DataFrame(index=range(1, total_transients+1), columns=["Rising-Start(frames)", "Rising-Stop(frames)", "Total # of Rising Frames",
+        self.pd_table = pd.DataFrame(index=range(1, total_transients+1), columns=["Rising-Start(frames)", "Rising-Stop(frames)", "Total # of Rising Frames",
                                         "Rising-Start(seconds)", "Rising-Stop(seconds)", "Total # of Rising Frames (seconds)",
                                         "Interval with Previous Transient (frames)", "Interval with Previous Transient (seconds)",
                                         "Peak Amplitude (ΔF/F)", "Total Amplitude (ΔF/F)"])
@@ -300,16 +300,16 @@ class LocalStatsWidget(QWidget):
             total_amplitude = DFF.sel(frame=slice(rising_start, rising_stop)).sum().values.item()
             self.total_amplitude_list.append(total_amplitude)
             
-            self.df_table.at[i+1, "Rising-Start(frames)"] = rising_start
-            self.df_table.at[i+1, "Rising-Stop(frames)"] = rising_stop
-            self.df_table.at[i+1, "Total # of Rising Frames"] = rising_total_frames
-            self.df_table.at[i+1, "Rising-Start(seconds)"] = round(rising_start_seconds, 3)
-            self.df_table.at[i+1, "Rising-Stop(seconds)"] = round(rising_stop_seconds, 3)
-            self.df_table.at[i+1, "Total # of Rising Frames (seconds)"] = round(rising_total_seconds, 3)
-            self.df_table.at[i+1, "Interval with Previous Transient (frames)"] = interval_frames
-            self.df_table.at[i+1, "Interval with Previous Transient (seconds)"] = interval_seconds
-            self.df_table.at[i+1, "Peak Amplitude (ΔF/F)"] = round(peak_amplitude, 3)
-            self.df_table.at[i+1, "Total Amplitude (ΔF/F)"] = round(total_amplitude, 3)
+            self.pd_table.at[i+1, "Rising-Start(frames)"] = rising_start
+            self.pd_table.at[i+1, "Rising-Stop(frames)"] = rising_stop
+            self.pd_table.at[i+1, "Total # of Rising Frames"] = rising_total_frames
+            self.pd_table.at[i+1, "Rising-Start(seconds)"] = round(rising_start_seconds, 3)
+            self.pd_table.at[i+1, "Rising-Stop(seconds)"] = round(rising_stop_seconds, 3)
+            self.pd_table.at[i+1, "Total # of Rising Frames (seconds)"] = round(rising_total_seconds, 3)
+            self.pd_table.at[i+1, "Interval with Previous Transient (frames)"] = interval_frames
+            self.pd_table.at[i+1, "Interval with Previous Transient (seconds)"] = interval_seconds
+            self.pd_table.at[i+1, "Peak Amplitude (ΔF/F)"] = round(peak_amplitude, 3)
+            self.pd_table.at[i+1, "Total Amplitude (ΔF/F)"] = round(total_amplitude, 3)
 
         self.pandas_to_table()
         self.table.resizeColumnsToContents()
