@@ -399,6 +399,7 @@ class DataInstance:
 
         if M.size == 0:
             delete_missing_xarray(self.minian_path, "M")
+            self.data["M"] = None
         else:
             self.data["M"] = save_xarray(M, self.minian_path, compute=True)
 
@@ -416,16 +417,15 @@ class DataInstance:
     def load_videos(self):
         # We're setting this up as a seperate function as is takes up a lot of space and we only want to load the video info when we need to
         data = open_minian(self.minian_path + "_intermediate")
-        video_types = ["Y_fm_chk", "varr"]
-        video_files = {}
+        video_types = ["Y_fm_chk", "varr", "Y_hw_chk"]
+        video_data = {}
         for video_type in video_types:
             if video_type in data:
-                video_files[video_type] = data[video_type]
+                video_data[video_type] = data[video_type]
             else:
                 print("No %s data found in minian intermediate folder" % (video_type))
         
-        self.video_files = video_files
-        return video_files        
+        self.video_data = video_data       
 
     def load_data(self,dpath):
         mouseID, day, session, group,minian_path,behavior_path = self.parse_file(dpath)
@@ -572,12 +572,24 @@ class DataInstance:
         if missed_id in self.missed_signals:
             return self.missed_signals[missed_id]
         mask = self.data["M"].sel(missed_id=missed_id).compute()
-        Y = self.video_files["Y_fm_chk"]
-        averaged_signal = (Y * mask).mean(["height", "width"]).compute()
+        # Extract the dimensions of the mask from x and y axis
+        x_range, y_range = self.get_mask_dimensions(mask)
+        Y = self.video_data["Y_hw_chk"].sel(height=y_range, width=x_range).compute()
+        mask_small = mask.sel(height=y_range, width=x_range)
+        averaged_signal = (Y * mask_small).sum(["height", "width"]).compute()
         self.missed_signals[missed_id] = averaged_signal.values
 
         return self.missed_signals[missed_id]
 
+    def get_mask_dimensions(self, mask):
+        # Get mask dimensions but only for positive values
+        mask_x = mask.any("height").values
+        mask_y = mask.any("width").values
+        # Get indices in range
+        x_range = np.where(mask_x)[0]
+        y_range = np.where(mask_y)[0]
+
+        return x_range, y_range
     
     def get_total_transients(self, unit_id=None):
         # Diff won't capture the first transient, so we add 1 to the sum if

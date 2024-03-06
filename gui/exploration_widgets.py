@@ -36,11 +36,11 @@ class ExplorationWidget(QWidget):
         pg.setConfigOptions(imageAxisOrder='row-major')
         self.imv = ImageViewOverride()
 
-        self.videos = self.session.load_videos()
-        if not self.videos:
+        self.session.load_videos()
+        if not self.session.video_data:
             print("Missing Videos")
             return None
-        self.current_video = self.videos[list(self.videos.keys())[-1]]
+        self.current_video = self.session.video_data["varr"]
         self.video_length = self.current_video.shape[0]
         self.mask = np.ones((self.current_video.shape[1], self.current_video.shape[2]))
         # We need two seperate masks here. One for the missed cells we confirmed and one for drawing a new missed cell
@@ -50,12 +50,15 @@ class ExplorationWidget(QWidget):
         self.imv.setImage(self.current_video.sel(frame=self.current_frame).values)
 
         # Add Context Menu Action
+        self.video_to_title = {"varr": "Original", "Y_fm_chk": "Processed"}
         self.submenu_videos = self.imv.getView().menu.addMenu('&Video Format')
-        for type in self.videos.keys():
-            button_video_type = QAction(f"&{type}", self.submenu_videos)
+        for type in self.session.video_data.keys():
+            if type ==  "Y_hw_chk":
+                continue
+            button_video_type = QAction(f"&{self.video_to_title[type]}", self.submenu_videos)
             button_video_type.triggered.connect(lambda state, x=type: self.change_video(x))
             button_video_type.setCheckable(True)
-            if type == list(self.videos.keys())[-1]:
+            if type == "varr":
                 button_video_type.setChecked(True)
             else:
                 button_video_type.setChecked(False)
@@ -729,11 +732,8 @@ class ExplorationWidget(QWidget):
                 p.plotLine.setPos(self.scroll_video.value())
                 p.setTitle(f"Missed Cell {id}")
                 self.w_signals.addItem(p, row=i+last_i, col=0)
-                for data_type in self.get_selected_data_type():
-                    if data_type in self.session.data:
-                        data = self.session.data[data_type].sel(unit_id=id).values
-                    elif data_type == 'ZScore':
-                        data = self.session.get_zscore(id)
+                if "YrA" in self.get_selected_data_type():
+                    data = self.session.get_missed_signal(id)
                     p.add_main_curve(data)
 
 
@@ -881,9 +881,9 @@ class ExplorationWidget(QWidget):
         self.btn_play.setIcon(self.style().standardIcon(self.pixmapi_pause))
 
     def change_video(self, type):
-        self.current_video = self.videos[type]
+        self.current_video = self.session.video_data[type]
         for action in self.submenu_videos.actions():
-            if action.text() == f"&{type}":
+            if action.text() == f"&{self.video_to_title[type]}":
                 action.setChecked(True)
             else:
                 action.setChecked(False)
