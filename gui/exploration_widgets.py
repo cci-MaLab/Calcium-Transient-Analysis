@@ -388,7 +388,7 @@ class ExplorationWidget(QWidget):
         widget_plot_utility.setMaximumWidth(320)
 
         tabs_signal.addTab(widget_plot_utility, "Event Detection")
-        tabs_signal.addTab(frame_stats, "Statistics")
+        tabs_signal.addTab(frame_stats, "Local Statistics")
 
         layout_video_cells.addLayout(layout_video)
         layout_video_cells.addWidget(self.tabs_video)
