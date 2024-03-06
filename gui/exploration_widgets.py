@@ -512,10 +512,11 @@ class ExplorationWidget(QWidget):
         self.refresh_missed_list()
 
     def refresh_missed_list(self):
-        missed_ids = self.session.data["M"].coords["missed_id"].values
-        self.list_missed_cell.clear()
-        for missed_id in missed_ids:
-            self.list_missed_cell.addItem(f"Missing Cell {missed_id}")
+        if self.session.data["M"] is not None:
+            missed_ids = self.session.data["M"].coords["missed_id"].values
+            self.list_missed_cell.clear()
+            for missed_id in missed_ids:
+                self.list_missed_cell.addItem(f"Missing Cell {missed_id}")
 
     def missed_cell_init(self):
         if self.session.data["M"] is not None:    
