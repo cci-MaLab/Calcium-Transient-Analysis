@@ -549,7 +549,7 @@ class DataInstance:
         with open(os.path.join(self.output_path, filename), "w") as f:
             json.dump(justifications, f)
 
-    def load_justifactions(self):
+    def load_justifications(self):
         filename = "justifications-{self.mouseID}-{self.day}-{self.session}.json"
         if os.path.exists(os.path.join(self.output_path, filename)):
             with open(os.path.join(self.output_path, filename), "r") as f:

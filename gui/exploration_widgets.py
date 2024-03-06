@@ -30,7 +30,7 @@ class ExplorationWidget(QWidget):
         self.missed_cells_selection = set()
         self.prev_video_tab_idx = 0
         self.show_justification = False
-        self.rejected_justification = self.session.load_justifactions()
+        self.rejected_justification = self.session.load_justifications()
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -134,7 +134,7 @@ class ExplorationWidget(QWidget):
         self.input_justification.hide()
 
         # Missed Cells
-        w_rejected_cell_label = QLabel("Missed Cells:")
+        w_missed_cell_label = QLabel("Missed Cells:")
         self.list_missed_cell = QListWidget()
         self.list_missed_cell.setMaximumSize(320, 600)
         self.list_missed_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -301,6 +301,7 @@ class ExplorationWidget(QWidget):
         w_rejected_cells.setLayout(layout_rejected_cells)
 
         layout_missed_cells = QVBoxLayout()
+        layout_missed_cells.addWidget(w_missed_cell_label)
         layout_missed_cells.addWidget(self.list_missed_cell)
         layout_missed_cells.addWidget(self.btn_missed_select)
         layout_missed_cells.addWidget(self.w_missed_utility)
@@ -873,6 +874,7 @@ class ExplorationWidget(QWidget):
     def pause_video(self):
         self.video_timer.stop()
         self.btn_play.setIcon(self.style().standardIcon(self.pixmapi_play))
+        self.btn_play.setChecked(False)
     
     def start_video(self):
         self.video_timer.start()
