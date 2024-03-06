@@ -1,4 +1,5 @@
 # Cell_Clustering_Tool
 ## Create environment
-Follow the instruction in the requirements.txt
+To install, clone the repository and run the following command:
 
+`conda env create --file=environment.yml`
