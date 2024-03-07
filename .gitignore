@@ -1,5 +1,7 @@
-*pyc
+*.pyc
 *.json
 *.pdf
 *.ini
+*.pth
+*.png
 data/*
