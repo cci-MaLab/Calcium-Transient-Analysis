@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QAction, QStyle, QLabel, QComboBox,
                             QApplication, QTableWidgetItem, QTableWidget, QMenuBar, QLineEdit, QPushButton)
 
-from PyQt5.QtGui import (QIntValidator, QDoubleValidator)
+from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QColor)
 
 import numpy as np
 from gui.clustering_inspection_widgets import MplCanvas
@@ -108,6 +108,7 @@ class GeneralStatsWidget(StatsWidget):
         '''
 
         unit_ids = session.data["unit_ids"]
+        self.E = session.data['E']
 
         # Rows will indicate the feature we are interested in and columns indicate the corresponding cell
         self.table = QTableWidget(len(unit_ids), 11)
@@ -207,6 +208,18 @@ class GeneralStatsWidget(StatsWidget):
         self.iei_win = GeneralVizWidget(data * 1000, "IEI")
         self.iei_win.setWindowTitle("IEI Box Plot")
         self.iei_win.show()
+
+    def pandas_to_table(self):
+        super().pandas_to_table()
+        # Iterate through the cell header rows and change the background color based on E data
+        for i, cell_id in enumerate(self.pd_table.index):
+            # Red if the cell is not a good_cell
+            if not self.E.sel(unit_id=cell_id).coords["good_cells"].values.item():
+                self.table.verticalHeaderItem(i).setBackground(QColor(255, 0, 0, 100))
+            # Green if the cell is verified
+            elif self.E.sel(unit_id=cell_id).coords["verified"].values.item():
+                self.table.verticalHeaderItem(i).setBackground(QColor(0, 255, 0, 100))
+            
 
 class GeneralVizWidget(QWidget):
     def __init__(self, data: pd.Series, viz_type: str, parent=None):

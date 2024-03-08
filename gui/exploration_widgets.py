@@ -850,13 +850,15 @@ class ExplorationWidget(QWidget):
         self.list_cell.clear()
         self.list_rejected_cell.clear()
         good_bad_cells = self.session.data['E']['good_cells'].values
+        reject_size = 0
         for i, cell_id in enumerate(self.session.data['E']['unit_id'].values):
             if good_bad_cells[i]:
                 self.list_cell.addItem(str(cell_id))
                 if self.session.data['E']['verified'].loc[{'unit_id': cell_id}].values.item():
-                    self.list_cell.item(i).setBackground(Qt.green)
+                    self.list_cell.item(i-reject_size).setBackground(Qt.green)
             else:
                 self.list_rejected_cell.addItem(str(cell_id))
+                reject_size += 1
 
     def reject_cells(self):
         cell_ids = [int(item.text()) for item in self.list_cell.selectedItems()]
