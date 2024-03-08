@@ -1,0 +1,17 @@
+name: cell_exploration_ml
+channels:
+  - conda-forge
+  - nvidia
+  - pytorch
+dependencies:
+  - python=3.10
+  - pyqt=5.15
+  - dask=2023
+  - xarray=2023
+  - scikit-learn=1.3
+  - scikit-image=0.22
+  - matplotlib=3.8
+  - pyqtgraph=0.12
+  - zarr
+  - nvidia::cudatoolkit=11
+  - pytorch::pytorch
