@@ -1,10 +1,9 @@
-from dataset import CNNDataset
-from models import CNNBasic
-import config
+from ml_training.dataset import CNNDataset
+from ml_training.model import GRU
+import ml_training.config
 from torch.nn import BCEWithLogitsLoss
 from torch.optim import Adam
 from torch.utils.data import DataLoader
-from imutils import paths
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import torch
@@ -14,23 +13,10 @@ import numpy as np
 from sklearn.metrics import f1_score, roc_auc_score, roc_curve, precision_score, recall_score, confusion_matrix, accuracy_score, ConfusionMatrixDisplay
 from sklearn.model_selection import train_test_split
 
-if __name__ == '__main__': 
+def train(): 
 	# load the image and mask filepaths in a sorted manner
-	train_normal_paths = list(paths.list_images(config.TRAIN_PATH_NORMAL))
-	train_pneumonia_paths = list(paths.list_images(config.TRAIN_PATH_PNEUMONIA))
-	test_normal_paths = list(paths.list_images(config.TEST_PATH_NORMAL))
-	test_pneumonia_paths = list(paths.list_images(config.TEST_PATH_PNEUMONIA))
-	val_normal_paths = list(paths.list_images(config.VALIDATION_PATH_NORMAL))
-	val_pneumonia_paths = list(paths.list_images(config.VALIDATION_PATH_PNEUMONIA))
-	# Define the transform
-	transforms = transforms.Compose([transforms.ToPILImage(),
-		transforms.Resize((config.INPUT_IMAGE_HEIGHT,
-			config.INPUT_IMAGE_WIDTH)),
-		transforms.ToTensor()])
+	path = config.DATASET_PATH
 	
-	# Combine all the paths together into one and create our own splits
-	normal_paths = train_normal_paths + test_normal_paths + val_normal_paths
-	pneumonia_paths = train_pneumonia_paths + test_pneumonia_paths + val_pneumonia_paths
 
 	# Train test split
 	train_normal_paths, test_normal_paths = train_test_split(train_normal_paths, test_size=config.TEST_SIZE, random_state=42)
@@ -57,11 +43,11 @@ if __name__ == '__main__':
 		num_workers=24)
 
 	# initialize our CNN model
-	cnn = CNNBasic().to(config.DEVICE)
+	gru = GRU().to(config.DEVICE)
 	# initialize loss function and optimizer
 
 	lossFunc = BCEWithLogitsLoss()
-	opt = Adam(cnn.parameters(), lr=config.INIT_LR)
+	opt = Adam(gru.parameters(), lr=config.INIT_LR)
 	# calculate steps per epoch for training and validation set
 	trainSteps = len(trainDS) // config.BATCH_SIZE
 	valSteps = np.max([len(valDS) // config.BATCH_SIZE, 1])
@@ -73,7 +59,7 @@ if __name__ == '__main__':
 	startTime = time.time()
 	for e in tqdm(range(config.NUM_EPOCHS)):
 		# set the model in training mode
-		cnn.train()
+		gru.train()
 		# initialize the total training and validation loss
 		totalTrainLoss = 0
 		totalValLoss = 0
@@ -82,7 +68,7 @@ if __name__ == '__main__':
 			# send the input to the device
 			(x, y) = (x.to(config.DEVICE), y.to(config.DEVICE))
 			# perform a forward pass and calculate the training loss
-			pred = cnn(x)
+			pred = gru(x)
 			y = y.unsqueeze(1)
 			loss = lossFunc(pred, y)
 			# first, zero out any previously accumulated gradients, then
@@ -96,13 +82,13 @@ if __name__ == '__main__':
 		# switch off autograd
 		with torch.no_grad():
 			# set the model in evaluation mode
-			cnn.eval()
+			gru.eval()
 			# loop over the validation set
 			for (x, y) in valLoader:
 				# send the input to the device
 				(x, y) = (x.to(config.DEVICE), y.to(config.DEVICE))
 				# make the predictions and calculate the validation loss
-				pred = cnn(x)
+				pred = gru(x)
 				y = y.unsqueeze(1)
 				totalValLoss += lossFunc(pred, y)
 		# calculate the average training and validation loss
@@ -131,10 +117,10 @@ if __name__ == '__main__':
 	plt.legend(loc="lower left")
 	plt.savefig(config.PLOT_PATH)
 	# serialize the model to disk
-	torch.save(cnn, config.MODEL_PATH)
+	torch.save(gru, config.MODEL_PATH)
 
 	# Start testing
-	cnn.eval()
+	gru.eval()
 	# initialize lists to store predictions and ground-truth
 	preds = []
 	gt = []
@@ -145,7 +131,7 @@ if __name__ == '__main__':
 			# send the input to the device
 			x = x.to(config.DEVICE)
 			# make the predictions and add them to the list
-			pred = cnn(x)
+			pred = gru(x)
 			pred = torch.sigmoid(pred)
 			pred = pred.cpu().detach().numpy()
 			preds.extend(pred)
@@ -160,16 +146,16 @@ if __name__ == '__main__':
 	# calculate Precision and Recall per class
 	precision = precision_score(gt, preds.round())
 	recall = recall_score(gt, preds.round())
-	print("[INFO] Pneumonia Precision: {:.4f}".format(precision))
-	print("[INFO] Pneumonia Recall: {:.4f}".format(recall))
+	print("[INFO] Transient Event Precision: {:.4f}".format(precision))
+	print("[INFO] Transient Event Recall: {:.4f}".format(recall))
 	# precision and recall for other class
 	precision = precision_score(gt, preds.round(), pos_label=0)
 	recall = recall_score(gt, preds.round(), pos_label=0)
-	print("[INFO] Normal Precision: {:.4f}".format(precision))
-	print("[INFO] Normal Recall: {:.4f}".format(recall))
+	print("[INFO] No Transient Event Precision: {:.4f}".format(precision))
+	print("[INFO] No Transient Event Recall: {:.4f}".format(recall))
 	# Get confusion Matrix plot
 	cm = confusion_matrix(gt, preds.round())
-	disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Normal", "Pneumonia"])
+	disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["No Transient Event", "Transient Event"])
 	# Save confusion matrix plot
 	disp.plot()
 	plt.savefig("confusion_matrix.png")	
