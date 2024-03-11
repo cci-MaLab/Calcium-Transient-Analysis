@@ -144,7 +144,7 @@ class ExplorationWidget(QWidget):
 
         self.btn_missed_select = QPushButton("Enable Select Cell Mode")
         self.btn_missed_select.clicked.connect(self.switch_missed_cell_mode)
-        self.btn_missed_remove = QPushButton("Remove Cell")
+        self.btn_missed_remove = QPushButton("Remove Cell(s)")
         self.btn_missed_remove.clicked.connect(self.remove_missed_cells)
 
         btn_missed_clear = QPushButton("Clear Selected Pixels")
@@ -508,8 +508,20 @@ class ExplorationWidget(QWidget):
         for item in self.list_missed_cell.selectedItems():
             id = int(''.join(filter(str.isdigit, item.text())))
             cell_ids.append(id)
+        # Deselect the cells and remove the mask
+        for id in cell_ids:
+            self.missed_cells_selection.discard(id)
+
+        self.mask[self.session.data["M"].sel(missed_id=cell_ids).values.sum(axis=0) > 0] = 3
+        self.video_missed_mask  = np.sum(self.session.data["M"].sel(missed_id=list(self.missed_cells_selection)).values, axis=0)
+        self.visualize_signals()
+        if not self.btn_play.isChecked():
+            self.current_frame -= 1
+            self.next_frame()
+
         self.session.remove_missed(cell_ids)
         self.refresh_missed_list()
+
 
     def refresh_missed_list(self):
         if self.session.data["M"] is not None:
@@ -517,6 +529,9 @@ class ExplorationWidget(QWidget):
             self.list_missed_cell.clear()
             for missed_id in missed_ids:
                 self.list_missed_cell.addItem(f"Missing Cell {missed_id}")
+        else:
+            self.list_missed_cell.clear()
+
 
     def missed_cell_init(self):
         if self.session.data["M"] is not None:    
