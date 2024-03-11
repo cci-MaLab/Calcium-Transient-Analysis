@@ -891,6 +891,8 @@ class ExplorationWidget(QWidget):
             else:
                 action.setChecked(False)
         self.imv.setImage(self.current_video.sel(frame=self.current_frame).values, autoRange=False)
+        self.current_frame -= 1
+        self.next_frame()
 
     def update_plot_lines(self):
         i = 0
