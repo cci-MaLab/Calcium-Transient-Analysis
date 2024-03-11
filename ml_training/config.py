@@ -25,3 +25,4 @@ TEST_PATHS = os.path.sep.join([BASE_OUTPUT, "test_paths.txt"])
 
 TEST_SIZE = 0.1
 VAL_SIZE = 0.1
+SECTION_LEN=200
