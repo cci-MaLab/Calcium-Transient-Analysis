@@ -25,3 +25,5 @@ class GRU(Module):
         x, _ = self.gru(x)
 
         return x.view(self.sequence_len, 2, self.hidden_size)
+    
+    
