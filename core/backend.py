@@ -407,7 +407,10 @@ class DataInstance:
 
     def parse_file(self,dpath):# set up configure file
         config = configparser.ConfigParser()
-        config.read(dpath)
+        try:
+            config.read(dpath)
+        except:
+            print("ERROR: ini file is either not in the correct format or empty, did you make sure to save the ini file?")
         if len(config.sections())==1 and config.sections()[0]=='Session_Info':
             return config['Session_Info']['mouseID'],config['Session_Info']['day'],config['Session_Info']['session'],config['Session_Info']['group'], config['Session_Info']['data_path'], config['Session_Info']['behavior_path']
         else:
