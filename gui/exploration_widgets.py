@@ -206,11 +206,13 @@ class ExplorationWidget(QWidget):
         self.chkbox_plot_options_YrA = QCheckBox("Raw Signal")
         self.chkbox_plot_options_dff = QCheckBox("ΔF/F")
         self.chkbox_plot_options_zscore = QCheckBox("Z-Score (ΔF/F)")
-        self.chkbox_plot_options_C.clicked.connect(self.visualize_signals)
-        self.chkbox_plot_options_S.clicked.connect(self.visualize_signals)
-        self.chkbox_plot_options_YrA.clicked.connect(self.visualize_signals)
-        self.chkbox_plot_options_dff.clicked.connect(self.visualize_signals)
-        self.chkbox_plot_options_zscore.clicked.connect(self.visualize_signals)
+        self.btn_reset_view = QPushButton("Reset View")
+        self.btn_reset_view.clicked.connect(lambda: self.visualize_signals(reset_view=True))
+        self.chkbox_plot_options_C.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        self.chkbox_plot_options_S.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        self.chkbox_plot_options_YrA.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        self.chkbox_plot_options_dff.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        self.chkbox_plot_options_zscore.clicked.connect(lambda: self.visualize_signals(reset_view=False))
         self.chkbox_plot_options_C.clicked.connect(self.enable_disable_event_buttons)
         self.chkbox_plot_options_C.setChecked(True)
 
@@ -376,6 +378,7 @@ class ExplorationWidget(QWidget):
         layout_plot_options = QVBoxLayout(frame_plot_options)
         layout_plot_options.addStretch()
         layout_plot_options.setDirection(3)
+        layout_plot_options.addWidget(self.btn_reset_view)
         layout_plot_options.addWidget(self.chkbox_plot_options_C)
         layout_plot_options.addWidget(self.chkbox_plot_options_S)
         layout_plot_options.addWidget(self.chkbox_plot_options_YrA)
@@ -514,7 +517,7 @@ class ExplorationWidget(QWidget):
 
         self.mask[self.session.data["M"].sel(missed_id=cell_ids).values.sum(axis=0) > 0] = 3
         self.video_missed_mask  = np.sum(self.session.data["M"].sel(missed_id=list(self.missed_cells_selection)).values, axis=0)
-        self.visualize_signals()
+        self.visualize_signals(reset_view=False)
         if not self.btn_play.isChecked():
             self.current_frame -= 1
             self.next_frame()
@@ -646,7 +649,7 @@ class ExplorationWidget(QWidget):
             for id in self.video_cell_selection:
                 self.video_cell_mask  += self.A[id].values
             self.video_cell_mask[self.video_cell_mask  > 0] = 1
-            self.visualize_signals()
+            self.visualize_signals(reset_view=False)
             if not self.btn_play.isChecked():
                 self.current_frame -= 1
                 self.next_frame()
@@ -661,7 +664,7 @@ class ExplorationWidget(QWidget):
             if not self.btn_play.isChecked():
                 self.current_frame -= 1
                 self.next_frame()
-            self.visualize_signals()
+            self.visualize_signals(reset_view=False)
             
             
     def enable_disable_justification(self, enable=True):
@@ -707,10 +710,26 @@ class ExplorationWidget(QWidget):
 
         return selected_data_type
 
-    def visualize_signals(self):
+
+    def visualize_signals(self, reset_view=False):
         cell_ids = self.video_cell_selection
         missed_ids = self.missed_cells_selection
-        self.w_signals.clear()
+        # Before clear the plots and get viewRect
+        idx = 0
+        views = {"Standard": {}, "Missed": {}} # We'll store the viewRect for each cell type
+        if not reset_view:
+            i = 0
+            while self.w_signals.getItem(i,0) is not None:
+                item = self.w_signals.getItem(i,0)
+                if isinstance(item, PlotItemEnhanced):
+                    # Don't store if there are no plots
+                    if len(item.listDataItems()) > 1: # When it's empty there is only one empty within the list
+                        views[item.cell_type][item.id] = item.getViewBox().viewRange()
+                i += 1
+        self.w_signals.clear()               
+                    
+
+        
         last_i = 1
         try:
             self.w_signals.scene().sigMouseClicked.disconnect(self.find_subplot)
@@ -719,11 +738,12 @@ class ExplorationWidget(QWidget):
         if cell_ids:
             self.w_signals.scene().sigMouseClicked.connect(self.find_subplot)
             for i, id in enumerate(cell_ids):
-                p = PlotItemEnhanced(id=id)
+                p = PlotItemEnhanced(id=id, cell_type="Standard")
                 p.plotLine.setPos(self.scroll_video.value())
                 p.setTitle(f"Cell {id}")
                 self.w_signals.addItem(p, row=i, col=0)
-                for data_type in self.get_selected_data_type():
+                selected_types = self.get_selected_data_type()
+                for data_type in selected_types:
                     if data_type in self.session.data:
                         data = self.session.data[data_type].sel(unit_id=id).values
                     elif data_type == 'ZScore':
@@ -739,18 +759,22 @@ class ExplorationWidget(QWidget):
                             # Now Split the indices into pairs of first and last indices
                             indices = [(indices_group[0], indices_group[-1]+1) for indices_group in indices]
                             p.draw_event_curves(indices)
+                if selected_types and id in views["Standard"]:
+                    p.getViewBox().setRange(xRange=views["Standard"][id][0], yRange=views["Standard"][id][1], padding=0)
 
                 last_i += 1
 
         if missed_ids:
             for i, id in enumerate(missed_ids):
-                p = PlotItemEnhanced(id=id)
+                p = PlotItemEnhanced(id=id, cell_type="Missed")
                 p.plotLine.setPos(self.scroll_video.value())
                 p.setTitle(f"Missed Cell {id}")
                 self.w_signals.addItem(p, row=i+last_i, col=0)
                 if "YrA" in self.get_selected_data_type():
                     data = self.session.get_missed_signal(id)
                     p.add_main_curve(data)
+                if id in views["Missed"]:
+                    p.getViewBox().setRange(xRange=views["Missed"][id][0], yRange=views["Missed"][id][1], padding=0)
 
 
     def generate_local_stats(self):
@@ -1055,6 +1079,7 @@ class PlotItemEnhanced(PlotItem):
         super(PlotItemEnhanced, self).__init__(**kwargs)
         self.C_signal = None
         self.id = kwargs["id"] if "id" in kwargs else None
+        self.cell_type = kwargs["cell_type"] if "cell_type" in kwargs else None
         self.plotLine = InfiniteLine(pos=0, angle=90, pen='g')
         self.addItem(self.plotLine)
         self.selected_events = set()
