@@ -31,6 +31,7 @@ class ExplorationWidget(QWidget):
         self.prev_video_tab_idx = 0
         self.show_justification = False
         self.rejected_justification = self.session.load_justifications()
+        self.savgol_params = {}
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -201,18 +202,41 @@ class ExplorationWidget(QWidget):
         btn_generate_stats = QPushButton("Generate Local Statistics")
         btn_generate_stats.clicked.connect(self.generate_local_stats)
 
+        # SavGol Utility
+        self.savgol_label = QLabel("SavGol Parameters")
+        self.win_len_label = QLabel("Window Length")
+        self.win_len_input = QLineEdit()
+        self.win_len_input.setValidator(QIntValidator(1, 100))
+        self.win_len_input.setText("5")
+        self.poly_order_label = QLabel("Polynomial Order")
+        self.poly_order_input = QLineEdit()
+        self.poly_order_input.setValidator(QIntValidator(1, 100))
+        self.poly_order_input.setText("3")
+        self.deriv_label = QLabel("Derivative")
+        self.deriv_input = QLineEdit()
+        self.deriv_input.setValidator(QIntValidator(1, 100))
+        self.deriv_input.setText("0")
+        self.delta_label = QLabel("Delta")
+        self.delta_input = QLineEdit()
+        self.delta_input.setValidator(QDoubleValidator(0, 100, 3))
+        self.delta_input.setText("1.0")
+        btn_savgol = QPushButton("Update SavGol")
+        btn_savgol.clicked.connect(self.update_savgol)        
+
+
+
         self.chkbox_plot_options_C = QCheckBox("C Signal")
         self.chkbox_plot_options_S = QCheckBox("S Signal")
         self.chkbox_plot_options_YrA = QCheckBox("Raw Signal")
         self.chkbox_plot_options_dff = QCheckBox("ΔF/F")
-        self.chkbox_plot_options_zscore = QCheckBox("Z-Score (ΔF/F)")
+        self.chkbox_plot_options_savgol = QCheckBox("SavGol Filter (ΔF/F)")
         self.btn_reset_view = QPushButton("Reset View")
         self.btn_reset_view.clicked.connect(lambda: self.visualize_signals(reset_view=True))
         self.chkbox_plot_options_C.clicked.connect(lambda: self.visualize_signals(reset_view=False))
         self.chkbox_plot_options_S.clicked.connect(lambda: self.visualize_signals(reset_view=False))
         self.chkbox_plot_options_YrA.clicked.connect(lambda: self.visualize_signals(reset_view=False))
         self.chkbox_plot_options_dff.clicked.connect(lambda: self.visualize_signals(reset_view=False))
-        self.chkbox_plot_options_zscore.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        self.chkbox_plot_options_savgol.clicked.connect(lambda: self.visualize_signals(reset_view=False))
         self.chkbox_plot_options_C.clicked.connect(self.enable_disable_event_buttons)
         self.chkbox_plot_options_C.setChecked(True)
 
@@ -222,7 +246,7 @@ class ExplorationWidget(QWidget):
             "S": "m",
             "YrA": "c",
             "DFF": "y",
-            "ZScore": QPen(QColor(139,69,19)) # Brown
+            "SavGol": "g"
         }
 
         # Populate cell list
@@ -357,7 +381,12 @@ class ExplorationWidget(QWidget):
         layout_manual_events = QVBoxLayout(self.frame_manual_events)
         layout_manual_events.addWidget(self.manual_label)
         layout_manual_events.addWidget(btn_create_event)
-        layout_manual_events.addWidget(btn_clear_events)        
+        layout_manual_events.addWidget(btn_clear_events) 
+
+        # Event Generation Tab
+        tab_transient_detection = QTabWidget()
+        tab_transient_detection.addTab(self.frame_algo_events, "Automatic")
+        tab_transient_detection.addTab(self.frame_manual_events, "Manual")       
 
         # Statistics buttons
         frame_stats = QFrame()
@@ -369,6 +398,33 @@ class ExplorationWidget(QWidget):
         layout_stats.setDirection(3)
         layout_stats.addWidget(btn_generate_stats)
         layout_stats.addWidget(local_stats_label)
+
+        # SavGol Tab
+        savgol_utility = QFrame()
+        savgol_utility.setFrameShape(QFrame.Box)
+        savgol_utility.setFrameShadow(QFrame.Raised)
+        savgol_utility.setLineWidth(3)
+
+        # SavGol Layouts
+        layout_savgol = QVBoxLayout(savgol_utility)
+        layout_savgol.addWidget(self.savgol_label)
+        layout_savgol_win_len = QHBoxLayout()
+        layout_savgol_win_len.addWidget(self.win_len_label)
+        layout_savgol_win_len.addWidget(self.win_len_input)
+        layout_savgol.addLayout(layout_savgol_win_len)
+        layout_savgol_poly_order = QHBoxLayout()
+        layout_savgol_poly_order.addWidget(self.poly_order_label)
+        layout_savgol_poly_order.addWidget(self.poly_order_input)
+        layout_savgol.addLayout(layout_savgol_poly_order)
+        layout_savgol_deriv = QHBoxLayout()
+        layout_savgol_deriv.addWidget(self.deriv_label)
+        layout_savgol_deriv.addWidget(self.deriv_input)
+        layout_savgol.addLayout(layout_savgol_deriv)
+        layout_savgol_delta = QHBoxLayout()
+        layout_savgol_delta.addWidget(self.delta_label)
+        layout_savgol_delta.addWidget(self.delta_input)
+        layout_savgol.addLayout(layout_savgol_delta)
+        layout_savgol.addWidget(btn_savgol)
 
         # Plot options
         frame_plot_options = QFrame()
@@ -383,11 +439,10 @@ class ExplorationWidget(QWidget):
         layout_plot_options.addWidget(self.chkbox_plot_options_S)
         layout_plot_options.addWidget(self.chkbox_plot_options_YrA)
         layout_plot_options.addWidget(self.chkbox_plot_options_dff)
-        layout_plot_options.addWidget(self.chkbox_plot_options_zscore)
+        layout_plot_options.addWidget(self.chkbox_plot_options_savgol)
 
 
-        layout_plot_utility.addWidget(self.frame_manual_events)
-        layout_plot_utility.addWidget(self.frame_algo_events)
+        layout_plot_utility.addWidget(tab_transient_detection)
         layout_plot_utility.addWidget(frame_plot_options)
         widget_plot_utility = QWidget()
         widget_plot_utility.setLayout(layout_plot_utility)
@@ -395,6 +450,7 @@ class ExplorationWidget(QWidget):
 
         tabs_signal.addTab(widget_plot_utility, "Event Detection")
         tabs_signal.addTab(frame_stats, "Local Statistics")
+        tabs_signal.addTab(savgol_utility, "SavGol Params")
 
         layout_video_cells.addLayout(layout_video)
         layout_video_cells.addWidget(self.tabs_video)
@@ -467,6 +523,19 @@ class ExplorationWidget(QWidget):
         self.btn_justification_save.show()
         self.btn_justification_cancel.show()
         self.input_justification.show()
+
+    def update_savgol(self, _):
+        self.savgol_params["win_len"] = int(self.win_len_input.text())
+        self.savgol_params["poly_order"] = int(self.poly_order_input.text())
+        self.savgol_params["deriv"] = int(self.deriv_input.text())
+        self.savgol_params["delta"] = float(self.delta_input.text())
+        if self.savgol_params["poly_order"] >= self.savgol_params["win_len"]:
+            print("Polynomial Order should be less than Window Length")
+            self.poly_order_input.setText(str(self.savgol_params["win_len"]-1))
+            self.savgol_params["poly_order"] = self.savgol_params["win_len"]-1
+        else:
+            self.visualize_signals(reset_view=False)
+        
 
 
     def switch_missed_cell_mode(self):
@@ -705,8 +774,8 @@ class ExplorationWidget(QWidget):
             selected_data_type.append('YrA')
         if self.chkbox_plot_options_dff.isChecked():
             selected_data_type.append('DFF')
-        if self.chkbox_plot_options_zscore.isChecked():
-            selected_data_type.append('ZScore')
+        if self.chkbox_plot_options_savgol.isChecked():
+            selected_data_type.append('SavGol')
 
         return selected_data_type
 
@@ -746,8 +815,8 @@ class ExplorationWidget(QWidget):
                 for data_type in selected_types:
                     if data_type in self.session.data:
                         data = self.session.data[data_type].sel(unit_id=id).values
-                    elif data_type == 'ZScore':
-                        data = self.session.get_zscore(id)
+                    elif data_type == 'SavGol':
+                        data = self.session.get_savgol(id, self.savgol_params)
                     p.add_main_curve(data, is_C=(data_type == 'C'), pen=self.color_mapping[data_type])
                     if 'E' in self.session.data and data_type == 'C':
                         events = self.session.data['E'].sel(unit_id=id).values

@@ -17,7 +17,7 @@ from dask.diagnostics import ProgressBar
 
 from core.caiman_utils import detrend_df_f, minian_to_caiman
 
-from scipy.signal import welch
+from scipy.signal import welch, savgol_filter
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from scipy.ndimage.measurements import center_of_mass
 from skimage.measure import find_contours
@@ -625,10 +625,16 @@ class DataInstance:
             mad = np.nanmedian(abs(dff - median))
         return (1 / 0.6745) * mad
     
-    def get_zscore(self, id):
+    def get_savgol(self, id, params={}):
+        window_length = params.get("win_len", 10)
+        poly_order = params.get("poly_order", 2)
+        deriv = params.get("deriv", 0)
+        delta = params.get("delta", 1.0)
+        mode = params.get("mode", "interp")
+
+
         data = self.data["DFF"].sel(unit_id=id).values
-        mad = self.get_mad(id)
-        return (data - np.nanmedian(data)) / mad
+        return savgol_filter(data, window_length, poly_order, deriv=deriv, delta=delta, mode=mode)
     
     def get_transient_frames(self):
         '''
