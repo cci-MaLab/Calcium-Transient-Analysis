@@ -6,6 +6,7 @@ from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QColor)
 import numpy as np
 from gui.clustering_inspection_widgets import MplCanvas
 import pandas as pd
+from scipy.fftpack import fft
 
 class StatsWidget(QWidget):
     def __init__(self, parent=None):
@@ -258,7 +259,7 @@ class LocalStatsWidget(StatsWidget):
         self.amp_win = None
 
         E = session.data['E'].sel(unit_id=unit_id).values
-        DFF = session.data['DFF'].sel(unit_id=unit_id)
+        self.DFF = session.data['DFF'].sel(unit_id=unit_id)
         timestamps = session.data['E'].coords["timestamp(ms)"].values
         self.frames_per_msec = len(timestamps) / (timestamps[-1] - timestamps[0])
         
@@ -282,9 +283,13 @@ class LocalStatsWidget(StatsWidget):
         btn_stats_iei = QAction("IEI Frequency Histogram", self)
         btn_stats_iei.triggered.connect(self.generate_iei_histogram)
 
+        btn_fft = QAction("FFT Frequency", self)
+        btn_fft.triggered.connect(self.generate_fft_frequency)
+
         visualization_menu = self.menu.addMenu("&Visualization")
         visualization_menu.addAction(btn_stats_amp)
         visualization_menu.addAction(btn_stats_iei)
+        visualization_menu.addAction(btn_fft)
 
         previous_transient = -1
         # Fill out the self.table with data
@@ -309,8 +314,8 @@ class LocalStatsWidget(StatsWidget):
                 interval_seconds = str(round(interval_seconds, 3))
                 previous_transient = transient[0]+1
 
-            peak_amplitude = DFF.sel(frame=slice(rising_start, rising_stop)).max().values.item()
-            total_amplitude = DFF.sel(frame=slice(rising_start, rising_stop)).sum().values.item()
+            peak_amplitude = self.DFF.sel(frame=slice(rising_start, rising_stop)).max().values.item()
+            total_amplitude = self.DFF.sel(frame=slice(rising_start, rising_stop)).sum().values.item()
             self.total_amplitude_list.append(total_amplitude)
             
             self.pd_table.at[i+1, "Rising-Start(frames)"] = rising_start
@@ -338,6 +343,10 @@ class LocalStatsWidget(StatsWidget):
         self.amp_win = LocalAmpWidget(self.total_amplitude_list)
         self.amp_win.setWindowTitle(f"Amplitude Histogram for cell {self.unit_id}")
         self.amp_win.show()
+
+    def generate_fft_frequency(self):
+        self.fft_win = localFrequencyWidget(self.DFF.values)
+        self.fft_win.show()
         
     def closeEvent(self, event):
         super(LocalStatsWidget, self).closeEvent(event)
@@ -473,3 +482,21 @@ class LocalAmpWidget(QWidget):
             self.input_bins.setEnabled(True)
         else:
             self.input_bins.setEnabled(False)
+
+
+class localFrequencyWidget(QWidget):
+    def __init__(self, DFF, parent=None):
+        super(localFrequencyWidget, self).__init__(parent)
+        self.setWindowTitle("FFT Frequency")
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+        self.visualization = MplCanvas()
+        self.visualization.axes.set_xlabel("Frequency (Hz)")
+        self.visualization.axes.set_ylabel("Amplitude")
+        layout.addWidget(self.visualization)
+
+        fft_values = fft(DFF)
+        fft_values = np.abs(fft_values)
+        self.visualization.axes.plot(fft_values)
+
+        
