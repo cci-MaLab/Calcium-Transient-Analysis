@@ -246,7 +246,8 @@ class ExplorationWidget(QWidget):
             "S": "m",
             "YrA": "c",
             "DFF": "y",
-            "SavGol": "g"
+            "SavGol": (154,205,50), # Greenish/Yellow
+            "SNR": (0,0,128) # Navy
         }
 
         # Populate cell list
@@ -372,6 +373,7 @@ class ExplorationWidget(QWidget):
         layout_algo_events.addLayout(layout_dist)
         layout_algo_events.addLayout(layout_auc)
         layout_algo_events.addWidget(btn_algo_event)
+        layout_algo_events.addStretch()
 
         # Manual Event Generation
         self.frame_manual_events = QFrame()
@@ -382,6 +384,8 @@ class ExplorationWidget(QWidget):
         layout_manual_events.addWidget(self.manual_label)
         layout_manual_events.addWidget(btn_create_event)
         layout_manual_events.addWidget(btn_clear_events) 
+        layout_manual_events.addStretch()
+
 
         # Event Generation Tab
         tab_transient_detection = QTabWidget()
@@ -404,6 +408,7 @@ class ExplorationWidget(QWidget):
         savgol_utility.setFrameShape(QFrame.Box)
         savgol_utility.setFrameShadow(QFrame.Raised)
         savgol_utility.setLineWidth(3)
+        
 
         # SavGol Layouts
         layout_savgol = QVBoxLayout(savgol_utility)
@@ -442,15 +447,15 @@ class ExplorationWidget(QWidget):
         layout_plot_options.addWidget(self.chkbox_plot_options_savgol)
 
 
-        layout_plot_utility.addWidget(tab_transient_detection)
+        layout_plot_utility.addWidget(savgol_utility)
         layout_plot_utility.addWidget(frame_plot_options)
         widget_plot_utility = QWidget()
         widget_plot_utility.setLayout(layout_plot_utility)
         widget_plot_utility.setMaximumWidth(320)
 
-        tabs_signal.addTab(widget_plot_utility, "Event Detection")
-        tabs_signal.addTab(frame_stats, "Local Statistics")
-        tabs_signal.addTab(savgol_utility, "SavGol Params")
+        tabs_signal.addTab(widget_plot_utility, "Params")
+        tabs_signal.addTab(tab_transient_detection, "Event Detection")
+        tabs_signal.addTab(frame_stats, "Local Stats")
 
         layout_video_cells.addLayout(layout_video)
         layout_video_cells.addWidget(self.tabs_video)
