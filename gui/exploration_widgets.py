@@ -369,6 +369,10 @@ class ExplorationWidget(QWidget):
         layout_plot_utility.addStretch()
         layout_plot_utility.setDirection(3)
 
+        # Clear Traces Button
+        btn_clear_traces = QPushButton("Clear Traces")
+        btn_clear_traces.clicked.connect(self.clear_traces)
+
         # Event Generation Algorithm
         layout_height = QHBoxLayout()
         layout_height.addWidget(self.min_height_label)
@@ -507,9 +511,13 @@ class ExplorationWidget(QWidget):
 
         layout_video_cells_visualize.addWidget(widget_video_cells)
 
+        layout_plot_utility = QVBoxLayout()
+        layout_plot_utility.addWidget(btn_clear_traces)
+        layout_plot_utility.addWidget(tabs_signal)
+
         layout_plot = QHBoxLayout()
         layout_plot.addWidget(self.w_signals)
-        layout_plot.addWidget(tabs_signal)
+        layout_plot.addLayout(layout_plot_utility)
         widget_plot = QWidget()
         widget_plot.setLayout(layout_plot)
         layout_video_cells_visualize.addWidget(widget_plot)
@@ -535,6 +543,36 @@ class ExplorationWidget(QWidget):
         self.video_timer.timeout.connect(self.next_frame)
 
         self.missed_cell_init()
+
+    def keyReleaseEvent(self, event):
+        
+        action = {Qt.Key_A: "start", Qt.Key_F: "end", Qt.Key_D: "next", Qt.Key_S: "prev"}.get(event.key(), None)
+
+        if self.w_signals and action is not None:
+            i = 0
+            while self.w_signals.getItem(i,0) is not None:
+                item = self.w_signals.getItem(i,0)
+                if isinstance(item, PlotItemEnhanced):
+                    if len(item.listDataItems()) > 1: # When it's empty there is only one empty within the list
+                        xs, ys = item.getViewBox().viewRange()
+                        length = self.session.data["C"].shape[1]
+                        window = xs[1] - xs[0]
+                        if action == "start":
+                            item.getViewBox().setXRange(0, window, padding=0)
+                        elif action == "end":
+                            item.getViewBox().setXRange(length - window, length, padding=0)
+                        elif action == "next":
+                            if xs[1] + window > length:
+                                item.getViewBox().setXRange(length - window, length, padding=0)
+                            else:
+                                item.getViewBox().setXRange(xs[1], xs[1] + window, padding=0)
+                        elif action == "prev":
+                            if xs[0] - window < 0:
+                                item.getViewBox().setXRange(0, window, padding=0)
+                            else:
+                                item.getViewBox().setXRange(xs[0] - window, xs[0], padding=0)
+                i += 1
+
 
     def switched_tabs(self):
         '''
@@ -588,6 +626,16 @@ class ExplorationWidget(QWidget):
         self.noise_params["win_len"] = int(self.noise_win_len_input.text())
         self.noise_params["type"] = self.noise_type_combobox.currentText()
         self.visualize_signals(reset_view=False)
+
+    def clear_traces(self):
+        self.w_signals.clear()
+        self.missed_cells_selection = set()
+        self.video_cell_selection = set()
+        self.video_missed_mask = np.zeros(self.mask.shape)
+        self.video_cell_mask = np.zeros(self.mask.shape)
+        if not self.btn_play.isChecked():
+            self.current_frame -= 1
+            self.next_frame()
 
 
     def switch_missed_cell_mode(self):
