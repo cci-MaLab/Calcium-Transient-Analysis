@@ -4,7 +4,7 @@ The following file will be used for doing a deeper dive into the selected sessio
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAction, QStyle, 
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
                             QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar, QCheckBox,
-                            QTextEdit)
+                            QTextEdit, QComboBox)
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QPen, QColor)
 from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem)
@@ -32,6 +32,7 @@ class ExplorationWidget(QWidget):
         self.show_justification = False
         self.rejected_justification = self.session.load_justifications()
         self.savgol_params = {}
+        self.noise_params = {}
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -204,32 +205,45 @@ class ExplorationWidget(QWidget):
 
         # SavGol Utility
         self.savgol_label = QLabel("SavGol Parameters")
-        self.win_len_label = QLabel("Window Length")
-        self.win_len_input = QLineEdit()
-        self.win_len_input.setValidator(QIntValidator(1, 100))
-        self.win_len_input.setText("5")
-        self.poly_order_label = QLabel("Polynomial Order")
-        self.poly_order_input = QLineEdit()
-        self.poly_order_input.setValidator(QIntValidator(1, 100))
-        self.poly_order_input.setText("3")
-        self.deriv_label = QLabel("Derivative")
-        self.deriv_input = QLineEdit()
-        self.deriv_input.setValidator(QIntValidator(1, 100))
-        self.deriv_input.setText("0")
-        self.delta_label = QLabel("Delta")
-        self.delta_input = QLineEdit()
-        self.delta_input.setValidator(QDoubleValidator(0, 100, 3))
-        self.delta_input.setText("1.0")
+        self.savgol_win_len_label = QLabel("Window Length")
+        self.savgol_win_len_input = QLineEdit()
+        self.savgol_win_len_input.setValidator(QIntValidator(1, 100))
+        self.savgol_win_len_input.setText("5")
+        self.savgol_poly_order_label = QLabel("Polynomial Order")
+        self.savgol_poly_order_input = QLineEdit()
+        self.savgol_poly_order_input.setValidator(QIntValidator(1, 100))
+        self.savgol_poly_order_input.setText("3")
+        self.savgol_deriv_label = QLabel("Derivative")
+        self.savgol_deriv_input = QLineEdit()
+        self.savgol_deriv_input.setValidator(QIntValidator(1, 100))
+        self.savgol_deriv_input.setText("0")
+        self.savgol_delta_label = QLabel("Delta")
+        self.savgol_delta_input = QLineEdit()
+        self.savgol_delta_input.setValidator(QDoubleValidator(0, 100, 3))
+        self.savgol_delta_input.setText("1.0")
         btn_savgol = QPushButton("Update SavGol")
-        btn_savgol.clicked.connect(self.update_savgol)        
+        btn_savgol.clicked.connect(self.update_savgol)
 
-
+        # Noise Utility
+        self.noise_label = QLabel("Noise Parameters")
+        self.noise_win_len_label = QLabel("Window Length")
+        self.noise_win_len_input = QLineEdit()
+        self.noise_win_len_input.setValidator(QIntValidator(1, 1000))
+        self.noise_win_len_input.setText("10")
+        self.noise_type_label = QLabel("Type")
+        self.noise_type_combobox = QComboBox()
+        self.noise_type_combobox.addItems(["None", "Mean", "Median", "Max"])
+        self.noise_type_combobox.setCurrentIndex(0)
+        btn_noise = QPushButton("Update Noise")
+        btn_noise.clicked.connect(self.update_noise)
 
         self.chkbox_plot_options_C = QCheckBox("C Signal")
         self.chkbox_plot_options_S = QCheckBox("S Signal")
         self.chkbox_plot_options_YrA = QCheckBox("Raw Signal")
         self.chkbox_plot_options_dff = QCheckBox("ΔF/F")
         self.chkbox_plot_options_savgol = QCheckBox("SavGol Filter (ΔF/F)")
+        self.chkbox_plot_options_noise = QCheckBox("Noise")
+        self.chkbox_plot_options_snr = QCheckBox("SNR")
         self.btn_reset_view = QPushButton("Reset View")
         self.btn_reset_view.clicked.connect(lambda: self.visualize_signals(reset_view=True))
         self.chkbox_plot_options_C.clicked.connect(lambda: self.visualize_signals(reset_view=False))
@@ -237,6 +251,8 @@ class ExplorationWidget(QWidget):
         self.chkbox_plot_options_YrA.clicked.connect(lambda: self.visualize_signals(reset_view=False))
         self.chkbox_plot_options_dff.clicked.connect(lambda: self.visualize_signals(reset_view=False))
         self.chkbox_plot_options_savgol.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        self.chkbox_plot_options_noise.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        self.chkbox_plot_options_snr.clicked.connect(lambda: self.visualize_signals(reset_view=False))
         self.chkbox_plot_options_C.clicked.connect(self.enable_disable_event_buttons)
         self.chkbox_plot_options_C.setChecked(True)
 
@@ -247,7 +263,8 @@ class ExplorationWidget(QWidget):
             "YrA": "c",
             "DFF": "y",
             "SavGol": (154,205,50), # Greenish/Yellow
-            "SNR": (0,0,128) # Navy
+            "noise": (0,191,255), # Deep Sky Blue
+            "SNR": (255,105,180) # Hot Pink
         }
 
         # Populate cell list
@@ -408,28 +425,52 @@ class ExplorationWidget(QWidget):
         savgol_utility.setFrameShape(QFrame.Box)
         savgol_utility.setFrameShadow(QFrame.Raised)
         savgol_utility.setLineWidth(3)
-        
+
+        # Noise Tab
+        noise_utility = QFrame()
+        noise_utility.setFrameShape(QFrame.Box)
+        noise_utility.setFrameShadow(QFrame.Raised)
+        noise_utility.setLineWidth(3)        
 
         # SavGol Layouts
         layout_savgol = QVBoxLayout(savgol_utility)
         layout_savgol.addWidget(self.savgol_label)
         layout_savgol_win_len = QHBoxLayout()
-        layout_savgol_win_len.addWidget(self.win_len_label)
-        layout_savgol_win_len.addWidget(self.win_len_input)
+        layout_savgol_win_len.addWidget(self.savgol_win_len_label)
+        layout_savgol_win_len.addWidget(self.savgol_win_len_input)
         layout_savgol.addLayout(layout_savgol_win_len)
         layout_savgol_poly_order = QHBoxLayout()
-        layout_savgol_poly_order.addWidget(self.poly_order_label)
-        layout_savgol_poly_order.addWidget(self.poly_order_input)
+        layout_savgol_poly_order.addWidget(self.savgol_poly_order_label)
+        layout_savgol_poly_order.addWidget(self.savgol_poly_order_input)
         layout_savgol.addLayout(layout_savgol_poly_order)
         layout_savgol_deriv = QHBoxLayout()
-        layout_savgol_deriv.addWidget(self.deriv_label)
-        layout_savgol_deriv.addWidget(self.deriv_input)
+        layout_savgol_deriv.addWidget(self.savgol_deriv_label)
+        layout_savgol_deriv.addWidget(self.savgol_deriv_input)
         layout_savgol.addLayout(layout_savgol_deriv)
         layout_savgol_delta = QHBoxLayout()
-        layout_savgol_delta.addWidget(self.delta_label)
-        layout_savgol_delta.addWidget(self.delta_input)
+        layout_savgol_delta.addWidget(self.savgol_delta_label)
+        layout_savgol_delta.addWidget(self.savgol_delta_input)
         layout_savgol.addLayout(layout_savgol_delta)
         layout_savgol.addWidget(btn_savgol)
+
+        # Noise Layouts
+        layout_noise = QVBoxLayout(noise_utility)
+        layout_noise.addWidget(self.noise_label)
+        layout_noise_win_len = QHBoxLayout()
+        layout_noise_win_len.addWidget(self.noise_win_len_label)
+        layout_noise_win_len.addWidget(self.noise_win_len_input)
+        layout_noise.addLayout(layout_noise_win_len)
+        layout_noise_type = QHBoxLayout()
+        layout_noise_type.addWidget(self.noise_type_label)
+        layout_noise_type.addWidget(self.noise_type_combobox)
+        layout_noise.addLayout(layout_noise_type)
+        layout_noise.addWidget(btn_noise)
+        layout_noise.addStretch()
+        
+        # Param Tabs
+        tab_params = QTabWidget()
+        tab_params.addTab(savgol_utility, "SavGol")
+        tab_params.addTab(noise_utility, "Noise")
 
         # Plot options
         frame_plot_options = QFrame()
@@ -440,6 +481,8 @@ class ExplorationWidget(QWidget):
         layout_plot_options.addStretch()
         layout_plot_options.setDirection(3)
         layout_plot_options.addWidget(self.btn_reset_view)
+        layout_plot_options.addWidget(self.chkbox_plot_options_snr)
+        layout_plot_options.addWidget(self.chkbox_plot_options_noise)
         layout_plot_options.addWidget(self.chkbox_plot_options_C)
         layout_plot_options.addWidget(self.chkbox_plot_options_S)
         layout_plot_options.addWidget(self.chkbox_plot_options_YrA)
@@ -447,7 +490,7 @@ class ExplorationWidget(QWidget):
         layout_plot_options.addWidget(self.chkbox_plot_options_savgol)
 
 
-        layout_plot_utility.addWidget(savgol_utility)
+        layout_plot_utility.addWidget(tab_params)
         layout_plot_utility.addWidget(frame_plot_options)
         widget_plot_utility = QWidget()
         widget_plot_utility.setLayout(layout_plot_utility)
@@ -530,10 +573,10 @@ class ExplorationWidget(QWidget):
         self.input_justification.show()
 
     def update_savgol(self, _):
-        self.savgol_params["win_len"] = int(self.win_len_input.text())
-        self.savgol_params["poly_order"] = int(self.poly_order_input.text())
-        self.savgol_params["deriv"] = int(self.deriv_input.text())
-        self.savgol_params["delta"] = float(self.delta_input.text())
+        self.savgol_params["win_len"] = int(self.savgol_win_len_input.text())
+        self.savgol_params["poly_order"] = int(self.savgol_poly_order_input.text())
+        self.savgol_params["deriv"] = int(self.savgol_deriv_input.text())
+        self.savgol_params["delta"] = float(self.savgol_delta_input.text())
         if self.savgol_params["poly_order"] >= self.savgol_params["win_len"]:
             print("Polynomial Order should be less than Window Length")
             self.poly_order_input.setText(str(self.savgol_params["win_len"]-1))
@@ -541,6 +584,10 @@ class ExplorationWidget(QWidget):
         else:
             self.visualize_signals(reset_view=False)
         
+    def update_noise(self, _):
+        self.noise_params["win_len"] = int(self.noise_win_len_input.text())
+        self.noise_params["type"] = self.noise_type_combobox.currentText()
+        self.visualize_signals(reset_view=False)
 
 
     def switch_missed_cell_mode(self):
@@ -781,6 +828,10 @@ class ExplorationWidget(QWidget):
             selected_data_type.append('DFF')
         if self.chkbox_plot_options_savgol.isChecked():
             selected_data_type.append('SavGol')
+        if self.chkbox_plot_options_noise.isChecked():
+            selected_data_type.append('noise')
+        if self.chkbox_plot_options_snr.isChecked():
+            selected_data_type.append('SNR')
 
         return selected_data_type
 
@@ -820,8 +871,15 @@ class ExplorationWidget(QWidget):
                 for data_type in selected_types:
                     if data_type in self.session.data:
                         data = self.session.data[data_type].sel(unit_id=id).values
-                    elif data_type == 'SavGol':
+                    elif data_type == 'SavGol' or data_type == 'noise' or data_type == 'SNR':
                         data = self.session.get_savgol(id, self.savgol_params)
+                        if data_type == 'noise' or data_type == 'SNR':
+                            sav_data = data
+                            data = self.session.get_noise(sav_data, id, self.noise_params)
+                            if data_type == 'SNR':
+                                noise = data
+                                data = self.session.get_SNR(sav_data, noise)
+
                     p.add_main_curve(data, is_C=(data_type == 'C'), pen=self.color_mapping[data_type])
                     if 'E' in self.session.data and data_type == 'C':
                         events = self.session.data['E'].sel(unit_id=id).values

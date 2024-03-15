@@ -378,7 +378,7 @@ class DataInstance:
         self.no_of_clusters = 4     
         self.distance_metric = 'euclidean'
         self.missed_signals = {}
-        self.noise_values = []
+        self.noise_values = {}
 
         # Create the default image
         self.clustering_result = {"basic": {"image": np.stack((self.data['A'].sum("unit_id").values,)*3, axis=-1)}}
@@ -639,24 +639,28 @@ class DataInstance:
         savgol_data[savgol_data < 0] = 0
         return savgol_data
     
-    def get_noise(self, savgol_data, id, noise_type="mean", win_len=10):
+    def get_noise(self, savgol_data, id, params={}):
         """
         Noise will be estimated by taking the absolute value difference between the dff data and savgol_smoothed signal.
         The noise will be then estimated with a rolling window approach where the mean, median or maximum value will be taken.
         """
+        noise_type = params.get("type", "Mean")
+        win_len = params.get("win_len", 10)
+
         if id in self.noise_values:
             param = noise_type + str(win_len)
             if param in self.noise_values[id]:
                 return self.noise_values[id][param]
             else:
-                self.noise_values[id] = None
+                self.noise_values[id] = {}
+        
         dff = self.data["DFF"].sel(unit_id=id).values
         noise = abs(dff - savgol_data)
-        if noise_type == "mean":
+        if noise_type == "Mean":
             noise = np.convolve(noise, np.ones(win_len), 'same') / win_len
-        elif noise_type == "median":
+        elif noise_type == "Median":
             noise = self.rolling(noise, win_len, "median")
-        elif noise_type == "max":
+        elif noise_type == "Max":
             noise = self.rolling(noise, win_len, "max")
 
         # May be expensive to compute so save in noise_values
@@ -676,8 +680,10 @@ class DataInstance:
             print("ERROR: Noise is 0")
             return noise # Return the noise as the SNR to indicate some sort of error
         
-        noise[noise == 0] = np.min(noise[noise != 0])
-        return savgol_data / noise
+        noise += 0.01
+        snr = savgol_data / noise
+        # Normalize it so that the SNR max is the savgol_data max
+        return snr / snr.max() * savgol_data.max()
 
 
     def rolling(self, data, window, rolling_type="median"):
