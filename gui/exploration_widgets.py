@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAc
                             QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar, QCheckBox,
                             QTextEdit, QComboBox)
 from PyQt5.QtCore import (Qt, QTimer)
-from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QPen, QColor)
+from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont)
 from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem)
 import pyqtgraph as pg
 import numpy as np
@@ -33,6 +33,7 @@ class ExplorationWidget(QWidget):
         self.rejected_justification = self.session.load_justifications()
         self.savgol_params = {}
         self.noise_params = {}
+        self.hovered_cells = {} # id, item
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -170,7 +171,7 @@ class ExplorationWidget(QWidget):
         # Plot utility
         self.auto_label = QLabel("Automatic Transient Detection")
         self.manual_label = QLabel("Manual Transient Detection")
-        self.min_height_label = QLabel("Height Threshold")
+        self.min_height_label = QLabel("Height Threshold (ΔF/F)")
         local_stats_label = QLabel("Local Statistics")
         self.min_height_input = QLineEdit()
         self.min_height_input.setValidator(QDoubleValidator(0, 1000, 3))
@@ -181,10 +182,10 @@ class ExplorationWidget(QWidget):
         self.dist_input.setValidator(QIntValidator(0, 1000))
         self.dist_input.setText("10")
 
-        self.auc_label = QLabel("AUC")
-        self.auc_input = QLineEdit()
-        self.auc_input.setValidator(QDoubleValidator(0, 1000, 3))
-        self.auc_input.setText("0")
+        self.snr_label = QLabel("SNR Threshold")
+        self.snr_input = QLineEdit()
+        self.snr_input.setValidator(QDoubleValidator(0, 1000, 3))
+        self.snr_input.setText("0")
 
         btn_algo_event = QPushButton("Calculate Events")
         btn_algo_event.clicked.connect(self.update_peaks)
@@ -238,12 +239,19 @@ class ExplorationWidget(QWidget):
         btn_noise.clicked.connect(self.update_noise)
 
         self.chkbox_plot_options_C = QCheckBox("C Signal")
+        self.chkbox_plot_options_C.setStyleSheet("background-color: white; border: 1px solid black; width: 15px; height: 15px;")
         self.chkbox_plot_options_S = QCheckBox("S Signal")
+        self.chkbox_plot_options_S.setStyleSheet("background-color: magenta; border: 1px solid black; width: 15px; height: 15px;")
         self.chkbox_plot_options_YrA = QCheckBox("Raw Signal")
+        self.chkbox_plot_options_YrA.setStyleSheet("background-color: cyan; border: 1px solid black; width: 15px; height: 15px;")
         self.chkbox_plot_options_dff = QCheckBox("ΔF/F")
+        self.chkbox_plot_options_dff.setStyleSheet("background-color: yellow; border: 1px solid black; width: 15px; height: 15px;")
         self.chkbox_plot_options_savgol = QCheckBox("SavGol Filter (ΔF/F)")
+        self.chkbox_plot_options_savgol.setStyleSheet("background-color: rgb(154,205,50); border: 1px solid black; width: 15px; height: 15px;")
         self.chkbox_plot_options_noise = QCheckBox("Noise")
+        self.chkbox_plot_options_noise.setStyleSheet("background-color: rgb(0,191,255); border: 1px solid black; width: 15px; height: 15px;")
         self.chkbox_plot_options_snr = QCheckBox("SNR")
+        self.chkbox_plot_options_snr.setStyleSheet("background-color: rgb(255,105,180); border: 1px solid black; width: 15px; height: 15px;")
         self.btn_reset_view = QPushButton("Reset View")
         self.btn_reset_view.clicked.connect(lambda: self.visualize_signals(reset_view=True))
         self.chkbox_plot_options_C.clicked.connect(lambda: self.visualize_signals(reset_view=False))
@@ -381,8 +389,8 @@ class ExplorationWidget(QWidget):
         layout_dist.addWidget(self.dist_label)
         layout_dist.addWidget(self.dist_input)
         layout_auc = QHBoxLayout()
-        layout_auc.addWidget(self.auc_label)
-        layout_auc.addWidget(self.auc_input)
+        layout_auc.addWidget(self.snr_label)
+        layout_auc.addWidget(self.snr_input)
 
         self.frame_algo_events = QFrame()
         self.frame_algo_events.setFrameShape(QFrame.Box)
@@ -543,6 +551,37 @@ class ExplorationWidget(QWidget):
         self.video_timer.timeout.connect(self.next_frame)
 
         self.missed_cell_init()
+
+        self.imv.scene.sigMouseMoved.connect(self.detect_cell_hover)
+
+    def detect_cell_hover(self, event):
+        pos = self.imv.getImageItem().mapFromScene(event)
+        pos_rounded = (round(pos.y()-0.5), round(pos.x()-0.5))
+        if pos_rounded in self.A_pos_to_cell:
+            potential_ids = set(self.A_pos_to_cell[pos_rounded])
+            new_ids = potential_ids.difference(self.hovered_cells.keys())
+            delete = set(self.hovered_cells.keys()).difference(potential_ids)
+
+            for id in new_ids:
+                y, x = self.session.centroids[id]
+                text = pg.TextItem(text=str(id), anchor=(0.4,0.4), color=(255, 0, 0, 255))
+                self.imv.addItem(text)
+                self.hovered_cells[id] = text
+                text.setFont(QFont('Times', 7))
+                text.setPos(round(x), round(y))
+            
+            for id in delete:
+                self.imv.removeItem(self.hovered_cells[id])
+                self.hovered_cells.pop(id)
+
+        else:
+            for id in list(self.hovered_cells.keys()):
+                text = self.hovered_cells[id]
+                self.imv.removeItem(text)
+                self.hovered_cells.pop(id)
+
+                
+
 
     def keyReleaseEvent(self, event):
         
@@ -807,7 +846,7 @@ class ExplorationWidget(QWidget):
 
     def video_click(self, event):       
         point = self.imv.getImageItem().mapFromScene(event.pos())
-        converted_point = (round(point.y()), round(point.x())) # Switch x and y due to transpose
+        converted_point = (round(point.y() - 0.5), round(point.x() - 0.5)) # Switch x and y due to transpose
         if converted_point in self.A_pos_to_cell:
             temp_ids = set()
             for cell_id in self.A_pos_to_cell[converted_point]:
@@ -1153,7 +1192,7 @@ class ExplorationWidget(QWidget):
     def update_peaks(self):
         min_height = int(self.min_height_input.text()) if self.min_height_input.text() else 0
         distance = float(self.dist_input.text()) if self.dist_input.text() else 10        
-        auc = float(self.auc_input.text()) if self.auc_input.text() else 0
+        snr_thresh = float(self.snr_input.text()) if self.snr_input.text() else 0
         
         idx = 0
         while self.w_signals.getItem(idx,0) is not None:
@@ -1161,6 +1200,10 @@ class ExplorationWidget(QWidget):
             if isinstance(item, PlotItemEnhanced):
                 C_signal = self.session.data['C'].sel(unit_id=item.id).values
                 S_signal = self.session.data['S'].sel(unit_id=item.id).values
+                DFF_signal = self.session.data['DFF'].sel(unit_id=item.id).values
+                savgol_data = self.session.get_savgol(item.id, self.savgol_params)
+                noise_data = self.session.get_noise(savgol_data, item.id, self.noise_params)
+                SNR_data = self.session.get_SNR(savgol_data, noise_data)
                 peaks, _ = find_peaks(C_signal)
                 spikes = []
                 final_peaks = []
@@ -1172,12 +1215,12 @@ class ExplorationWidget(QWidget):
                 culminated_s_indices = set() # We make use of a set to avoid duplicates
                 for i, current_peak in enumerate(peaks):
                     # Look at the next peak and see if it is close enough to the current peak
-                    peak_height = C_signal[current_peak]
+                    peak_height = DFF_signal[current_peak]
                     # Allocate the overlapping S values to the next peak
                     if S_signal[current_peak] == 0:
                         continue # This indicates no corresponding S signal
                     culminated_s_indices.add(self.get_S_dimensions(S_signal, current_peak))
-                    if i < len(peaks) - 1 and C_signal[peaks[i+1]] > peak_height:
+                    if i < len(peaks) - 1 and DFF_signal[peaks[i+1]] > peak_height:
                         diff = peaks[i+1] - current_peak if self.timestamps is None else self.timestamps[peaks[i+1]] - self.timestamps[current_peak]
                         if diff <= distance:
                             continue
@@ -1191,11 +1234,13 @@ class ExplorationWidget(QWidget):
                     
                     culminated_s_indices = set()
 
-                    if np.sum(S_signal[beg:end]) < auc:
+                    if DFF_signal[beg:current_peak+1].max() - DFF_signal[beg:current_peak+1].min() < min_height:
+                        continue
+                
+                    if SNR_data[beg:current_peak+1].max() < snr_thresh:
                         continue
 
-                    if C_signal[beg:current_peak+1].max() - C_signal[beg:current_peak+1].min() < min_height:
-                        continue
+
 
                     # Compensate for the fact that S a frame after the beginning of the spike.
                     beg = max(0, beg-1)

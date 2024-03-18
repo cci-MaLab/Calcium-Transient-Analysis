@@ -636,7 +636,6 @@ class DataInstance:
 
         data = self.data["DFF"].sel(unit_id=id).values
         savgol_data = savgol_filter(data, window_length, poly_order, deriv=deriv, delta=delta, mode=mode)
-        savgol_data[savgol_data < 0] = 0
         return savgol_data
     
     def get_noise(self, savgol_data, id, params={}):
@@ -681,7 +680,7 @@ class DataInstance:
             return noise # Return the noise as the SNR to indicate some sort of error
         
         noise += 0.01
-        snr = savgol_data / noise
+        snr = np.abs(savgol_data) / noise
         # Normalize it so that the SNR max is the savgol_data max
         return snr / snr.max() * savgol_data.max()
 
