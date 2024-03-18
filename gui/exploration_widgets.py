@@ -554,23 +554,24 @@ class ExplorationWidget(QWidget):
                 item = self.w_signals.getItem(i,0)
                 if isinstance(item, PlotItemEnhanced):
                     if len(item.listDataItems()) > 1: # When it's empty there is only one empty within the list
-                        xs, ys = item.getViewBox().viewRange()
+                        xs, _ = item.getViewBox().viewRange()
                         length = self.session.data["C"].shape[1]
                         window = xs[1] - xs[0]
+                        jump = int(window * 0.5)
                         if action == "start":
                             item.getViewBox().setXRange(0, window, padding=0)
                         elif action == "end":
                             item.getViewBox().setXRange(length - window, length, padding=0)
                         elif action == "next":
-                            if xs[1] + window > length:
+                            if xs[1] + jump > length:
                                 item.getViewBox().setXRange(length - window, length, padding=0)
                             else:
-                                item.getViewBox().setXRange(xs[1], xs[1] + window, padding=0)
+                                item.getViewBox().setXRange(xs[0] + jump, xs[1] + jump, padding=0)
                         elif action == "prev":
-                            if xs[0] - window < 0:
+                            if xs[0] - jump < 0:
                                 item.getViewBox().setXRange(0, window, padding=0)
                             else:
-                                item.getViewBox().setXRange(xs[0] - window, xs[0], padding=0)
+                                item.getViewBox().setXRange(xs[0] - jump, xs[1] - jump, padding=0)
                 i += 1
 
 
