@@ -1370,8 +1370,9 @@ class PlotItemEnhanced(PlotItem):
 
         return accumulated_selected_events
         
+
     def mousePressEvent(self, ev):
-        super(PlotItemEnhanced, self).mouseReleaseEvent(ev)
+        super(PlotItemEnhanced, self).mousePressEvent(ev)
         clicked_items = self.scene().items(ev.scenePos())
         if clicked_items:
             if isinstance(clicked_items[0], QGraphicsTextItem):
