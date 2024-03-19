@@ -645,6 +645,7 @@ class DataInstance:
         """
         noise_type = params.get("type", "Mean")
         win_len = params.get("win_len", 10)
+        cap = params.get("cap", 0.01)
 
         if id in self.noise_values:
             param = noise_type + str(win_len)
@@ -662,6 +663,7 @@ class DataInstance:
         elif noise_type == "Max":
             noise = self.rolling(noise, win_len, "max")
 
+        noise[noise < cap] = cap
         # May be expensive to compute so save in noise_values
         if id not in self.noise_values:
             self.noise_values[id] = {}
@@ -679,7 +681,6 @@ class DataInstance:
             print("ERROR: Noise is 0")
             return noise # Return the noise as the SNR to indicate some sort of error
         
-        noise += 0.01
         snr = np.abs(savgol_data) / noise
         # Normalize it so that the SNR max is the savgol_data max
         return snr / snr.max() * savgol_data.max()

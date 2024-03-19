@@ -4,7 +4,7 @@ The following file will be used for doing a deeper dive into the selected sessio
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAction, QStyle, 
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
                             QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar, QCheckBox,
-                            QTextEdit, QComboBox)
+                            QTextEdit, QComboBox, QGraphicsTextItem)
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont)
 from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem)
@@ -235,6 +235,10 @@ class ExplorationWidget(QWidget):
         self.noise_type_combobox = QComboBox()
         self.noise_type_combobox.addItems(["None", "Mean", "Median", "Max"])
         self.noise_type_combobox.setCurrentIndex(0)
+        self.noise_cap_label = QLabel("Cap")
+        self.noise_cap_input = QLineEdit()
+        self.noise_cap_input.setValidator(QDoubleValidator(0, 1, 4))
+        self.noise_cap_input.setText("0.1")
         btn_noise = QPushButton("Update Noise")
         btn_noise.clicked.connect(self.update_noise)
 
@@ -378,8 +382,8 @@ class ExplorationWidget(QWidget):
         layout_plot_utility.setDirection(3)
 
         # Clear Traces Button
-        btn_clear_traces = QPushButton("Clear Traces")
-        btn_clear_traces.clicked.connect(self.clear_traces)
+        btn_clear_traces = QPushButton("Clear Selected Traces")
+        btn_clear_traces.clicked.connect(self.clear_selected_traces)
 
         # Event Generation Algorithm
         layout_height = QHBoxLayout()
@@ -475,7 +479,11 @@ class ExplorationWidget(QWidget):
         layout_noise_type = QHBoxLayout()
         layout_noise_type.addWidget(self.noise_type_label)
         layout_noise_type.addWidget(self.noise_type_combobox)
+        layout_noise_cap = QHBoxLayout()
+        layout_noise_cap.addWidget(self.noise_cap_label)
+        layout_noise_cap.addWidget(self.noise_cap_input)
         layout_noise.addLayout(layout_noise_type)
+        layout_noise.addLayout(layout_noise_cap)
         layout_noise.addWidget(btn_noise)
         layout_noise.addStretch()
         
@@ -665,14 +673,30 @@ class ExplorationWidget(QWidget):
     def update_noise(self, _):
         self.noise_params["win_len"] = int(self.noise_win_len_input.text())
         self.noise_params["type"] = self.noise_type_combobox.currentText()
+        self.noise_params["cap"] = float(self.noise_cap_input.text())
         self.visualize_signals(reset_view=False)
 
-    def clear_traces(self):
-        self.w_signals.clear()
-        self.missed_cells_selection = set()
-        self.video_cell_selection = set()
-        self.video_missed_mask = np.zeros(self.mask.shape)
-        self.video_cell_mask = np.zeros(self.mask.shape)
+    def clear_selected_traces(self):
+        # Clear only the selected signals
+        i = 0
+        to_remove = []
+        while self.w_signals.getItem(i,0) is not None:
+            item = self.w_signals.getItem(i,0)
+            if isinstance(item, PlotItemEnhanced):
+                if item.selected:
+                    to_remove.append((item.cell_type, item.id))
+            i += 1
+
+        for cell_type, id in to_remove:
+            if cell_type == "Missed":
+                self.missed_cells_selection.discard(id)
+                self.video_missed_mask -= self.session.data["M"].sel(missed_id=id).values
+
+            else:
+                self.video_cell_selection.discard(id)
+                self.video_cell_mask -= self.session.data["A"].sel(unit_id=id).values
+        
+        self.visualize_signals(reset_view=False)
         if not self.btn_play.isChecked():
             self.current_frame -= 1
             self.next_frame()
@@ -1137,6 +1161,8 @@ class ExplorationWidget(QWidget):
         
     def update_slider_pos(self, event):
         self.scroll_video.setValue(round(event.value()))
+        self.current_frame = self.scroll_video.value() - 1
+        self.next_frame()
     
     def pause_video(self):
         self.video_timer.stop()
@@ -1315,6 +1341,7 @@ class PlotItemEnhanced(PlotItem):
         self.addItem(self.plotLine)
         self.selected_events = set()
         self.clicked_points = []
+        self.selected = False
         
 
     def clear_event_curves(self):
@@ -1343,7 +1370,21 @@ class PlotItemEnhanced(PlotItem):
 
         return accumulated_selected_events
         
-    
+    def mousePressEvent(self, ev):
+        super(PlotItemEnhanced, self).mouseReleaseEvent(ev)
+        clicked_items = self.scene().items(ev.scenePos())
+        if clicked_items:
+            if isinstance(clicked_items[0], QGraphicsTextItem):
+                if clicked_items[0].toPlainText() == f"Cell {self.id}" or clicked_items[0].toPlainText() == f"Missed Cell {self.id}":
+                    title = clicked_items[0].toPlainText()
+                    if not self.selected:
+                        self.setTitle(title, color="#0000FF")
+                        self.selected = True
+                    else:
+                        self.setTitle(title, color="#FFFFFF")
+                        self.selected = False
+
+
     def add_point(self, event):
         # Map to this items coordinates
         point = event.pos()
@@ -1423,6 +1464,8 @@ class PlotItemEnhanced(PlotItem):
             return event_curve.xData
         else:
             return None
+        
+    
 
 
 
