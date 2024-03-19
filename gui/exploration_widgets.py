@@ -953,6 +953,8 @@ class ExplorationWidget(QWidget):
             for i, id in enumerate(cell_ids):
                 p = PlotItemEnhanced(id=id, cell_type="Standard")
                 p.plotLine.setPos(self.scroll_video.value())
+                p.plotLine.sigDragged.connect(self.pause_video)
+                p.plotLine.sigPositionChangeFinished.connect(self.update_slider_pos)
                 p.setTitle(f"Cell {id}")
                 self.w_signals.addItem(p, row=i, col=0)
                 selected_types = self.get_selected_data_type()
@@ -988,6 +990,8 @@ class ExplorationWidget(QWidget):
             for i, id in enumerate(missed_ids):
                 p = PlotItemEnhanced(id=id, cell_type="Missed")
                 p.plotLine.setPos(self.scroll_video.value())
+                p.plotLine.sigDragged.connect(self.pause_video)
+                p.plotLine.sigPositionChangeFinished.connect(self.update_slider_pos)
                 p.setTitle(f"Missed Cell {id}")
                 self.w_signals.addItem(p, row=i+last_i, col=0)
                 if "YrA" in self.get_selected_data_type():
@@ -1131,7 +1135,8 @@ class ExplorationWidget(QWidget):
         self.refresh_cell_list()
 
         
-        
+    def update_slider_pos(self, event):
+        self.scroll_video.setValue(round(event.value()))
     
     def pause_video(self):
         self.video_timer.stop()
@@ -1306,7 +1311,7 @@ class PlotItemEnhanced(PlotItem):
         self.C_signal = None
         self.id = kwargs["id"] if "id" in kwargs else None
         self.cell_type = kwargs["cell_type"] if "cell_type" in kwargs else None
-        self.plotLine = InfiniteLine(pos=0, angle=90, pen='g')
+        self.plotLine = InfiniteLine(pos=0, angle=90, pen='g', movable=True)
         self.addItem(self.plotLine)
         self.selected_events = set()
         self.clicked_points = []
