@@ -242,6 +242,24 @@ class ExplorationWidget(QWidget):
         btn_noise = QPushButton("Update Noise")
         btn_noise.clicked.connect(self.update_noise)
 
+        # View Utility
+        self.view_y_start_label = QLabel("Y Axis Start")
+        self.view_y_start_input = QLineEdit()
+        self.view_y_start_input.setValidator(QDoubleValidator(-5, 0, 3))
+        self.view_y_start_input.setText("-1")
+        self.view_y_end_label = QLabel("Y Axis End")
+        self.view_y_end_input = QLineEdit()
+        self.view_y_end_input.setValidator(QDoubleValidator(0, 50, 3))
+        self.view_y_end_input.setText("10")
+        self.view_window_label = QLabel("Window Size")
+        self.view_window_input = QLineEdit()
+        self.view_window_input.setValidator(QIntValidator(100, 100000))
+        self.view_window_input.setText("1000")
+        self.view_btn_update = QPushButton("Update View")
+        self.view_btn_update.clicked.connect(self.update_plot_view)
+
+
+
         self.chkbox_plot_options_C = QCheckBox("C Signal")
         self.chkbox_plot_options_C.setStyleSheet("background-color: white; border: 1px solid black; width: 15px; height: 15px;")
         self.chkbox_plot_options_S = QCheckBox("S Signal")
@@ -446,7 +464,13 @@ class ExplorationWidget(QWidget):
         noise_utility = QFrame()
         noise_utility.setFrameShape(QFrame.Box)
         noise_utility.setFrameShadow(QFrame.Raised)
-        noise_utility.setLineWidth(3)        
+        noise_utility.setLineWidth(3)
+
+        # View Utility Frame
+        view_utility = QFrame()
+        view_utility.setFrameShape(QFrame.Box)
+        view_utility.setFrameShadow(QFrame.Raised)
+        view_utility.setLineWidth(3)     
 
         # SavGol Layouts
         layout_savgol = QVBoxLayout(savgol_utility)
@@ -486,11 +510,31 @@ class ExplorationWidget(QWidget):
         layout_noise.addLayout(layout_noise_cap)
         layout_noise.addWidget(btn_noise)
         layout_noise.addStretch()
+
+        # View Layout
+        layout_plot_view = QVBoxLayout(view_utility)
+        layout_plot_view_y_start = QHBoxLayout()
+        layout_plot_view_y_start.addWidget(self.view_y_start_label)
+        layout_plot_view_y_start.addWidget(self.view_y_start_input)
+        layout_plot_view_y_end = QHBoxLayout()
+        layout_plot_view_y_end.addWidget(self.view_y_end_label)
+        layout_plot_view_y_end.addWidget(self.view_y_end_input)
+        layout_plot_view_window = QHBoxLayout()
+        layout_plot_view_window.addWidget(self.view_window_label)
+        layout_plot_view_window.addWidget(self.view_window_input)
+        layout_plot_view.addLayout(layout_plot_view_y_start)
+        layout_plot_view.addLayout(layout_plot_view_y_end)
+        layout_plot_view.addLayout(layout_plot_view_window)
+        layout_plot_view.addWidget(self.view_btn_update)
+        layout_plot_view.addStretch()
+        
+        
         
         # Param Tabs
         tab_params = QTabWidget()
         tab_params.addTab(savgol_utility, "SavGol")
         tab_params.addTab(noise_utility, "Noise")
+        tab_params.addTab(view_utility, "View")
 
         # Plot options
         frame_plot_options = QFrame()
@@ -561,6 +605,22 @@ class ExplorationWidget(QWidget):
         self.missed_cell_init()
 
         self.imv.scene.sigMouseMoved.connect(self.detect_cell_hover)
+
+    def update_plot_view(self):
+        y_start = float(self.view_y_start_input.text())
+        y_end = float(self.view_y_end_input.text())
+        window = int(self.view_window_input.text())
+        i = 0
+        while self.w_signals.getItem(i,0) is not None:
+            item = self.w_signals.getItem(i,0)
+            if isinstance(item, PlotItemEnhanced):
+                item.getViewBox().setYRange(y_start, y_end, padding=0)
+                xs, _ = item.getViewBox().viewRange()
+                midpoint = int((xs[0] + xs[1]) / 2)
+                x_start = midpoint - int(window / 2)
+                x_end = midpoint + int(window / 2)
+                item.getViewBox().setXRange(x_start, x_end, padding=0)
+            i += 1
 
     def detect_cell_hover(self, event):
         pos = self.imv.getImageItem().mapFromScene(event)
