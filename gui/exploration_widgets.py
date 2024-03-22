@@ -129,14 +129,13 @@ class ExplorationWidget(QWidget):
         self.btn_justification_start.setEnabled(False)
         self.btn_justification_start.clicked.connect(self.start_justification)
         self.btn_justification_save = QPushButton("Save")
-        self.btn_justification_save.clicked.connect(lambda: self.session.save_justifications(self.rejected_justification))
+        self.btn_justification_save.clicked.connect(self.backup_text)
         self.btn_justification_save.hide()
         self.btn_justification_cancel = QPushButton("Cancel")
         self.btn_justification_cancel.clicked.connect(lambda: self.enable_disable_justification(False))
         self.btn_justification_cancel.hide()
 
         self.input_justification = QTextEdit()
-        self.input_justification.textChanged.connect(self.backup_text)
         self.input_justification.hide()
 
         # Missed Cells
@@ -717,6 +716,8 @@ class ExplorationWidget(QWidget):
         self.btn_justification_save.show()
         self.btn_justification_cancel.show()
         self.input_justification.show()
+        id = ''.join(filter(str.isdigit, self.list_rejected_cell.selectedItems()[0].text()))
+        self.input_justification.setText(self.rejected_justification[id])
 
     def update_savgol(self, _):
         self.savgol_params["win_len"] = int(self.savgol_win_len_input.text())
@@ -885,8 +886,9 @@ class ExplorationWidget(QWidget):
 
     def backup_text(self):
         if len(self.list_rejected_cell.selectedItems()) == 1:
-            id = int(''.join(filter(str.isdigit, self.list_rejected_cell.selectedItems()[0].text())))
+            id = ''.join(filter(str.isdigit, self.list_rejected_cell.selectedItems()[0].text()))
             self.rejected_justification[id] = self.input_justification.toPlainText()
+            self.session.save_justifications(self.rejected_justification)
 
     def draw_trace(self, event):
         point = self.imv.getImageItem().mapFromScene(event)
