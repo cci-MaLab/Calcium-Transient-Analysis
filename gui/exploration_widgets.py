@@ -652,9 +652,10 @@ class ExplorationWidget(QWidget):
 
     def keyReleaseEvent(self, event):
         
-        action = {Qt.Key_A: "start", Qt.Key_F: "end", Qt.Key_D: "next", Qt.Key_S: "prev"}.get(event.key(), None)
+        action_view = {Qt.Key_A: "start", Qt.Key_F: "end", Qt.Key_D: "next", Qt.Key_S: "prev"}.get(event.key(), None)
+        action_trace = {Qt.Key_W: "toggle_dff"}.get(event.key(), None)
 
-        if self.w_signals and action is not None:
+        if self.w_signals and action_view is not None:
             i = 0
             while self.w_signals.getItem(i,0) is not None:
                 item = self.w_signals.getItem(i,0)
@@ -664,21 +665,23 @@ class ExplorationWidget(QWidget):
                         length = self.session.data["C"].shape[1]
                         window = xs[1] - xs[0]
                         jump = int(window * 0.5)
-                        if action == "start":
+                        if action_view == "start":
                             item.getViewBox().setXRange(0, window, padding=0)
-                        elif action == "end":
+                        elif action_view == "end":
                             item.getViewBox().setXRange(length - window, length, padding=0)
-                        elif action == "next":
+                        elif action_view == "next":
                             if xs[1] + jump > length:
                                 item.getViewBox().setXRange(length - window, length, padding=0)
                             else:
                                 item.getViewBox().setXRange(xs[0] + jump, xs[1] + jump, padding=0)
-                        elif action == "prev":
+                        elif action_view == "prev":
                             if xs[0] - jump < 0:
                                 item.getViewBox().setXRange(0, window, padding=0)
                             else:
                                 item.getViewBox().setXRange(xs[0] - jump, xs[1] - jump, padding=0)
-                i += 1
+        if self.w_signals and action_trace == "toggle_dff":
+            self.chkbox_plot_options_dff.setChecked(not self.chkbox_plot_options_dff.isChecked())
+            self.visualize_signals(reset_view=False)
 
 
     def switched_tabs(self):
