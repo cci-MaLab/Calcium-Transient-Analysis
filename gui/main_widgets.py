@@ -12,7 +12,7 @@ from core.genetic_algorithm import Genetic_Algorithm
 class ParamDialog(QDialog):
     def __init__(self, event_defaults, parent=None):
         super().__init__(parent)
-
+        self.events = list(event_defaults.keys())[:-1]
         self.setWindowTitle("Specify Parameters")
 
         QBtn = QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -22,55 +22,82 @@ class ParamDialog(QDialog):
         self.buttonBox.rejected.connect(self.reject)
         self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
 
-        self.ALP_chkbox = QCheckBox("ALP")
-        self.ALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_chkbox, self.ALP_param))
-        self.ALP_chkbox.stateChanged.connect(self.release_button)
-        self.IALP_chkbox = QCheckBox("IALP")
-        self.IALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.IALP_chkbox, self.IALP_param))
-        self.IALP_chkbox.stateChanged.connect(self.release_button)
-        self.RNFS_chkbox = QCheckBox("RNFS")
-        self.RNFS_chkbox.stateChanged.connect(lambda: hide_unhide(self.RNFS_chkbox, self.RNFS_param))
-        self.RNFS_chkbox.stateChanged.connect(self.release_button)
-        self.ALP_Timeout_chkbox = QCheckBox("ALP_Timeout")
-        self.ALP_Timeout_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_Timeout_chkbox, self.ALP_Timeout_param))
-        self.ALP_Timeout_chkbox.stateChanged.connect(self.release_button)
+        self.event_chkboxes = []
+        self.event_param = []
+
+        for idx,i in enumerate(self.events):
+            self.event_chkboxes.append(QCheckBox(i)) 
+            self.event_chkboxes[idx].stateChanged.connect(lambda: hide_unhide(self.event_chkboxes[idx], self.event_param[idx]))
+            self.event_chkboxes[idx].stateChanged.connect(self.release_button)
+            
+            
+
+
+
+        # self.ALP_chkbox = QCheckBox("ALP")
+        # self.ALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_chkbox, self.ALP_param))
+        # self.ALP_chkbox.stateChanged.connect(self.release_button)
+        # self.IALP_chkbox = QCheckBox("IALP")
+        # self.IALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.IALP_chkbox, self.IALP_param))
+        # self.IALP_chkbox.stateChanged.connect(self.release_button)
+        # self.RNFS_chkbox = QCheckBox("RNFS")
+        # self.RNFS_chkbox.stateChanged.connect(lambda: hide_unhide(self.RNFS_chkbox, self.RNFS_param))
+        # self.RNFS_chkbox.stateChanged.connect(self.release_button)
+        # self.ALP_Timeout_chkbox = QCheckBox("ALP_Timeout")
+        # self.ALP_Timeout_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_Timeout_chkbox, self.ALP_Timeout_param))
+        # self.ALP_Timeout_chkbox.stateChanged.connect(self.release_button)
 
         distance_metric_label = QLabel("Distance Metric")
         self.distance_metric_combo = QComboBox()
 
-        self.ALP_param = ParamWidget("ALP", event_defaults)
-        self.ALP_param.setEnabled(False)
-        self.IALP_param = ParamWidget("IALP", event_defaults)
-        self.IALP_param.setEnabled(False)
-        self.RNFS_param = ParamWidget("RNFS", event_defaults)
-        self.RNFS_param.setEnabled(False)
-        self.ALP_Timeout_param = ParamWidget("ALP_Timeout", event_defaults)
-        self.ALP_Timeout_param.setEnabled(False)
+        for idx,i in enumerate(self.events):
+            self.event_param.append(ParamWidget(i, event_defaults))
+            self.event_param[idx].setEnabled(False)
+
+        # self.ALP_param = ParamWidget("ALP", event_defaults)
+        # self.ALP_param.setEnabled(False)
+        # self.IALP_param = ParamWidget("IALP", event_defaults)
+        # self.IALP_param.setEnabled(False)
+        # self.RNFS_param = ParamWidget("RNFS", event_defaults)
+        # self.RNFS_param.setEnabled(False)
+        # self.ALP_Timeout_param = ParamWidget("ALP_Timeout", event_defaults)
+        # self.ALP_Timeout_param.setEnabled(False)
         self.distance_metric_combo.addItems(DataInstance.distance_metric_list)
         self.distance_metric_combo.setCurrentIndex(self.distance_metric_combo.findText(event_defaults["distance_metric"]))
 
         layout_param = QHBoxLayout()
-        ALP_layout = QVBoxLayout()
-        IALP_layout = QVBoxLayout()
-        RNFS_layout = QVBoxLayout()
-        ALP_Timeout_layout = QVBoxLayout()
+        event_layout = []
+        for i,j in zip(self.event_chkboxes,self.event_param):
+            single_layout = QVBoxLayout()
+            single_layout.addWidget(i)
+            single_layout.addWidget(j)
+            event_layout.append(single_layout)
+
+        # ALP_layout = QVBoxLayout()
+        # IALP_layout = QVBoxLayout()
+        # RNFS_layout = QVBoxLayout()
+        # ALP_Timeout_layout = QVBoxLayout()
         distance_metric_layout = QVBoxLayout()
 
-        ALP_layout.addWidget(self.ALP_chkbox)
-        ALP_layout.addWidget(self.ALP_param)
-        IALP_layout.addWidget(self.IALP_chkbox)
-        IALP_layout.addWidget(self.IALP_param)
-        RNFS_layout.addWidget(self.RNFS_chkbox)
-        RNFS_layout.addWidget(self.RNFS_param)
-        ALP_Timeout_layout.addWidget(self.ALP_Timeout_chkbox)
-        ALP_Timeout_layout.addWidget(self.ALP_Timeout_param)
+
+        # ALP_layout.addWidget(self.event_chkboxes[0])
+        # ALP_layout.addWidget(self.event_param[0])
+        # IALP_layout.addWidget(self.event_chkboxes[1])
+        # IALP_layout.addWidget(self.event_param[1])
+        # RNFS_layout.addWidget(self.event_chkboxes[2])
+        # RNFS_layout.addWidget(self.event_param[2])
+        # ALP_Timeout_layout.addWidget(self.event_chkboxes[3])
+        # ALP_Timeout_layout.addWidget(self.event_param[3])
         distance_metric_layout.addWidget(distance_metric_label)
         distance_metric_layout.addWidget(self.distance_metric_combo)
 
-        layout_param.addLayout(ALP_layout)
-        layout_param.addLayout(IALP_layout)
-        layout_param.addLayout(RNFS_layout)
-        layout_param.addLayout(ALP_Timeout_layout)
+        for i in event_layout:
+            layout_param.addLayout(i)
+
+        # layout_param.addLayout(ALP_layout)
+        # layout_param.addLayout(IALP_layout)
+        # layout_param.addLayout(RNFS_layout)
+        # layout_param.addLayout(ALP_Timeout_layout)
         layout_param.addLayout(distance_metric_layout)
 
         layout = QVBoxLayout()
@@ -80,31 +107,44 @@ class ParamDialog(QDialog):
         self.setLayout(layout)
 
     def release_button(self):
-        if self.ALP_chkbox.isChecked() or self.IALP_chkbox.isChecked() or self.RNFS_chkbox.isChecked() or self.ALP_Timeout_chkbox.isChecked():
+        mark = 0
+        for i in self.event_chkboxes:
+            if i.isChecked():
+                mark += 1
+        if mark > 0:
             self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
         else:
             self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
 
+        # if self.ALP_chkbox.isChecked() or self.IALP_chkbox.isChecked() or self.RNFS_chkbox.isChecked() or self.ALP_Timeout_chkbox.isChecked():
+        #     self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
+        # else:
+        #     self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
+
     def get_result(self):
         result = {}
-        if self.ALP_chkbox.isChecked():
-            result["ALP"] = {}
-            result["ALP"]["window"] = int(self.ALP_param.duration_edit.text())
-            result["ALP"]["delay"] = int(self.ALP_param.delay_edit.text())
-        if self.IALP_chkbox.isChecked():
-            result["IALP"] = {}
-            result["IALP"]["window"] = int(self.IALP_param.duration_edit.text())
-            result["IALP"]["delay"] = int(self.IALP_param.delay_edit.text())
-        if self.RNFS_chkbox.isChecked():
-            result["RNFS"] = {}
-            result["RNFS"]["window"] = int(self.RNFS_param.duration_edit.text())
-            result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
-        if self.ALP_Timeout_chkbox.isChecked():
-            result["ALP_Timeout"] = {}
-            result["ALP_Timeout"]["window"] = int(self.ALP_Timeout_param.duration_edit.text())
-            result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
+        for i, j, l in zip(self.event_chkboxes,self.events,self.event_param):
+            if i.isChecked():
+                result[j] = {}
+                result[j]["window"] = int(l.duration_edit.text())
+                result[j]["delay"] = int(l.delay_edit.text())
+        # if self.ALP_chkbox.isChecked():
+        #     result["ALP"] = {}
+        #     result["ALP"]["window"] = int(self.ALP_param.duration_edit.text())
+        #     result["ALP"]["delay"] = int(self.ALP_param.delay_edit.text())
+        # if self.IALP_chkbox.isChecked():
+        #     result["IALP"] = {}
+        #     result["IALP"]["window"] = int(self.IALP_param.duration_edit.text())
+        #     result["IALP"]["delay"] = int(self.IALP_param.delay_edit.text())
+        # if self.RNFS_chkbox.isChecked():
+        #     result["RNFS"] = {}
+        #     result["RNFS"]["window"] = int(self.RNFS_param.duration_edit.text())
+        #     result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
+        # if self.ALP_Timeout_chkbox.isChecked():
+        #     result["ALP_Timeout"] = {}
+        #     result["ALP_Timeout"]["window"] = int(self.ALP_Timeout_param.duration_edit.text())
+        #     result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
         result["distance_metric"] = self.distance_metric_combo.currentText()
-        
         return result
 
 
@@ -119,16 +159,25 @@ class UpdateDialog(QDialog):
         self.buttonBox = QDialogButtonBox(QBtn)
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.reject)
+        
+        self.events = list(event_defaults.keys())[:-1]
+        self.event_label = []
+        for i in self.events:
+            self.event_label.append(QLabel(i))
 
-        self.ALP_label = QLabel("ALP")
-        self.IALP_label = QLabel("IALP")
-        self.RNFS_label = QLabel("RNFS")
-        self.ALP_Timeout_label = QLabel("ALP_Timeout")
+        # self.ALP_label = QLabel("ALP")
+        # self.IALP_label = QLabel("IALP")
+        # self.RNFS_label = QLabel("RNFS")
+        # self.ALP_Timeout_label = QLabel("ALP_Timeout")
 
-        self.ALP_param = ParamWidget("ALP", event_defaults)
-        self.IALP_param = ParamWidget("IALP", event_defaults)
-        self.RNFS_param = ParamWidget("RNFS", event_defaults)
-        self.ALP_Timeout_param = ParamWidget("ALP_Timeout", event_defaults)
+        self.event_param = []
+        for i in self.events:
+            self.event_param.append(ParamWidget(i,event_defaults))
+
+        # self.ALP_param = ParamWidget("ALP", event_defaults)
+        # self.IALP_param = ParamWidget("IALP", event_defaults)
+        # self.RNFS_param = ParamWidget("RNFS", event_defaults)
+        # self.ALP_Timeout_param = ParamWidget("ALP_Timeout", event_defaults)
 
         distance_metric_label = QLabel("Distance Metric")
         self.distance_metric_combo = QComboBox()
@@ -136,27 +185,36 @@ class UpdateDialog(QDialog):
         self.distance_metric_combo.setCurrentIndex(self.distance_metric_combo.findText(event_defaults["distance_metric"]))    
 
         layout_param = QHBoxLayout()
-        ALP_layout = QVBoxLayout()
-        IALP_layout = QVBoxLayout()
-        RNFS_layout = QVBoxLayout()
-        ALP_Timeout_layout = QVBoxLayout()
+        event_layout = []
+        for i,j in zip(self.event_label,self.event_param):
+            single_layout = QBoxLayout()
+            single_layout.addWidget(i)
+            single_layout.addWidget(j)
+            event_layout.append(single_layout)
+
+        # ALP_layout = QVBoxLayout()
+        # IALP_layout = QVBoxLayout()
+        # RNFS_layout = QVBoxLayout()
+        # ALP_Timeout_layout = QVBoxLayout()
         distance_metric_layout = QVBoxLayout()
 
-        ALP_layout.addWidget(self.ALP_label)
-        ALP_layout.addWidget(self.ALP_param)
-        IALP_layout.addWidget(self.IALP_label)
-        IALP_layout.addWidget(self.IALP_param)
-        RNFS_layout.addWidget(self.RNFS_label)
-        RNFS_layout.addWidget(self.RNFS_param)
-        ALP_Timeout_layout.addWidget(self.ALP_Timeout_label)
-        ALP_Timeout_layout.addWidget(self.ALP_Timeout_param)
+        # ALP_layout.addWidget(self.ALP_label)
+        # ALP_layout.addWidget(self.ALP_param)
+        # IALP_layout.addWidget(self.IALP_label)
+        # IALP_layout.addWidget(self.IALP_param)
+        # RNFS_layout.addWidget(self.RNFS_label)
+        # RNFS_layout.addWidget(self.RNFS_param)
+        # ALP_Timeout_layout.addWidget(self.ALP_Timeout_label)
+        # ALP_Timeout_layout.addWidget(self.ALP_Timeout_param)
         distance_metric_layout.addWidget(distance_metric_label)
         distance_metric_layout.addWidget(self.distance_metric_combo)
 
-        layout_param.addLayout(ALP_layout)
-        layout_param.addLayout(IALP_layout)
-        layout_param.addLayout(RNFS_layout)
-        layout_param.addLayout(ALP_Timeout_layout)
+        for i in event_layout:
+            layout_param.addLayout(i)
+        # layout_param.addLayout(ALP_layout)
+        # layout_param.addLayout(IALP_layout)
+        # layout_param.addLayout(RNFS_layout)
+        # layout_param.addLayout(ALP_Timeout_layout)
         layout_param.addWidget(distance_metric_layout)
 
         layout = QVBoxLayout()
@@ -167,18 +225,23 @@ class UpdateDialog(QDialog):
 
     def get_result(self):
         result = {}
-        result["ALP"] = {}
-        result["ALP"]["window"] = int(self.ALP_param.duration_edit.text())
-        result["ALP"]["delay"] = int(self.ALP_param.delay_edit.text())
-        result["IALP"] = {}
-        result["IALP"]["window"] = int(self.IALP_param.duration_edit.text())
-        result["IALP"]["delay"] = int(self.IALP_param.delay_edit.text())
-        result["RNFS"] = {}
-        result["RNFS"]["window"] = int(self.RNFS_param.duration_edit.text())
-        result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
-        result["ALP_Timeout"] = {}
-        result["ALP_Timeout"]["window"] = int(self.ALP_Timeout_param.duration_edit.text())
-        result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
+        for i,j in zip(self.events, self.event_param):
+            result[i] = {}
+            result[i]["window"] = int(j.duration_edit.text())
+            result[i]["delay"] = int(j.delay_edit.text())
+
+        # result["ALP"] = {}
+        # result["ALP"]["window"] = int(self.ALP_param.duration_edit.text())
+        # result["ALP"]["delay"] = int(self.ALP_param.delay_edit.text())
+        # result["IALP"] = {}
+        # result["IALP"]["window"] = int(self.IALP_param.duration_edit.text())
+        # result["IALP"]["delay"] = int(self.IALP_param.delay_edit.text())
+        # result["RNFS"] = {}
+        # result["RNFS"]["window"] = int(self.RNFS_param.duration_edit.text())
+        # result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
+        # result["ALP_Timeout"] = {}
+        # result["ALP_Timeout"]["window"] = int(self.ALP_Timeout_param.duration_edit.text())
+        # result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
         result["distance_metric"] = self.distance_metric_combo.currentText()
         
         return result
@@ -188,6 +251,7 @@ class ClusteringToolWidget(QWidget):
         super().__init__(parent)
         self.all_cells = None
         self.event_defaults = event_defaults
+        self.events = list(event_defaults.keys())[:-1]
         self.main_ref = main_ref
 
         label_cluster_select = QLabel()
@@ -210,27 +274,40 @@ class ClusteringToolWidget(QWidget):
         self.button_delete.setStyleSheet("background-color : red")
         self.button_delete.clicked.connect(self.delete)
 
-        self.ALP_chkbox = QCheckBox("ALP")
-        self.ALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_chkbox, self.ALP_param))
-        self.ALP_chkbox.stateChanged.connect(self.release_button)
-        self.IALP_chkbox = QCheckBox("IALP")
-        self.IALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.IALP_chkbox, self.IALP_param))
-        self.IALP_chkbox.stateChanged.connect(self.release_button)
-        self.RNFS_chkbox = QCheckBox("RNFS")
-        self.RNFS_chkbox.stateChanged.connect(lambda: hide_unhide(self.RNFS_chkbox, self.RNFS_param))
-        self.RNFS_chkbox.stateChanged.connect(self.release_button)
-        self.ALP_Timeout_chkbox = QCheckBox("ALP_Timeout")
-        self.ALP_Timeout_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_Timeout_chkbox, self.ALP_Timeout_param))
-        self.ALP_Timeout_chkbox.stateChanged.connect(self.release_button)
 
-        self.ALP_param = ParamWidget("ALP", self.event_defaults)
-        self.ALP_param.setEnabled(False)
-        self.IALP_param = ParamWidget("IALP", self.event_defaults)
-        self.IALP_param.setEnabled(False)
-        self.RNFS_param = ParamWidget("RNFS", self.event_defaults)
-        self.RNFS_param.setEnabled(False)
-        self.ALP_Timeout_param = ParamWidget("ALP_Timeout", self.event_defaults)
-        self.ALP_Timeout_param.setEnabled(False)
+        self.event_chkboxes = []
+        for idx,i in enumerate(self.events):
+            single_chkbox = QCheckBox(i)
+            single_chkbox.stateChanged.connect(lambda: hide_unhide(self.event_chkboxes[idx],self.event_param[idx]))
+            single_chkbox.stateChanged.connect(self.release_button)
+            self.event_chkboxes.append(single_chkbox)
+
+        # self.ALP_chkbox = QCheckBox("ALP")
+        # self.ALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_chkbox, self.ALP_param))
+        # self.ALP_chkbox.stateChanged.connect(self.release_button)
+        # self.IALP_chkbox = QCheckBox("IALP")
+        # self.IALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.IALP_chkbox, self.IALP_param))
+        # self.IALP_chkbox.stateChanged.connect(self.release_button)
+        # self.RNFS_chkbox = QCheckBox("RNFS")
+        # self.RNFS_chkbox.stateChanged.connect(lambda: hide_unhide(self.RNFS_chkbox, self.RNFS_param))
+        # self.RNFS_chkbox.stateChanged.connect(self.release_button)
+        # self.ALP_Timeout_chkbox = QCheckBox("ALP_Timeout")
+        # self.ALP_Timeout_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_Timeout_chkbox, self.ALP_Timeout_param))
+        # self.ALP_Timeout_chkbox.stateChanged.connect(self.release_button)
+
+        self.event_param = []
+        for i in self.events:
+            single_param = ParamWidget(i, self.event_defaults)
+            single_param.setEnabled(False)
+            self.event_param.append(single_param)
+        # self.ALP_param = ParamWidget("ALP", self.event_defaults)
+        # self.ALP_param.setEnabled(False)
+        # self.IALP_param = ParamWidget("IALP", self.event_defaults)
+        # self.IALP_param.setEnabled(False)
+        # self.RNFS_param = ParamWidget("RNFS", self.event_defaults)
+        # self.RNFS_param.setEnabled(False)
+        # self.ALP_Timeout_param = ParamWidget("ALP_Timeout", self.event_defaults)
+        # self.ALP_Timeout_param.setEnabled(False)
 
         distance_metric_label = QLabel("Distance Metric")
         self.distance_metric_combo = QComboBox()
@@ -249,24 +326,31 @@ class ClusteringToolWidget(QWidget):
         self.outlier_return_button = QPushButton("Return Outlier")
         self.outlier_return_button.clicked.connect(self.remove_outlier)
 
-
+        # to do
         layout_sub = QVBoxLayout()
         layout_sub.addStretch()
         layout_sub.setDirection(3)
-        ALP_layout = QVBoxLayout()
-        IALP_layout = QVBoxLayout()
-        RNFS_layout = QVBoxLayout()
-        ALP_Timeout_layout = QVBoxLayout()
+        event_layout = []
+
+        for idx in range(len(self.events)):
+            single_layout = QVBoxLayout()
+            single_layout.addWidget(self.event_chkboxes[idx])
+            single_layout.addWidget(self.event_param[idx])
+            event_layout.append(single_layout)
+        # ALP_layout = QVBoxLayout()
+        # IALP_layout = QVBoxLayout()
+        # RNFS_layout = QVBoxLayout()
+        # ALP_Timeout_layout = QVBoxLayout()
         distance_metric_layout = QVBoxLayout()
 
-        ALP_layout.addWidget(self.ALP_chkbox)
-        ALP_layout.addWidget(self.ALP_param)
-        IALP_layout.addWidget(self.IALP_chkbox)
-        IALP_layout.addWidget(self.IALP_param)
-        RNFS_layout.addWidget(self.RNFS_chkbox)
-        RNFS_layout.addWidget(self.RNFS_param)
-        ALP_Timeout_layout.addWidget(self.ALP_Timeout_chkbox)
-        ALP_Timeout_layout.addWidget(self.ALP_Timeout_param)
+        # ALP_layout.addWidget(self.ALP_chkbox)
+        # ALP_layout.addWidget(self.ALP_param)
+        # IALP_layout.addWidget(self.IALP_chkbox)
+        # IALP_layout.addWidget(self.IALP_param)
+        # RNFS_layout.addWidget(self.RNFS_chkbox)
+        # RNFS_layout.addWidget(self.RNFS_param)
+        # ALP_Timeout_layout.addWidget(self.ALP_Timeout_chkbox)
+        # ALP_Timeout_layout.addWidget(self.ALP_Timeout_param)
         distance_metric_layout.addWidget(distance_metric_label)
         distance_metric_layout.addWidget(self.distance_metric_combo)
 
@@ -285,10 +369,12 @@ class ClusteringToolWidget(QWidget):
         layout_sub.addWidget(self.outlier_input_button)
         layout_sub.addWidget(self.outlier_input)
         layout_sub.addWidget(self.outlier_input_label)
-        layout_sub.addLayout(ALP_Timeout_layout)
-        layout_sub.addLayout(RNFS_layout)
-        layout_sub.addLayout(IALP_layout)
-        layout_sub.addLayout(ALP_layout)
+        for i in event_layout:
+            layout_sub.addLayout(i)
+        # layout_sub.addLayout(ALP_Timeout_layout)
+        # layout_sub.addLayout(RNFS_layout)
+        # layout_sub.addLayout(IALP_layout)
+        # layout_sub.addLayout(ALP_layout)
         layout_sub.addWidget(self.cluster_select)
         layout_sub.addWidget(label_cluster_select)
         layout_sub.addLayout(distance_metric_layout)
@@ -325,21 +411,25 @@ class ClusteringToolWidget(QWidget):
 
     def update_defaults(self, event_defaults):
         self.event_defaults = event_defaults
-        if not self.ALP_chkbox.isChecked():
-            self.ALP_param.duration_edit.setText(str(event_defaults["ALP"]["window"]))
-            self.ALP_param.delay_edit.setText(str(event_defaults["ALP"]["delay"]))
-        if not self.IALP_chkbox.isChecked():
-            self.IALP_chkbox.setChecked(True)
-            self.IALP_param.duration_edit.setText(str(event_defaults["IALP"]["window"]))
-            self.IALP_param.delay_edit.setText(str(event_defaults["IALP"]["delay"]))
-        if not self.RNFS_chkbox.isChecked():
-            self.RNFS_chkbox.setChecked(True)
-            self.RNFS_param.duration_edit.setText(str(event_defaults["RNFS"]["window"]))
-            self.RNFS_param.delay_edit.setText(str(event_defaults["RNFS"]["delay"]))
-        if not self.ALP_Timeout_chkbox.isChecked():
-            self.ALP_Timeout_chkbox.setChecked(True)
-            self.ALP_Timeout_param.duration_edit.setText(str(event_defaults["ALP_Timeout"]["window"]))
-            self.ALP_Timeout_param.delay_edit.setText(str(event_defaults["ALP_Timeout"]["delay"]))
+        for idx,i in enumerate(self.events):
+            if not self.event_chkboxes[idx].isChecked():
+                self.event_param[idx].duration_edit.setText(str(event_defaults[i]["window"]))
+                self.event_param[idx].delay_edit.setText(str(event_defaults[i]["delay"]))
+        # if not self.ALP_chkbox.isChecked():
+        #     self.ALP_param.duration_edit.setText(str(event_defaults["ALP"]["window"]))
+        #     self.ALP_param.delay_edit.setText(str(event_defaults["ALP"]["delay"]))
+        # if not self.IALP_chkbox.isChecked():
+        #     self.IALP_chkbox.setChecked(True)
+        #     self.IALP_param.duration_edit.setText(str(event_defaults["IALP"]["window"]))
+        #     self.IALP_param.delay_edit.setText(str(event_defaults["IALP"]["delay"]))
+        # if not self.RNFS_chkbox.isChecked():
+        #     self.RNFS_chkbox.setChecked(True)
+        #     self.RNFS_param.duration_edit.setText(str(event_defaults["RNFS"]["window"]))
+        #     self.RNFS_param.delay_edit.setText(str(event_defaults["RNFS"]["delay"]))
+        # if not self.ALP_Timeout_chkbox.isChecked():
+        #     self.ALP_Timeout_chkbox.setChecked(True)
+        #     self.ALP_Timeout_param.duration_edit.setText(str(event_defaults["ALP_Timeout"]["window"]))
+        #     self.ALP_Timeout_param.delay_edit.setText(str(event_defaults["ALP_Timeout"]["delay"]))
         self.distance_metric_combo.setCurrentIndex(self.distance_metric_combo.findText(event_defaults["distance_metric"]))
 
 
@@ -358,31 +448,40 @@ class ClusteringToolWidget(QWidget):
             self.outlier_combo_box.removeItem(self.outlier_combo_box.currentIndex())
 
 
-
+    # double check
     def release_button(self):
-        if self.ALP_chkbox.isChecked() or self.IALP_chkbox.isChecked() or self.RNFS_chkbox.isChecked() or self.ALP_Timeout_chkbox.isChecked():
-            self.btn_update.setEnabled(True)
-        else:
-            self.btn_update.setEnabled(False)
+        self.btn_update.setEnabled(False)
+        for i in self.event_chkboxes:
+            if i.isChecked():
+                self.btn_update.setEnabled(True)
+        # if self.ALP_chkbox.isChecked() or self.IALP_chkbox.isChecked() or self.RNFS_chkbox.isChecked() or self.ALP_Timeout_chkbox.isChecked():
+        #     self.btn_update.setEnabled(True)
+        # else:
+        #     self.btn_update.setEnabled(False)
 
     def get_result(self):
         result = {}
-        if self.ALP_chkbox.isChecked():
-            result["ALP"] = {}
-            result["ALP"]["window"] = int(self.ALP_param.duration_edit.text())
-            result["ALP"]["delay"] = int(self.ALP_param.delay_edit.text())
-        if self.IALP_chkbox.isChecked():
-            result["IALP"] = {}
-            result["IALP"]["window"] = int(self.IALP_param.duration_edit.text())
-            result["IALP"]["delay"] = int(self.IALP_param.delay_edit.text())
-        if self.RNFS_chkbox.isChecked():
-            result["RNFS"] = {}
-            result["RNFS"]["window"] = int(self.RNFS_param.duration_edit.text())
-            result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
-        if self.ALP_Timeout_chkbox.isChecked():
-            result["ALP_Timeout"] = {}
-            result["ALP_Timeout"]["window"] = int(self.ALP_Timeout_param.duration_edit.text())
-            result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
+        for idx, i in self.events:
+            if self.event_chkboxes[idx].isChecked():
+                result[i] = {}
+                result[i]["window"] = int(self.event_param[i].duration_edit.text())
+                result[i]["delay"] = int(self.event_param[i].delay_edit.text())
+        # if self.ALP_chkbox.isChecked():
+        #     result["ALP"] = {}
+        #     result["ALP"]["window"] = int(self.ALP_param.duration_edit.text())
+        #     result["ALP"]["delay"] = int(self.ALP_param.delay_edit.text())
+        # if self.IALP_chkbox.isChecked():
+        #     result["IALP"] = {}
+        #     result["IALP"]["window"] = int(self.IALP_param.duration_edit.text())
+        #     result["IALP"]["delay"] = int(self.IALP_param.delay_edit.text())
+        # if self.RNFS_chkbox.isChecked():
+        #     result["RNFS"] = {}
+        #     result["RNFS"]["window"] = int(self.RNFS_param.duration_edit.text())
+        #     result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
+        # if self.ALP_Timeout_chkbox.isChecked():
+        #     result["ALP_Timeout"] = {}
+        #     result["ALP_Timeout"]["window"] = int(self.ALP_Timeout_param.duration_edit.text())
+        #     result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
         result["no_of_clusters"] = int(self.cluster_select.currentText())
         result["outliers"] = [int(self.outlier_combo_box.itemText(i)) for i in range(self.outlier_combo_box.count())]
         result["distance_metric"] = self.distance_metric_combo.currentText()
@@ -399,38 +498,47 @@ class ClusteringToolWidget(QWidget):
     def update(self, result, cell_list):
         self.all_cells = cell_list
         self.outlier_combo_box.clear()
-        if "ALP" in result:
-            self.ALP_chkbox.setChecked(True)
-            self.ALP_param.duration_edit.setText(str(result["ALP"]["window"]))
-            self.ALP_param.delay_edit.setText(str(result["ALP"]["delay"]))
-        else:
-            self.ALP_chkbox.setChecked(False)
-            self.ALP_param.duration_edit.setText(str(self.event_defaults["ALP"]["window"]))
-            self.ALP_param.delay_edit.setText(str(self.event_defaults["ALP"]["delay"]))
-        if "IALP" in result:
-            self.IALP_chkbox.setChecked(True)
-            self.IALP_param.duration_edit.setText(str(result["IALP"]["window"]))
-            self.IALP_param.delay_edit.setText(str(result["IALP"]["delay"]))
-        else:
-            self.IALP_chkbox.setChecked(False)
-            self.IALP_param.duration_edit.setText(str(self.event_defaults["IALP"]["window"]))
-            self.IALP_param.delay_edit.setText(str(self.event_defaults["IALP"]["delay"]))
-        if "RNFS" in result:
-            self.RNFS_chkbox.setChecked(True)
-            self.RNFS_param.duration_edit.setText(str(result["RNFS"]["window"]))
-            self.RNFS_param.delay_edit.setText(str(result["RNFS"]["delay"]))
-        else:
-            self.RNFS_chkbox.setChecked(False)
-            self.RNFS_param.duration_edit.setText(str(self.event_defaults["RNFS"]["window"]))
-            self.RNFS_param.delay_edit.setText(str(self.event_defaults["RNFS"]["delay"]))
-        if "ALP_Timeout" in result:
-            self.ALP_Timeout_chkbox.setChecked(True)
-            self.ALP_Timeout_param.duration_edit.setText(str(result["ALP_Timeout"]["window"]))
-            self.ALP_Timeout_param.delay_edit.setText(str(result["ALP_Timeout"]["delay"]))
-        else:
-            self.ALP_Timeout_chkbox.setChecked(False)
-            self.ALP_Timeout_param.duration_edit.setText(str(self.event_defaults["ALP_Timeout"]["window"]))
-            self.ALP_Timeout_param.delay_edit.setText(str(self.event_defaults["ALP_Timeout"]["delay"]))
+        for idx,i in enumerate(self.events):
+            if i in result:
+                self.event_chkboxes[idx].setChecked(True)
+                self.event_param[idx].duration_edit.setText(str(result[i]["window"]))
+                self.event_param[idx].delay_edit.setText(str(result[i]["delay"]))
+            else:
+                self.event_chkboxes[idx].setChecked(False)
+                self.event_param[idx].duration_edit.setText(str(result[i]["window"]))
+                self.event_param[idx].delay_edit.setText(str(result[i]["delay"]))
+        # if "ALP" in result:
+        #     self.ALP_chkbox.setChecked(True)
+        #     self.ALP_param.duration_edit.setText(str(result["ALP"]["window"]))
+        #     self.ALP_param.delay_edit.setText(str(result["ALP"]["delay"]))
+        # else:
+        #     self.ALP_chkbox.setChecked(False)
+        #     self.ALP_param.duration_edit.setText(str(self.event_defaults["ALP"]["window"]))
+        #     self.ALP_param.delay_edit.setText(str(self.event_defaults["ALP"]["delay"]))
+        # if "IALP" in result:
+        #     self.IALP_chkbox.setChecked(True)
+        #     self.IALP_param.duration_edit.setText(str(result["IALP"]["window"]))
+        #     self.IALP_param.delay_edit.setText(str(result["IALP"]["delay"]))
+        # else:
+        #     self.IALP_chkbox.setChecked(False)
+        #     self.IALP_param.duration_edit.setText(str(self.event_defaults["IALP"]["window"]))
+        #     self.IALP_param.delay_edit.setText(str(self.event_defaults["IALP"]["delay"]))
+        # if "RNFS" in result:
+        #     self.RNFS_chkbox.setChecked(True)
+        #     self.RNFS_param.duration_edit.setText(str(result["RNFS"]["window"]))
+        #     self.RNFS_param.delay_edit.setText(str(result["RNFS"]["delay"]))
+        # else:
+        #     self.RNFS_chkbox.setChecked(False)
+        #     self.RNFS_param.duration_edit.setText(str(self.event_defaults["RNFS"]["window"]))
+        #     self.RNFS_param.delay_edit.setText(str(self.event_defaults["RNFS"]["delay"]))
+        # if "ALP_Timeout" in result:
+        #     self.ALP_Timeout_chkbox.setChecked(True)
+        #     self.ALP_Timeout_param.duration_edit.setText(str(result["ALP_Timeout"]["window"]))
+        #     self.ALP_Timeout_param.delay_edit.setText(str(result["ALP_Timeout"]["delay"]))
+        # else:
+        #     self.ALP_Timeout_chkbox.setChecked(False)
+        #     self.ALP_Timeout_param.duration_edit.setText(str(self.event_defaults["ALP_Timeout"]["window"]))
+        #     self.ALP_Timeout_param.delay_edit.setText(str(self.event_defaults["ALP_Timeout"]["delay"]))
         if "outliers" in result:
             for outlier in result["outliers"]:
                 self.outlier_combo_box.addItem(str(outlier))
@@ -451,6 +559,14 @@ class GAToolWidget(QWidget):
         layout_max_gen.addWidget(label_max_gen)
         layout_max_gen.addWidget(self.input_max_gen)
 
+        #Population 
+        label_population = QLabel("Population:")
+        self.input_population = QLineEdit("20")
+        self.input_population.setValidator(onlyInt)
+        layout_population = QHBoxLayout()
+        layout_population.addWidget(label_population)
+        layout_population.addWidget(self.input_population)
+
         # Crossover Rate
         label_cross_rate = QLabel("Crossover Rate:")
         self.input_cross_rate = QLineEdit("0.5")
@@ -469,12 +585,37 @@ class GAToolWidget(QWidget):
         layout_mut_rate.addWidget(self.input_mut_rate)
 
         # Event Type
+        event_list = ["ALP", "IALP", "RNFS", "ALP_Timeout"]
         label_event_type = QLabel("Event Type:")
         self.dropdown_event_type = QComboBox()
-        self.dropdown_event_type.addItems(["ALP", "IALP", "RNFS", "ALP_Timeout"])
+        self.dropdown_event_type.addItems(event_list)
         layout_event_type = QHBoxLayout()
         layout_event_type.addWidget(label_event_type)
         layout_event_type.addWidget(self.dropdown_event_type)
+
+        # Value Type
+        label_value_type = QLabel("Value Type:")
+        self.dropdown_value_type = QComboBox()
+        self.dropdown_value_type.addItems(["C", "S", "C_filtered"])
+        layout_value_type = QHBoxLayout()
+        layout_value_type.addWidget(label_value_type)
+        layout_value_type.addWidget(self.dropdown_value_type)
+
+        # Feature Vector
+        label_feature_type = QLabel("Feature Type:")
+        self.dropdown_feature_type = QComboBox()
+        self.dropdown_feature_type.addItems(["Signal","AUC", "Frequency"])
+        layout_feature_type = QHBoxLayout()
+        layout_feature_type.addWidget(label_feature_type)
+        layout_feature_type.addWidget(self.dropdown_feature_type)
+        
+        # Log File
+        label_file_name = QLabel("Log File:")
+        self.input_log_file_name = QLineEdit("log.txt")
+        layout_log_file = QHBoxLayout()
+        layout_log_file.addWidget(label_file_name)
+        layout_log_file.addWidget(self.input_log_file_name)
+    
 
         btn_start = QPushButton("Start Genetic Algorithm")
         btn_start.clicked.connect(self.run_ga)
@@ -483,20 +624,28 @@ class GAToolWidget(QWidget):
         layout.addStretch()
         layout.setDirection(3)
         layout.addWidget(btn_start)
+        layout.addLayout(layout_log_file)
+        layout.addLayout(layout_feature_type)
+        layout.addLayout(layout_value_type)
         layout.addLayout(layout_event_type)
         layout.addLayout(layout_mut_rate)
         layout.addLayout(layout_cross_rate)
+        layout.addLayout(layout_population)
         layout.addLayout(layout_max_gen)
         self.setLayout(layout)
 
     def run_ga(self):
         print("Started GA")
         max_gen = int(self.input_max_gen.text())
+        population = int(self.input_population.text())
         cross_rate = float(self.input_cross_rate.text())
         mut_rate = float(self.input_mut_rate.text())
         event_type = self.dropdown_event_type.currentText()
+        value_type = self.dropdown_value_type.currentText()
+        feature_type = self.dropdown_feature_type.currentText()     
 
-        ga = Genetic_Algorithm(None, max_gen, cross_rate, mut_rate, event_type)
+        ga = Genetic_Algorithm(None, max_gen, population, cross_rate, mut_rate, event_type,value_type, feature_type)
+        ga.addLog(self.input_log_file_name.text())
         ga.execute()
         self.main_ref.start_ga(ga)
 

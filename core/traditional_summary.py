@@ -1,5 +1,7 @@
+import sys
+sys.path.insert(0, ".")
 import pandas as pd
-from core.backend import DataInstance
+from .backend import DataInstance
 import numpy as np
 
 

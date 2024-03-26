@@ -263,20 +263,20 @@ class Event:
         # duration is in seconds convert to ms
         duration *= 1000
         delay *= 1000
-        start = self.data['timestamp(ms)'][event_frame]
-        max_length = len(self.data['timestamp(ms)'])
+        start = self.data['Time Stamp (ms)'][event_frame]
+        max_length = len(self.data['Time Stamp (ms)'])
         if delay > 0:
             frame_gap = 1
-            while self.data['timestamp(ms)'][event_frame + frame_gap] - self.data['timestamp(ms)'][event_frame] < delay:
+            while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < delay:
                 frame_gap += 1
             event_frame += frame_gap
         elif delay < 0:
             frame_gap = -1
-            while self.data['timestamp(ms)'][event_frame + frame_gap] - self.data['timestamp(ms)'][event_frame] > delay and event_frame + frame_gap > 0:
+            while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] > delay and event_frame + frame_gap > 0:
                 frame_gap -= 1
             event_frame += frame_gap
         frame_gap = 1
-        while self.data['timestamp(ms)'][event_frame + frame_gap] - self.data['timestamp(ms)'][event_frame] < duration and event_frame + frame_gap < max_length-1:
+        while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < duration and event_frame + frame_gap < max_length-1:
             frame_gap += 1
         if type in self.data:
             return self.data[type].sel(frame=slice(event_frame, event_frame+frame_gap)) , event_frame,event_frame+frame_gap
@@ -292,12 +292,12 @@ class Event:
         integrity = True
         duration *= 1000
         delay *= 1000
-        start = self.data['timestamp(ms)'][event_frame]
+        start = self.data['Time Stamp (ms)'][event_frame]
         frame_list = []
-        max_length = len(self.data['timestamp(ms)'])
+        max_length = len(self.data['Time Stamp (ms)'])
         if delay > 0:
             frame_gap = 0
-            while self.data['timestamp(ms)'][event_frame + frame_gap] - self.data['timestamp(ms)'][event_frame] < delay:
+            while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < delay:
                 if (event_frame + frame_gap) < (max_length-1): 
                     frame_gap += 1
                 else:
@@ -306,7 +306,7 @@ class Event:
             event_frame += frame_gap
         elif delay < 0:
             frame_gap = 0
-            while self.data['timestamp(ms)'][event_frame + frame_gap] - self.data['timestamp(ms)'][event_frame] > delay:
+            while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] > delay:
                 if(event_frame + frame_gap > 0):
                     frame_gap -= 1
                 else:
@@ -314,15 +314,15 @@ class Event:
                     break
             event_frame += frame_gap
         frame_gap = 0
-        time_flag = self.data['timestamp(ms)'][event_frame]
+        time_flag = self.data['Time Stamp (ms)'][event_frame]
         frame_list.append(event_frame)
-        while self.data['timestamp(ms)'][event_frame + frame_gap] - self.data['timestamp(ms)'][event_frame] < duration and event_frame + frame_gap < max_length-1:
-            if self.data['timestamp(ms)'][event_frame + frame_gap]-time_flag > interval:
-                time_flag = self.data['timestamp(ms)'][event_frame + frame_gap]
+        while self.data['Time Stamp (ms)'][event_frame + frame_gap] - self.data['Time Stamp (ms)'][event_frame] < duration and event_frame + frame_gap < max_length-1:
+            if self.data['Time Stamp (ms)'][event_frame + frame_gap]-time_flag > interval:
+                time_flag = self.data['Time Stamp (ms)'][event_frame + frame_gap]
                 frame_list.append(event_frame + frame_gap)
             frame_gap += 1
         if type in self.data:
-            return self.data[type].sel(frame=frame_list) , event_frame,event_frame + frame_gap, integrity
+            return self.data[type].sel(frame = frame_list) , event_frame,event_frame + frame_gap, integrity
         else:
             print("No %s data found in minian file" % (type))
             return None
@@ -362,6 +362,7 @@ class DataInstance:
         self,
         dpath: str
     ):  
+        self.events_type = ['ALP','IALP','RNFS','ALP_Timeout']
         self.dpath = dpath  
         self.mouseID : str
         self.day : str
@@ -378,7 +379,7 @@ class DataInstance:
         self.no_of_clusters = 4     
         self.distance_metric = 'euclidean'
         self.missed_signals = {}
-
+        self.load_events(self.events_type)
         # Create the default image
         self.clustering_result = {"basic": {"image": np.stack((self.data['A'].sum("unit_id").values,)*3, axis=-1)}}
 
@@ -445,7 +446,7 @@ class DataInstance:
                 self.data[dt] = None
 
         data = open_minian(minian_path)
-        data_types = ['A', 'C', 'S', 'E', 'b', 'f', 'DFF', 'YrA', 'M']
+        data_types = ['A', 'C', 'S', 'E', 'b', 'f', 'DFF', 'YrA', 'M','timestamp(ms)']
         self.dataset = data
         timestamp = behavior_data[["Time Stamp (ms)"]]
         timestamp.index.name = "frame"

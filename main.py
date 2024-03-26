@@ -156,7 +156,7 @@ class MainWindow(QMainWindow):
     def start_ga(self, ga):
         name = "Genetic Algorithm"
         if name not in self.windows:
-            wid = GAWindowWidget(ga)
+            wid = GAWindowWidget(self,ga = ga)
             wid.setWindowTitle(name)
             self.windows[name] = wid
             wid.show()

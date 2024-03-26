@@ -31,7 +31,7 @@ class GAWindowWidget(QWidget):
 
         # Table of top 5 values
         layout_table = QVBoxLayout()
-        label_table = QLabel(f"Top {self.length} Parameters for {ga.event}")
+        label_table = QLabel(f"Top {self.length} Parameters for {ga.event_type}")
         table = QTableWidget()
         table.setRowCount(self.length)
         table.setColumnCount(5)

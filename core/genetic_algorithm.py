@@ -1,4 +1,6 @@
 import numpy as np
+import sys
+sys.path.insert(0, ".")
 from .backend import DataInstance
 from .advanced_summary import advanced
 from .traditional_summary import calculations
@@ -7,7 +9,6 @@ import random
 DNA_PREBINNUM_SIZE = 4
 DNA_POSTBINNUM_SIZE = 4
 DNA_BINSIZE_SIZE = 5
-POPULATION_SIZE = 10
 
 
 DNA_PREBINNUM_BOUND = [0,9]
@@ -22,25 +23,36 @@ class Genetic_Algorithm:
             self,
             mice = None,
             max_generation = 1,
+            population_size = 20,
             cross_rate = 0.5,
             mutation_rate = 0.15,
-            event = 'RNFS'
+            event_type = 'RNFS',
+            value_type = 'C',
+            feature_type = 'AUC'
+            
     ):
         self.mice = mice
         if(mice is None):
             self.mice = self.mice_demo()
         self.max_generation = max_generation
+        self.population_size = population_size
         self.cross_rate = cross_rate
         self.mutation_rate = mutation_rate
-        self.event = event
+        self.event_type = event_type
+        self.feature_type = feature_type
+        self.value_type = value_type
 
     def mice_demo(self):
-        di1= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D1/2023_05_05/11_02_42/Miniscope_2/S4/config.ini",['ALP','IALP','RNFS'] ) # Coke demo
-        di2= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/12.2022_Seventh_group/AA042_D1/2022_12_12/12_35_11/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Saline demo
-        di3= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D6/2023_05_10/09_49_50/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Coke demo
-        di4= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/03.2023_Eighth_group/AA048_D8/2023_03_13/12_27_08/Miniscope_2/S1/config.ini",['ALP','IALP','RNFS'] ) # Saline demo
+        di1= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D1/2023_05_05/11_02_42/Miniscope_2/S4/config.ini") # Coke demo
+        di2= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/12.2022_Seventh_group/AA042_D1/2022_12_12/12_35_11/Miniscope_2/S1/config.ini") # Saline demo
+        di3= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D6/2023_05_10/09_49_50/Miniscope_2/S1/config.ini") # Coke demo
+        di4= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/03.2023_Eighth_group/AA048_D8/2023_03_13/12_27_08/Miniscope_2/S1/config.ini") # Saline demo
         mice = [di1,di2,di3,di4]
         return mice
+    
+    def addLog(self,filename):
+        self.logfile = filename
+        return
 
     def decoded_dna(self, population):
         preBinNum_DNA = population[:, 0 : DNA_PREBINNUM_SIZE]
@@ -65,13 +77,21 @@ class Genetic_Algorithm:
         print(preBinNum)
         print(postBinNum)
         print(binSize)
-        RNFS_time = mice[0].events[self.event].timesteps
+        RNFS_time = mice[0].events[self.event_type].timesteps
         for i in range(len(population)):
-            advanced_calculator = advanced(preBinNum[i],postBinNum[i],binSize[i],mice)
-            score,traces,framelines,labels = advanced_calculator.generate_model()
+            log = open(self.logfile, mode = 'a')
+            log.write('No. '+ str(i)+'\n')
+            log.write('preBinNum: ' + str(preBinNum[i]) + ' postBinNum: ' + str(postBinNum[i]) + ' binSize: ' + str(binSize[i]) +'\n')
+            log.close()
+            advanced_calculator = advanced(preBinNum[i],postBinNum[i],binSize[i],mice,self.event_type,self.value_type,self.feature_type)
+            score,traces,framelines,labels,specifity, sensitivity = advanced_calculator.generate_model(event_type = self.event_type, value_type = self.value_type,feature_type = self.feature_type)
             fitness.append(score)
             all_traces.append(traces)
             all_framelines.append(framelines)
+            log = open(self.logfile, mode = 'a')
+            log.write('Score:' + str(score)+'\n')
+            log.write('Specifity: '+str(specifity)+' Sensitivity: '+ str(sensitivity)+'\n')
+            log.close()
         return np.array(fitness), all_traces, all_framelines
 
     def crossover(self, population, CROSSOVER_RATE=0.8):
@@ -79,7 +99,7 @@ class Genetic_Algorithm:
         for parent1 in population:
             child  = parent1
             if np.random.rand() < CROSSOVER_RATE:
-                parent2 = population[np.random.randint(POPULATION_SIZE)]
+                parent2 = population[np.random.randint(self.population_size)]
                 cross_points = np.random.randint(low=0, high=(DNA_PREBINNUM_SIZE + DNA_POSTBINNUM_SIZE + DNA_BINSIZE_SIZE) * 2)
                 child[cross_points:] = parent2[cross_points:]
             next_generation.append(child)
@@ -105,26 +125,18 @@ class Genetic_Algorithm:
             binSize.insert(0,binSize_input % 2)
             binSize_input = int(binSize_input/2)
         dna = preBinNum + postBinNum + binSize
-        # print(preBinNum)
-        # print(postBinNum)
-        # print(binSize)
         return np.array(dna)
-
-    # def decoded_dna(population):
-    #     preBinNum_dna = population[:,:DNA_PREBINNUM_SIZE]
-    #     postBinNum_dna = population[:,]
-    #     binSize_dna = population[:]
 
         
 
     def select(self, population,fitness):
-        # index = np.random.choice(np.arange(POPULATION_SIZE), size=POPULATION_SIZE, replace=True, p=(fitness) / (fitness.sum()))
-        # print(index)
-        index = np.argsort(fitness)
-        print("1:",index)
+        index = np.random.choice(np.arange(self.population_size), size=self.population_size, replace=True, p=(fitness) / (fitness.sum()))
+        print(index)
+        # index = np.argsort(fitness)
+        # print("1:",index)
         
-        index[0] = index[-1]
-        print("2:",index)
+        # index[0] = index[-1]
+        # print("2:",index)
         return population[index]
         
     def output_results(self, population, fitness,traces, framelines,number:int = 5):
@@ -143,22 +155,36 @@ class Genetic_Algorithm:
         return population[index],fitness[index],f_traces,f_framelines
 
     def execute(self):
-        population = np.random.randint(0,2,(POPULATION_SIZE,DNA_PREBINNUM_SIZE+DNA_POSTBINNUM_SIZE+DNA_BINSIZE_SIZE))
-        for i in range(self.max_generation):
+        population = np.random.randint(0,2,(self.population_size,DNA_PREBINNUM_SIZE+DNA_POSTBINNUM_SIZE+DNA_BINSIZE_SIZE))
+        curve = []
+        var = []
+        log = open(self.logfile,mode = 'a')
+        log.write('Max generation: '+str(self.max_generation)+' Population: '+ str(self.population_size)+'\n')
+        log.close()
+        for i in range(self.max_generation):         
             print("Generation: ",i)
             print("Before:------")
             print(population)
+            log = open(self.logfile, mode = 'a')
+            log.write('Generation: '+ str(i)+'\n')
+            log.close()
             population = self.crossover(population, self.cross_rate)
-            for j in range(POPULATION_SIZE):
+            for j in range(self.population_size):
                 population[j] = self.mutation(population[j],self.mutation_rate)
             print("After:------------")
             print(population)
             fitness, traces,framelines = self.get_fitness(population,self.mice)
+            curve.append(np.mean(fitness))
+            var.append(np.var(fitness))
             population = self.select(population,fitness)
+        log = open(self.logfile, mode = 'a')
+        log.write('Average score:' + str(curve)+'\n')
+        log.write('var:' + str(var)+'\n')
+        log.close()
         examples = []
         xvalues = []
         AUCs = []
-        good_number = min(5, POPULATION_SIZE)
+        good_number = min(5, self.population_size)
         number_of_samples = 20
         best_windows, best_fitness,best_traces,best_frameline = self.output_results(population,fitness,traces,framelines,good_number)
         preBinNum,postBinNum,binSize = self.decoded_dna(best_windows)
@@ -218,3 +244,10 @@ class Genetic_Algorithm:
     '''
     time stamp events 
     '''
+
+
+
+# todo
+# save as file
+# specifity = (number of true negatives)/(number of true negatives+number of false positive)
+# sensitivity = (number of true positives)/(number of true positives + number of false negatives)
