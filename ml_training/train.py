@@ -1,6 +1,6 @@
-from ml_training.dataset import CNNDataset
+from ml_training.dataset import (GRUDataset, TestDataset, ValDataset)
 from ml_training.model import GRU
-import ml_training.config
+from ml_training import config
 from torch.nn import BCEWithLogitsLoss
 from torch.optim import Adam
 from torch.utils.data import DataLoader
@@ -8,7 +8,6 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import torch
 import time
-from torchvision import transforms
 import numpy as np
 from sklearn.metrics import f1_score, roc_auc_score, roc_curve, precision_score, recall_score, confusion_matrix, accuracy_score, ConfusionMatrixDisplay
 from sklearn.model_selection import train_test_split
@@ -16,21 +15,12 @@ from sklearn.model_selection import train_test_split
 def train(): 
 	# load the image and mask filepaths in a sorted manner
 	path = config.DATASET_PATH
-	
-
-	# Train test split
-	train_normal_paths, test_normal_paths = train_test_split(train_normal_paths, test_size=config.TEST_SIZE, random_state=42)
-	train_pneumonia_paths, test_pneumonia_paths = train_test_split(train_pneumonia_paths, test_size=config.TEST_SIZE, random_state=42)
-
-	# Train val split
-	train_normal_paths, val_normal_paths = train_test_split(train_normal_paths, test_size=config.VAL_SIZE, random_state=42)
-	train_pneumonia_paths, val_pneumonia_paths = train_test_split(train_pneumonia_paths, test_size=config.VAL_SIZE, random_state=42)
-
 
 	# create the train and test datasets
-	trainDS = CNNDataset(normalPaths=train_normal_paths, pneumoniaPaths=train_pneumonia_paths, transforms=transforms, subsample=True)
-	valDS = CNNDataset(normalPaths=val_normal_paths, pneumoniaPaths=val_pneumonia_paths, transforms=transforms)
-	testDS = CNNDataset(normalPaths=test_normal_paths, pneumoniaPaths=test_pneumonia_paths, transforms=transforms)
+	trainDS = GRUDataset(normalPaths=path, test_split=config.TEST_SIZE,
+					     val_split=config.VAL_SIZE, section_len=config.SECTION_LEN)
+	valDS = ValDataset(data = trainDS.get_data(), indices=trainDS.val_indices, unit_ids=trainDS.unit_ids)
+	testDS = TestDataset(data=trainDS.get_data(), unit_ids=trainDS.test_unit_ids)
 	# create the training and test data loaders
 	trainLoader = DataLoader(trainDS, shuffle=True,
 		batch_size=config.BATCH_SIZE, pin_memory=config.PIN_MEMORY,
@@ -49,48 +39,64 @@ def train():
 	lossFunc = BCEWithLogitsLoss()
 	opt = Adam(gru.parameters(), lr=config.INIT_LR)
 	# calculate steps per epoch for training and validation set
-	trainSteps = len(trainDS) // config.BATCH_SIZE
-	valSteps = np.max([len(valDS) // config.BATCH_SIZE, 1])
+	trainSteps = len(trainDS) // config.BATCH_SIZE * len(trainDS.unit_ids)
+	valSteps = np.max([len(valDS) // config.BATCH_SIZE * len(trainDS.unit_ids), 1])
 	# initialize a dictionary to store training history
 	H = {"train_loss": [], "val_loss": []}
 
 	# loop over epochs
 	print("[INFO] training the network...")
 	startTime = time.time()
+	"""
+	Due to the way we have set up our dataset, we have both a small and large epoch. The small epoch is per cell and the large epoch is per dataset.
+	This is necessary as we need to save the hidden states on each intermediate pass
+	"""
 	for e in tqdm(range(config.NUM_EPOCHS)):
-		# set the model in training mode
-		gru.train()
 		# initialize the total training and validation loss
 		totalTrainLoss = 0
 		totalValLoss = 0
-		# loop over the training set
-		for (i, (x, y)) in enumerate(tqdm(trainLoader)):
-			# send the input to the device
-			(x, y) = (x.to(config.DEVICE), y.to(config.DEVICE))
-			# perform a forward pass and calculate the training loss
-			pred = gru(x)
-			y = y.unsqueeze(1)
-			loss = lossFunc(pred, y)
-			# first, zero out any previously accumulated gradients, then
-			# perform backpropagation, and then update model parameters
-			opt.zero_grad()
-			loss.backward()
-			opt.step()
-			# add the loss to the total training loss so far
-			totalTrainLoss += loss
-		trainLoader.dataset.random_subsample()
+		for u in range(trainDS.unit_ids):
+			trainDS.small_epoch = u
+			# We need to get the local hidden states for the current unit
+			with torch.no_grad():
+				gru.eval()
+				sample = trainDS.get_current_sample()
+				trainDS.hidden_states = gru.forward_hidden(sample)
+
+			# set the model in training mode
+			gru.train()
+			# loop over the training set
+			for (i, (x, y)) in enumerate(tqdm(trainLoader), leave=False):
+				# send the input to the device
+				(x, y) = (x.to(config.DEVICE), y.to(config.DEVICE))
+				# perform a forward pass and calculate the training loss
+				pred = gru(x)
+				loss = lossFunc(pred, y)
+				# first, zero out any previously accumulated gradients, then
+				# perform backpropagation, and then update model parameters
+				opt.zero_grad()
+				loss.backward()
+				opt.step()
+				# add the loss to the total training loss so far
+				totalTrainLoss += loss
+			trainLoader.dataset.random_subsample()
+		
 		# switch off autograd
 		with torch.no_grad():
 			# set the model in evaluation mode
 			gru.eval()
-			# loop over the validation set
-			for (x, y) in valLoader:
-				# send the input to the device
-				(x, y) = (x.to(config.DEVICE), y.to(config.DEVICE))
-				# make the predictions and calculate the validation loss
-				pred = gru(x)
-				y = y.unsqueeze(1)
-				totalValLoss += lossFunc(pred, y)
+			for u in tqdm(range(trainDS.unit_ids), leave=False):
+				valDS.small_epoch = u
+				sample = valDS.get_current_sample()
+				trainDS.hidden_states = gru.forward_hidden(sample)
+				# loop over the validation set
+				for (x, y) in valLoader:
+					# send the input to the device
+					(x, y) = (x.to(config.DEVICE), y.to(config.DEVICE))
+					# make the predictions and calculate the validation loss
+					pred = gru(x)
+					y = y.unsqueeze(1)
+					totalValLoss += lossFunc(pred, y)
 		# calculate the average training and validation loss
 		avgTrainLoss = totalTrainLoss / trainSteps
 		avgValLoss = totalValLoss / valSteps
@@ -101,6 +107,8 @@ def train():
 		print("[INFO] EPOCH: {}/{}".format(e + 1, config.NUM_EPOCHS))
 		print("Train loss: {:.6f}, Val loss: {:.4f}".format(
 			avgTrainLoss, avgValLoss))
+		
+	
 	# display the total time needed to perform the training
 	endTime = time.time()
 	print("[INFO] total time taken to train the model: {:.2f}s".format(

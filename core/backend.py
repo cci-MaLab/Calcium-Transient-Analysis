@@ -17,7 +17,7 @@ from dask.diagnostics import ProgressBar
 
 from core.caiman_utils import detrend_df_f, minian_to_caiman
 
-from scipy.signal import welch
+from scipy.signal import welch, savgol_filter
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from scipy.ndimage.measurements import center_of_mass
 from skimage.measure import find_contours
@@ -380,6 +380,8 @@ class DataInstance:
         self.distance_metric = 'euclidean'
         self.missed_signals = {}
         self.load_events(self.events_type)
+        self.noise_values = {}
+
         # Create the default image
         self.clustering_result = {"basic": {"image": np.stack((self.data['A'].sum("unit_id").values,)*3, axis=-1)}}
 
@@ -408,7 +410,10 @@ class DataInstance:
 
     def parse_file(self,dpath):# set up configure file
         config = configparser.ConfigParser()
-        config.read(dpath)
+        try:
+            config.read(dpath)
+        except:
+            print("ERROR: ini file is either not in the correct format or empty, did you make sure to save the ini file?")
         if len(config.sections())==1 and config.sections()[0]=='Session_Info':
             return config['Session_Info']['mouseID'],config['Session_Info']['day'],config['Session_Info']['session'],config['Session_Info']['group'], config['Session_Info']['data_path'], config['Session_Info']['behavior_path']
         else:
@@ -623,10 +628,73 @@ class DataInstance:
             mad = np.nanmedian(abs(dff - median))
         return (1 / 0.6745) * mad
     
-    def get_zscore(self, id):
+    def get_savgol(self, id, params={}):
+        window_length = params.get("win_len", 10)
+        poly_order = params.get("poly_order", 2)
+        deriv = params.get("deriv", 0)
+        delta = params.get("delta", 1.0)
+        mode = params.get("mode", "interp")
+
+
         data = self.data["DFF"].sel(unit_id=id).values
-        mad = self.get_mad(id)
-        return (data - np.nanmedian(data)) / mad
+        savgol_data = savgol_filter(data, window_length, poly_order, deriv=deriv, delta=delta, mode=mode)
+        return savgol_data
+    
+    def get_noise(self, savgol_data, id, params={}):
+        """
+        Noise will be estimated by taking the absolute value difference between the dff data and savgol_smoothed signal.
+        The noise will be then estimated with a rolling window approach where the mean, median or maximum value will be taken.
+        """
+        noise_type = params.get("type", "Mean")
+        win_len = params.get("win_len", 10)
+        cap = params.get("cap", 0.01)
+
+        if id in self.noise_values:
+            param = noise_type + str(win_len)
+            if param in self.noise_values[id]:
+                return self.noise_values[id][param]
+            else:
+                self.noise_values[id] = {}
+        
+        dff = self.data["DFF"].sel(unit_id=id).values
+        noise = abs(dff - savgol_data)
+        if noise_type == "Mean":
+            noise = np.convolve(noise, np.ones(win_len), 'same') / win_len
+        elif noise_type == "Median":
+            noise = self.rolling(noise, win_len, "median")
+        elif noise_type == "Max":
+            noise = self.rolling(noise, win_len, "max")
+
+        noise[noise < cap] = cap
+        # May be expensive to compute so save in noise_values
+        if id not in self.noise_values:
+            self.noise_values[id] = {}
+        self.noise_values[id][noise_type + str(win_len)] = noise
+        
+        return noise
+    
+    def get_SNR(self, savgol_data, noise):
+        """
+        We will simply calculate the ratio. However, we will need to make sure that the noise is not 0.
+        Any 0 value will be replaced with the lowest non-zero value.
+        """
+        # First check if the noise is 0
+        if noise.sum() == 0:
+            print("ERROR: Noise is 0")
+            return noise # Return the noise as the SNR to indicate some sort of error
+        
+        snr = np.abs(savgol_data) / noise
+        # Normalize it so that the SNR max is the savgol_data max
+        return snr / snr.max() * savgol_data.max()
+
+
+    def rolling(self, data, window, rolling_type="median"):
+        # Use the pd.Series approach to calculate the rolling window
+        s = pd.Series(data)
+        if rolling_type == "median":
+            return s.rolling(window, center=True, min_periods=1).median().to_numpy()
+        elif rolling_type == "max":
+            return s.rolling(window, center=True, min_periods=1).max().to_numpy()
     
     def get_transient_frames(self):
         '''

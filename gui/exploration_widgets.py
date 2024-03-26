@@ -4,9 +4,9 @@ The following file will be used for doing a deeper dive into the selected sessio
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAction, QStyle, 
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
                             QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar, QCheckBox,
-                            QTextEdit)
+                            QTextEdit, QComboBox, QGraphicsTextItem)
 from PyQt5.QtCore import (Qt, QTimer)
-from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QPen, QColor)
+from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont)
 from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem)
 import pyqtgraph as pg
 import numpy as np
@@ -31,6 +31,9 @@ class ExplorationWidget(QWidget):
         self.prev_video_tab_idx = 0
         self.show_justification = False
         self.rejected_justification = self.session.load_justifications()
+        self.savgol_params = {}
+        self.noise_params = {}
+        self.hovered_cells = {} # id, item
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -126,14 +129,13 @@ class ExplorationWidget(QWidget):
         self.btn_justification_start.setEnabled(False)
         self.btn_justification_start.clicked.connect(self.start_justification)
         self.btn_justification_save = QPushButton("Save")
-        self.btn_justification_save.clicked.connect(lambda: self.session.save_justifications(self.rejected_justification))
+        self.btn_justification_save.clicked.connect(self.backup_text)
         self.btn_justification_save.hide()
         self.btn_justification_cancel = QPushButton("Cancel")
         self.btn_justification_cancel.clicked.connect(lambda: self.enable_disable_justification(False))
         self.btn_justification_cancel.hide()
 
         self.input_justification = QTextEdit()
-        self.input_justification.textChanged.connect(self.backup_text)
         self.input_justification.hide()
 
         # Missed Cells
@@ -144,7 +146,7 @@ class ExplorationWidget(QWidget):
 
         self.btn_missed_select = QPushButton("Enable Select Cell Mode")
         self.btn_missed_select.clicked.connect(self.switch_missed_cell_mode)
-        self.btn_missed_remove = QPushButton("Remove Cell")
+        self.btn_missed_remove = QPushButton("Remove Cell(s)")
         self.btn_missed_remove.clicked.connect(self.remove_missed_cells)
 
         btn_missed_clear = QPushButton("Clear Selected Pixels")
@@ -168,7 +170,7 @@ class ExplorationWidget(QWidget):
         # Plot utility
         self.auto_label = QLabel("Automatic Transient Detection")
         self.manual_label = QLabel("Manual Transient Detection")
-        self.min_height_label = QLabel("Height Threshold")
+        self.min_height_label = QLabel("Height Threshold (ΔF/F)")
         local_stats_label = QLabel("Local Statistics")
         self.min_height_input = QLineEdit()
         self.min_height_input.setValidator(QDoubleValidator(0, 1000, 3))
@@ -179,10 +181,10 @@ class ExplorationWidget(QWidget):
         self.dist_input.setValidator(QIntValidator(0, 1000))
         self.dist_input.setText("10")
 
-        self.auc_label = QLabel("AUC")
-        self.auc_input = QLineEdit()
-        self.auc_input.setValidator(QDoubleValidator(0, 1000, 3))
-        self.auc_input.setText("0")
+        self.snr_label = QLabel("SNR Threshold")
+        self.snr_input = QLineEdit()
+        self.snr_input.setValidator(QDoubleValidator(0, 1000, 3))
+        self.snr_input.setText("0")
 
         btn_algo_event = QPushButton("Calculate Events")
         btn_algo_event.clicked.connect(self.update_peaks)
@@ -201,16 +203,85 @@ class ExplorationWidget(QWidget):
         btn_generate_stats = QPushButton("Generate Local Statistics")
         btn_generate_stats.clicked.connect(self.generate_local_stats)
 
+        # SavGol Utility
+        self.savgol_label = QLabel("SavGol Parameters")
+        self.savgol_win_len_label = QLabel("Window Length")
+        self.savgol_win_len_input = QLineEdit()
+        self.savgol_win_len_input.setValidator(QIntValidator(1, 100))
+        self.savgol_win_len_input.setText("5")
+        self.savgol_poly_order_label = QLabel("Polynomial Order")
+        self.savgol_poly_order_input = QLineEdit()
+        self.savgol_poly_order_input.setValidator(QIntValidator(1, 100))
+        self.savgol_poly_order_input.setText("3")
+        self.savgol_deriv_label = QLabel("Derivative")
+        self.savgol_deriv_input = QLineEdit()
+        self.savgol_deriv_input.setValidator(QIntValidator(1, 100))
+        self.savgol_deriv_input.setText("0")
+        self.savgol_delta_label = QLabel("Delta")
+        self.savgol_delta_input = QLineEdit()
+        self.savgol_delta_input.setValidator(QDoubleValidator(0, 100, 3))
+        self.savgol_delta_input.setText("1.0")
+        btn_savgol = QPushButton("Update SavGol")
+        btn_savgol.clicked.connect(self.update_savgol)
+
+        # Noise Utility
+        self.noise_label = QLabel("Noise Parameters")
+        self.noise_win_len_label = QLabel("Window Length")
+        self.noise_win_len_input = QLineEdit()
+        self.noise_win_len_input.setValidator(QIntValidator(1, 1000))
+        self.noise_win_len_input.setText("10")
+        self.noise_type_label = QLabel("Type")
+        self.noise_type_combobox = QComboBox()
+        self.noise_type_combobox.addItems(["None", "Mean", "Median", "Max"])
+        self.noise_type_combobox.setCurrentIndex(0)
+        self.noise_cap_label = QLabel("Cap")
+        self.noise_cap_input = QLineEdit()
+        self.noise_cap_input.setValidator(QDoubleValidator(0, 1, 4))
+        self.noise_cap_input.setText("0.1")
+        btn_noise = QPushButton("Update Noise")
+        btn_noise.clicked.connect(self.update_noise)
+
+        # View Utility
+        self.view_y_start_label = QLabel("Y Axis Start")
+        self.view_y_start_input = QLineEdit()
+        self.view_y_start_input.setValidator(QDoubleValidator(-5, 0, 3))
+        self.view_y_start_input.setText("-1")
+        self.view_y_end_label = QLabel("Y Axis End")
+        self.view_y_end_input = QLineEdit()
+        self.view_y_end_input.setValidator(QDoubleValidator(0, 50, 3))
+        self.view_y_end_input.setText("10")
+        self.view_window_label = QLabel("Window Size")
+        self.view_window_input = QLineEdit()
+        self.view_window_input.setValidator(QIntValidator(100, 100000))
+        self.view_window_input.setText("1000")
+        self.view_btn_update = QPushButton("Update View")
+        self.view_btn_update.clicked.connect(self.update_plot_view)
+
+
+
         self.chkbox_plot_options_C = QCheckBox("C Signal")
+        self.chkbox_plot_options_C.setStyleSheet("background-color: white; border: 1px solid black; width: 15px; height: 15px;")
         self.chkbox_plot_options_S = QCheckBox("S Signal")
+        self.chkbox_plot_options_S.setStyleSheet("background-color: magenta; border: 1px solid black; width: 15px; height: 15px;")
         self.chkbox_plot_options_YrA = QCheckBox("Raw Signal")
+        self.chkbox_plot_options_YrA.setStyleSheet("background-color: cyan; border: 1px solid black; width: 15px; height: 15px;")
         self.chkbox_plot_options_dff = QCheckBox("ΔF/F")
-        self.chkbox_plot_options_zscore = QCheckBox("Z-Score (ΔF/F)")
-        self.chkbox_plot_options_C.clicked.connect(self.visualize_signals)
-        self.chkbox_plot_options_S.clicked.connect(self.visualize_signals)
-        self.chkbox_plot_options_YrA.clicked.connect(self.visualize_signals)
-        self.chkbox_plot_options_dff.clicked.connect(self.visualize_signals)
-        self.chkbox_plot_options_zscore.clicked.connect(self.visualize_signals)
+        self.chkbox_plot_options_dff.setStyleSheet("background-color: yellow; border: 1px solid black; width: 15px; height: 15px;")
+        self.chkbox_plot_options_savgol = QCheckBox("SavGol Filter (ΔF/F)")
+        self.chkbox_plot_options_savgol.setStyleSheet("background-color: rgb(154,205,50); border: 1px solid black; width: 15px; height: 15px;")
+        self.chkbox_plot_options_noise = QCheckBox("Noise")
+        self.chkbox_plot_options_noise.setStyleSheet("background-color: rgb(0,191,255); border: 1px solid black; width: 15px; height: 15px;")
+        self.chkbox_plot_options_snr = QCheckBox("SNR")
+        self.chkbox_plot_options_snr.setStyleSheet("background-color: rgb(255,105,180); border: 1px solid black; width: 15px; height: 15px;")
+        self.btn_reset_view = QPushButton("Reset View")
+        self.btn_reset_view.clicked.connect(lambda: self.visualize_signals(reset_view=True))
+        self.chkbox_plot_options_C.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        self.chkbox_plot_options_S.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        self.chkbox_plot_options_YrA.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        self.chkbox_plot_options_dff.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        self.chkbox_plot_options_savgol.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        self.chkbox_plot_options_noise.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        self.chkbox_plot_options_snr.clicked.connect(lambda: self.visualize_signals(reset_view=False))
         self.chkbox_plot_options_C.clicked.connect(self.enable_disable_event_buttons)
         self.chkbox_plot_options_C.setChecked(True)
 
@@ -220,7 +291,9 @@ class ExplorationWidget(QWidget):
             "S": "m",
             "YrA": "c",
             "DFF": "y",
-            "ZScore": QPen(QColor(139,69,19)) # Brown
+            "SavGol": (154,205,50), # Greenish/Yellow
+            "noise": (0,191,255), # Deep Sky Blue
+            "SNR": (255,105,180) # Hot Pink
         }
 
         # Populate cell list
@@ -325,6 +398,10 @@ class ExplorationWidget(QWidget):
         layout_plot_utility.addStretch()
         layout_plot_utility.setDirection(3)
 
+        # Clear Traces Button
+        btn_clear_traces = QPushButton("Clear Selected Traces")
+        btn_clear_traces.clicked.connect(self.clear_selected_traces)
+
         # Event Generation Algorithm
         layout_height = QHBoxLayout()
         layout_height.addWidget(self.min_height_label)
@@ -333,8 +410,8 @@ class ExplorationWidget(QWidget):
         layout_dist.addWidget(self.dist_label)
         layout_dist.addWidget(self.dist_input)
         layout_auc = QHBoxLayout()
-        layout_auc.addWidget(self.auc_label)
-        layout_auc.addWidget(self.auc_input)
+        layout_auc.addWidget(self.snr_label)
+        layout_auc.addWidget(self.snr_input)
 
         self.frame_algo_events = QFrame()
         self.frame_algo_events.setFrameShape(QFrame.Box)
@@ -346,6 +423,7 @@ class ExplorationWidget(QWidget):
         layout_algo_events.addLayout(layout_dist)
         layout_algo_events.addLayout(layout_auc)
         layout_algo_events.addWidget(btn_algo_event)
+        layout_algo_events.addStretch()
 
         # Manual Event Generation
         self.frame_manual_events = QFrame()
@@ -355,7 +433,14 @@ class ExplorationWidget(QWidget):
         layout_manual_events = QVBoxLayout(self.frame_manual_events)
         layout_manual_events.addWidget(self.manual_label)
         layout_manual_events.addWidget(btn_create_event)
-        layout_manual_events.addWidget(btn_clear_events)        
+        layout_manual_events.addWidget(btn_clear_events) 
+        layout_manual_events.addStretch()
+
+
+        # Event Generation Tab
+        tab_transient_detection = QTabWidget()
+        tab_transient_detection.addTab(self.frame_algo_events, "Automatic")
+        tab_transient_detection.addTab(self.frame_manual_events, "Manual")       
 
         # Statistics buttons
         frame_stats = QFrame()
@@ -368,6 +453,88 @@ class ExplorationWidget(QWidget):
         layout_stats.addWidget(btn_generate_stats)
         layout_stats.addWidget(local_stats_label)
 
+        # SavGol Tab
+        savgol_utility = QFrame()
+        savgol_utility.setFrameShape(QFrame.Box)
+        savgol_utility.setFrameShadow(QFrame.Raised)
+        savgol_utility.setLineWidth(3)
+
+        # Noise Tab
+        noise_utility = QFrame()
+        noise_utility.setFrameShape(QFrame.Box)
+        noise_utility.setFrameShadow(QFrame.Raised)
+        noise_utility.setLineWidth(3)
+
+        # View Utility Frame
+        view_utility = QFrame()
+        view_utility.setFrameShape(QFrame.Box)
+        view_utility.setFrameShadow(QFrame.Raised)
+        view_utility.setLineWidth(3)     
+
+        # SavGol Layouts
+        layout_savgol = QVBoxLayout(savgol_utility)
+        layout_savgol.addWidget(self.savgol_label)
+        layout_savgol_win_len = QHBoxLayout()
+        layout_savgol_win_len.addWidget(self.savgol_win_len_label)
+        layout_savgol_win_len.addWidget(self.savgol_win_len_input)
+        layout_savgol.addLayout(layout_savgol_win_len)
+        layout_savgol_poly_order = QHBoxLayout()
+        layout_savgol_poly_order.addWidget(self.savgol_poly_order_label)
+        layout_savgol_poly_order.addWidget(self.savgol_poly_order_input)
+        layout_savgol.addLayout(layout_savgol_poly_order)
+        layout_savgol_deriv = QHBoxLayout()
+        layout_savgol_deriv.addWidget(self.savgol_deriv_label)
+        layout_savgol_deriv.addWidget(self.savgol_deriv_input)
+        layout_savgol.addLayout(layout_savgol_deriv)
+        layout_savgol_delta = QHBoxLayout()
+        layout_savgol_delta.addWidget(self.savgol_delta_label)
+        layout_savgol_delta.addWidget(self.savgol_delta_input)
+        layout_savgol.addLayout(layout_savgol_delta)
+        layout_savgol.addWidget(btn_savgol)
+
+        # Noise Layouts
+        layout_noise = QVBoxLayout(noise_utility)
+        layout_noise.addWidget(self.noise_label)
+        layout_noise_win_len = QHBoxLayout()
+        layout_noise_win_len.addWidget(self.noise_win_len_label)
+        layout_noise_win_len.addWidget(self.noise_win_len_input)
+        layout_noise.addLayout(layout_noise_win_len)
+        layout_noise_type = QHBoxLayout()
+        layout_noise_type.addWidget(self.noise_type_label)
+        layout_noise_type.addWidget(self.noise_type_combobox)
+        layout_noise_cap = QHBoxLayout()
+        layout_noise_cap.addWidget(self.noise_cap_label)
+        layout_noise_cap.addWidget(self.noise_cap_input)
+        layout_noise.addLayout(layout_noise_type)
+        layout_noise.addLayout(layout_noise_cap)
+        layout_noise.addWidget(btn_noise)
+        layout_noise.addStretch()
+
+        # View Layout
+        layout_plot_view = QVBoxLayout(view_utility)
+        layout_plot_view_y_start = QHBoxLayout()
+        layout_plot_view_y_start.addWidget(self.view_y_start_label)
+        layout_plot_view_y_start.addWidget(self.view_y_start_input)
+        layout_plot_view_y_end = QHBoxLayout()
+        layout_plot_view_y_end.addWidget(self.view_y_end_label)
+        layout_plot_view_y_end.addWidget(self.view_y_end_input)
+        layout_plot_view_window = QHBoxLayout()
+        layout_plot_view_window.addWidget(self.view_window_label)
+        layout_plot_view_window.addWidget(self.view_window_input)
+        layout_plot_view.addLayout(layout_plot_view_y_start)
+        layout_plot_view.addLayout(layout_plot_view_y_end)
+        layout_plot_view.addLayout(layout_plot_view_window)
+        layout_plot_view.addWidget(self.view_btn_update)
+        layout_plot_view.addStretch()
+        
+        
+        
+        # Param Tabs
+        tab_params = QTabWidget()
+        tab_params.addTab(savgol_utility, "SavGol")
+        tab_params.addTab(noise_utility, "Noise")
+        tab_params.addTab(view_utility, "View")
+
         # Plot options
         frame_plot_options = QFrame()
         frame_plot_options.setFrameShape(QFrame.Box)
@@ -376,22 +543,25 @@ class ExplorationWidget(QWidget):
         layout_plot_options = QVBoxLayout(frame_plot_options)
         layout_plot_options.addStretch()
         layout_plot_options.setDirection(3)
+        layout_plot_options.addWidget(self.btn_reset_view)
+        layout_plot_options.addWidget(self.chkbox_plot_options_snr)
+        layout_plot_options.addWidget(self.chkbox_plot_options_noise)
         layout_plot_options.addWidget(self.chkbox_plot_options_C)
         layout_plot_options.addWidget(self.chkbox_plot_options_S)
         layout_plot_options.addWidget(self.chkbox_plot_options_YrA)
         layout_plot_options.addWidget(self.chkbox_plot_options_dff)
-        layout_plot_options.addWidget(self.chkbox_plot_options_zscore)
+        layout_plot_options.addWidget(self.chkbox_plot_options_savgol)
 
 
-        layout_plot_utility.addWidget(self.frame_manual_events)
-        layout_plot_utility.addWidget(self.frame_algo_events)
+        layout_plot_utility.addWidget(tab_params)
         layout_plot_utility.addWidget(frame_plot_options)
         widget_plot_utility = QWidget()
         widget_plot_utility.setLayout(layout_plot_utility)
         widget_plot_utility.setMaximumWidth(320)
 
-        tabs_signal.addTab(widget_plot_utility, "Event Detection")
-        tabs_signal.addTab(frame_stats, "Local Statistics")
+        tabs_signal.addTab(widget_plot_utility, "Params")
+        tabs_signal.addTab(tab_transient_detection, "Event Detection")
+        tabs_signal.addTab(frame_stats, "Local Stats")
 
         layout_video_cells.addLayout(layout_video)
         layout_video_cells.addWidget(self.tabs_video)
@@ -400,9 +570,13 @@ class ExplorationWidget(QWidget):
 
         layout_video_cells_visualize.addWidget(widget_video_cells)
 
+        layout_plot_utility = QVBoxLayout()
+        layout_plot_utility.addWidget(btn_clear_traces)
+        layout_plot_utility.addWidget(tabs_signal)
+
         layout_plot = QHBoxLayout()
         layout_plot.addWidget(self.w_signals)
-        layout_plot.addWidget(tabs_signal)
+        layout_plot.addLayout(layout_plot_utility)
         widget_plot = QWidget()
         widget_plot.setLayout(layout_plot)
         layout_video_cells_visualize.addWidget(widget_plot)
@@ -428,6 +602,87 @@ class ExplorationWidget(QWidget):
         self.video_timer.timeout.connect(self.next_frame)
 
         self.missed_cell_init()
+
+        self.imv.scene.sigMouseMoved.connect(self.detect_cell_hover)
+
+    def update_plot_view(self):
+        y_start = float(self.view_y_start_input.text())
+        y_end = float(self.view_y_end_input.text())
+        window = int(self.view_window_input.text())
+        i = 0
+        while self.w_signals.getItem(i,0) is not None:
+            item = self.w_signals.getItem(i,0)
+            if isinstance(item, PlotItemEnhanced):
+                item.getViewBox().setYRange(y_start, y_end, padding=0)
+                xs, _ = item.getViewBox().viewRange()
+                midpoint = int((xs[0] + xs[1]) / 2)
+                x_start = midpoint - int(window / 2)
+                x_end = midpoint + int(window / 2)
+                item.getViewBox().setXRange(x_start, x_end, padding=0)
+            i += 1
+
+    def detect_cell_hover(self, event):
+        pos = self.imv.getImageItem().mapFromScene(event)
+        pos_rounded = (round(pos.y()-0.5), round(pos.x()-0.5))
+        if pos_rounded in self.A_pos_to_cell:
+            potential_ids = set(self.A_pos_to_cell[pos_rounded])
+            new_ids = potential_ids.difference(self.hovered_cells.keys())
+            delete = set(self.hovered_cells.keys()).difference(potential_ids)
+
+            for id in new_ids:
+                y, x = self.session.centroids[id]
+                text = pg.TextItem(text=str(id), anchor=(0.4,0.4), color=(255, 0, 0, 255))
+                self.imv.addItem(text)
+                self.hovered_cells[id] = text
+                text.setFont(QFont('Times', 7))
+                text.setPos(round(x), round(y))
+            
+            for id in delete:
+                self.imv.removeItem(self.hovered_cells[id])
+                self.hovered_cells.pop(id)
+
+        else:
+            for id in list(self.hovered_cells.keys()):
+                text = self.hovered_cells[id]
+                self.imv.removeItem(text)
+                self.hovered_cells.pop(id)
+
+                
+
+
+    def keyReleaseEvent(self, event):
+        
+        action_view = {Qt.Key_A: "start", Qt.Key_F: "end", Qt.Key_D: "next", Qt.Key_S: "prev"}.get(event.key(), None)
+        action_trace = {Qt.Key_W: "toggle_dff"}.get(event.key(), None)
+
+        if self.w_signals and action_view is not None:
+            i = 0
+            while self.w_signals.getItem(i,0) is not None:
+                item = self.w_signals.getItem(i,0)
+                if isinstance(item, PlotItemEnhanced):
+                    if len(item.listDataItems()) > 1: # When it's empty there is only one empty within the list
+                        xs, _ = item.getViewBox().viewRange()
+                        length = self.session.data["C"].shape[1]
+                        window = xs[1] - xs[0]
+                        jump = int(window * 0.5)
+                        if action_view == "start":
+                            item.getViewBox().setXRange(0, window, padding=0)
+                        elif action_view == "end":
+                            item.getViewBox().setXRange(length - window, length, padding=0)
+                        elif action_view == "next":
+                            if xs[1] + jump > length:
+                                item.getViewBox().setXRange(length - window, length, padding=0)
+                            else:
+                                item.getViewBox().setXRange(xs[0] + jump, xs[1] + jump, padding=0)
+                        elif action_view == "prev":
+                            if xs[0] - jump < 0:
+                                item.getViewBox().setXRange(0, window, padding=0)
+                            else:
+                                item.getViewBox().setXRange(xs[0] - jump, xs[1] - jump, padding=0)
+        if self.w_signals and action_trace == "toggle_dff":
+            self.chkbox_plot_options_dff.setChecked(not self.chkbox_plot_options_dff.isChecked())
+            self.visualize_signals(reset_view=False)
+
 
     def switched_tabs(self):
         '''
@@ -464,6 +719,51 @@ class ExplorationWidget(QWidget):
         self.btn_justification_save.show()
         self.btn_justification_cancel.show()
         self.input_justification.show()
+        id = ''.join(filter(str.isdigit, self.list_rejected_cell.selectedItems()[0].text()))
+        self.input_justification.setText(self.rejected_justification[id])
+
+    def update_savgol(self, _):
+        self.savgol_params["win_len"] = int(self.savgol_win_len_input.text())
+        self.savgol_params["poly_order"] = int(self.savgol_poly_order_input.text())
+        self.savgol_params["deriv"] = int(self.savgol_deriv_input.text())
+        self.savgol_params["delta"] = float(self.savgol_delta_input.text())
+        if self.savgol_params["poly_order"] >= self.savgol_params["win_len"]:
+            print("Polynomial Order should be less than Window Length")
+            self.poly_order_input.setText(str(self.savgol_params["win_len"]-1))
+            self.savgol_params["poly_order"] = self.savgol_params["win_len"]-1
+        else:
+            self.visualize_signals(reset_view=False)
+        
+    def update_noise(self, _):
+        self.noise_params["win_len"] = int(self.noise_win_len_input.text())
+        self.noise_params["type"] = self.noise_type_combobox.currentText()
+        self.noise_params["cap"] = float(self.noise_cap_input.text())
+        self.visualize_signals(reset_view=False)
+
+    def clear_selected_traces(self):
+        # Clear only the selected signals
+        i = 0
+        to_remove = []
+        while self.w_signals.getItem(i,0) is not None:
+            item = self.w_signals.getItem(i,0)
+            if isinstance(item, PlotItemEnhanced):
+                if item.selected:
+                    to_remove.append((item.cell_type, item.id))
+            i += 1
+
+        for cell_type, id in to_remove:
+            if cell_type == "Missed":
+                self.missed_cells_selection.discard(id)
+                self.video_missed_mask -= self.session.data["M"].sel(missed_id=id).values
+
+            else:
+                self.video_cell_selection.discard(id)
+                self.video_cell_mask -= self.session.data["A"].sel(unit_id=id).values
+        
+        self.visualize_signals(reset_view=False)
+        if not self.btn_play.isChecked():
+            self.current_frame -= 1
+            self.next_frame()
 
 
     def switch_missed_cell_mode(self):
@@ -508,8 +808,20 @@ class ExplorationWidget(QWidget):
         for item in self.list_missed_cell.selectedItems():
             id = int(''.join(filter(str.isdigit, item.text())))
             cell_ids.append(id)
+        # Deselect the cells and remove the mask
+        for id in cell_ids:
+            self.missed_cells_selection.discard(id)
+
+        self.mask[self.session.data["M"].sel(missed_id=cell_ids).values.sum(axis=0) > 0] = 3
+        self.video_missed_mask  = np.sum(self.session.data["M"].sel(missed_id=list(self.missed_cells_selection)).values, axis=0)
+        self.visualize_signals(reset_view=False)
+        if not self.btn_play.isChecked():
+            self.current_frame -= 1
+            self.next_frame()
+
         self.session.remove_missed(cell_ids)
         self.refresh_missed_list()
+
 
     def refresh_missed_list(self):
         if self.session.data["M"] is not None:
@@ -517,6 +829,9 @@ class ExplorationWidget(QWidget):
             self.list_missed_cell.clear()
             for missed_id in missed_ids:
                 self.list_missed_cell.addItem(f"Missing Cell {missed_id}")
+        else:
+            self.list_missed_cell.clear()
+
 
     def missed_cell_init(self):
         if self.session.data["M"] is not None:    
@@ -574,8 +889,9 @@ class ExplorationWidget(QWidget):
 
     def backup_text(self):
         if len(self.list_rejected_cell.selectedItems()) == 1:
-            id = int(''.join(filter(str.isdigit, self.list_rejected_cell.selectedItems()[0].text())))
+            id = ''.join(filter(str.isdigit, self.list_rejected_cell.selectedItems()[0].text()))
             self.rejected_justification[id] = self.input_justification.toPlainText()
+            self.session.save_justifications(self.rejected_justification)
 
     def draw_trace(self, event):
         point = self.imv.getImageItem().mapFromScene(event)
@@ -619,7 +935,7 @@ class ExplorationWidget(QWidget):
 
     def video_click(self, event):       
         point = self.imv.getImageItem().mapFromScene(event.pos())
-        converted_point = (round(point.y()), round(point.x())) # Switch x and y due to transpose
+        converted_point = (round(point.y() - 0.5), round(point.x() - 0.5)) # Switch x and y due to transpose
         if converted_point in self.A_pos_to_cell:
             temp_ids = set()
             for cell_id in self.A_pos_to_cell[converted_point]:
@@ -631,7 +947,7 @@ class ExplorationWidget(QWidget):
             for id in self.video_cell_selection:
                 self.video_cell_mask  += self.A[id].values
             self.video_cell_mask[self.video_cell_mask  > 0] = 1
-            self.visualize_signals()
+            self.visualize_signals(reset_view=False)
             if not self.btn_play.isChecked():
                 self.current_frame -= 1
                 self.next_frame()
@@ -646,7 +962,7 @@ class ExplorationWidget(QWidget):
             if not self.btn_play.isChecked():
                 self.current_frame -= 1
                 self.next_frame()
-            self.visualize_signals()
+            self.visualize_signals(reset_view=False)
             
             
     def enable_disable_justification(self, enable=True):
@@ -687,15 +1003,35 @@ class ExplorationWidget(QWidget):
             selected_data_type.append('YrA')
         if self.chkbox_plot_options_dff.isChecked():
             selected_data_type.append('DFF')
-        if self.chkbox_plot_options_zscore.isChecked():
-            selected_data_type.append('ZScore')
+        if self.chkbox_plot_options_savgol.isChecked():
+            selected_data_type.append('SavGol')
+        if self.chkbox_plot_options_noise.isChecked():
+            selected_data_type.append('noise')
+        if self.chkbox_plot_options_snr.isChecked():
+            selected_data_type.append('SNR')
 
         return selected_data_type
 
-    def visualize_signals(self):
+
+    def visualize_signals(self, reset_view=False):
         cell_ids = self.video_cell_selection
         missed_ids = self.missed_cells_selection
-        self.w_signals.clear()
+        # Before clear the plots and get viewRect
+        idx = 0
+        views = {"Standard": {}, "Missed": {}} # We'll store the viewRect for each cell type
+        if not reset_view:
+            i = 0
+            while self.w_signals.getItem(i,0) is not None:
+                item = self.w_signals.getItem(i,0)
+                if isinstance(item, PlotItemEnhanced):
+                    # Don't store if there are no plots
+                    if len(item.listDataItems()) > 1: # When it's empty there is only one empty within the list
+                        views[item.cell_type][item.id] = item.getViewBox().viewRange()
+                i += 1
+        self.w_signals.clear()               
+                    
+
+        
         last_i = 1
         try:
             self.w_signals.scene().sigMouseClicked.disconnect(self.find_subplot)
@@ -704,15 +1040,25 @@ class ExplorationWidget(QWidget):
         if cell_ids:
             self.w_signals.scene().sigMouseClicked.connect(self.find_subplot)
             for i, id in enumerate(cell_ids):
-                p = PlotItemEnhanced(id=id)
+                p = PlotItemEnhanced(id=id, cell_type="Standard")
                 p.plotLine.setPos(self.scroll_video.value())
+                p.plotLine.sigDragged.connect(self.pause_video)
+                p.plotLine.sigPositionChangeFinished.connect(self.update_slider_pos)
                 p.setTitle(f"Cell {id}")
                 self.w_signals.addItem(p, row=i, col=0)
-                for data_type in self.get_selected_data_type():
+                selected_types = self.get_selected_data_type()
+                for data_type in selected_types:
                     if data_type in self.session.data:
                         data = self.session.data[data_type].sel(unit_id=id).values
-                    elif data_type == 'ZScore':
-                        data = self.session.get_zscore(id)
+                    elif data_type == 'SavGol' or data_type == 'noise' or data_type == 'SNR':
+                        data = self.session.get_savgol(id, self.savgol_params)
+                        if data_type == 'noise' or data_type == 'SNR':
+                            sav_data = data
+                            data = self.session.get_noise(sav_data, id, self.noise_params)
+                            if data_type == 'SNR':
+                                noise = data
+                                data = self.session.get_SNR(sav_data, noise)
+
                     p.add_main_curve(data, is_C=(data_type == 'C'), pen=self.color_mapping[data_type])
                     if 'E' in self.session.data and data_type == 'C':
                         events = self.session.data['E'].sel(unit_id=id).values
@@ -724,18 +1070,24 @@ class ExplorationWidget(QWidget):
                             # Now Split the indices into pairs of first and last indices
                             indices = [(indices_group[0], indices_group[-1]+1) for indices_group in indices]
                             p.draw_event_curves(indices)
+                if selected_types and id in views["Standard"]:
+                    p.getViewBox().setRange(xRange=views["Standard"][id][0], yRange=views["Standard"][id][1], padding=0)
 
                 last_i += 1
 
         if missed_ids:
             for i, id in enumerate(missed_ids):
-                p = PlotItemEnhanced(id=id)
+                p = PlotItemEnhanced(id=id, cell_type="Missed")
                 p.plotLine.setPos(self.scroll_video.value())
+                p.plotLine.sigDragged.connect(self.pause_video)
+                p.plotLine.sigPositionChangeFinished.connect(self.update_slider_pos)
                 p.setTitle(f"Missed Cell {id}")
                 self.w_signals.addItem(p, row=i+last_i, col=0)
                 if "YrA" in self.get_selected_data_type():
                     data = self.session.get_missed_signal(id)
                     p.add_main_curve(data)
+                if id in views["Missed"]:
+                    p.getViewBox().setRange(xRange=views["Missed"][id][0], yRange=views["Missed"][id][1], padding=0)
 
 
     def generate_local_stats(self):
@@ -872,7 +1224,10 @@ class ExplorationWidget(QWidget):
         self.refresh_cell_list()
 
         
-        
+    def update_slider_pos(self, event):
+        self.scroll_video.setValue(round(event.value()))
+        self.current_frame = self.scroll_video.value() - 1
+        self.next_frame()
     
     def pause_video(self):
         self.video_timer.stop()
@@ -891,6 +1246,8 @@ class ExplorationWidget(QWidget):
             else:
                 action.setChecked(False)
         self.imv.setImage(self.current_video.sel(frame=self.current_frame).values, autoRange=False)
+        self.current_frame -= 1
+        self.next_frame()
 
     def update_plot_lines(self):
         i = 0
@@ -931,7 +1288,7 @@ class ExplorationWidget(QWidget):
     def update_peaks(self):
         min_height = int(self.min_height_input.text()) if self.min_height_input.text() else 0
         distance = float(self.dist_input.text()) if self.dist_input.text() else 10        
-        auc = float(self.auc_input.text()) if self.auc_input.text() else 0
+        snr_thresh = float(self.snr_input.text()) if self.snr_input.text() else 0
         
         idx = 0
         while self.w_signals.getItem(idx,0) is not None:
@@ -939,6 +1296,10 @@ class ExplorationWidget(QWidget):
             if isinstance(item, PlotItemEnhanced):
                 C_signal = self.session.data['C'].sel(unit_id=item.id).values
                 S_signal = self.session.data['S'].sel(unit_id=item.id).values
+                DFF_signal = self.session.data['DFF'].sel(unit_id=item.id).values
+                savgol_data = self.session.get_savgol(item.id, self.savgol_params)
+                noise_data = self.session.get_noise(savgol_data, item.id, self.noise_params)
+                SNR_data = self.session.get_SNR(savgol_data, noise_data)
                 peaks, _ = find_peaks(C_signal)
                 spikes = []
                 final_peaks = []
@@ -950,12 +1311,12 @@ class ExplorationWidget(QWidget):
                 culminated_s_indices = set() # We make use of a set to avoid duplicates
                 for i, current_peak in enumerate(peaks):
                     # Look at the next peak and see if it is close enough to the current peak
-                    peak_height = C_signal[current_peak]
+                    peak_height = DFF_signal[current_peak]
                     # Allocate the overlapping S values to the next peak
                     if S_signal[current_peak] == 0:
                         continue # This indicates no corresponding S signal
                     culminated_s_indices.add(self.get_S_dimensions(S_signal, current_peak))
-                    if i < len(peaks) - 1 and C_signal[peaks[i+1]] > peak_height:
+                    if i < len(peaks) - 1 and DFF_signal[peaks[i+1]] > peak_height:
                         diff = peaks[i+1] - current_peak if self.timestamps is None else self.timestamps[peaks[i+1]] - self.timestamps[current_peak]
                         if diff <= distance:
                             continue
@@ -969,11 +1330,13 @@ class ExplorationWidget(QWidget):
                     
                     culminated_s_indices = set()
 
-                    if np.sum(S_signal[beg:end]) < auc:
+                    if DFF_signal[beg:current_peak+1].max() - DFF_signal[beg:current_peak+1].min() < min_height:
+                        continue
+                
+                    if SNR_data[beg:current_peak+1].max() < snr_thresh:
                         continue
 
-                    if C_signal[beg:current_peak+1].max() - C_signal[beg:current_peak+1].min() < min_height:
-                        continue
+
 
                     # Compensate for the fact that S a frame after the beginning of the spike.
                     beg = max(0, beg-1)
@@ -1038,10 +1401,12 @@ class PlotItemEnhanced(PlotItem):
         super(PlotItemEnhanced, self).__init__(**kwargs)
         self.C_signal = None
         self.id = kwargs["id"] if "id" in kwargs else None
-        self.plotLine = InfiniteLine(pos=0, angle=90, pen='g')
+        self.cell_type = kwargs["cell_type"] if "cell_type" in kwargs else None
+        self.plotLine = InfiniteLine(pos=0, angle=90, pen='g', movable=True)
         self.addItem(self.plotLine)
         self.selected_events = set()
         self.clicked_points = []
+        self.selected = False
         
 
     def clear_event_curves(self):
@@ -1070,7 +1435,22 @@ class PlotItemEnhanced(PlotItem):
 
         return accumulated_selected_events
         
-    
+
+    def mousePressEvent(self, ev):
+        super(PlotItemEnhanced, self).mousePressEvent(ev)
+        clicked_items = self.scene().items(ev.scenePos())
+        if clicked_items:
+            if isinstance(clicked_items[0], QGraphicsTextItem):
+                if clicked_items[0].toPlainText() == f"Cell {self.id}" or clicked_items[0].toPlainText() == f"Missed Cell {self.id}":
+                    title = clicked_items[0].toPlainText()
+                    if not self.selected:
+                        self.setTitle(title, color="#0000FF")
+                        self.selected = True
+                    else:
+                        self.setTitle(title, color="#FFFFFF")
+                        self.selected = False
+
+
     def add_point(self, event):
         # Map to this items coordinates
         point = event.pos()
@@ -1150,6 +1530,8 @@ class PlotItemEnhanced(PlotItem):
             return event_curve.xData
         else:
             return None
+        
+    
 
 
 

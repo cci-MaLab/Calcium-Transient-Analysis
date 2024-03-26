@@ -3,9 +3,10 @@ from torch.utils.data import Dataset
 import torch
 from core import open_minian
 import numpy as np
+from math import ceil
 
 class GRUDataset(Dataset):
-    def __init__(self, path):
+    def __init__(self, path, test_split=0.1, val_split=0.1, section_len=200):
         '''
         We want to create a truncated version of the dataset for training purposes. For the time being, we will
         split the dataset into chunks of length of 200. We will slide the window by 200.
@@ -27,24 +28,38 @@ class GRUDataset(Dataset):
         self.C = data['C'].load()
         self.DDF = data['DDF'].load()
 
+        self.section_len = section_len
+
         self.hidden_states = None
 
-        self.data = {}
+        self.samples = {}
+
         self.unit_ids = self.E.unit_ids.values
+        self.test_unit_ids = np.random.choice(self.unit_ids, int(test_split * len(self.unit_ids)), replace=False)
+        self.test_unit_ids.sort()
+        self.unit_ids = np.setdiff1d(self.unit_ids, self.test_unit_ids)
+
         self.small_epoch = 0
         for unit_id in self.unit_ids:
-            self.data[unit_id] = []
-            for start in range(0, self.E.shape[1], 200):
-                self.data[unit_id].append((start, min(start+200, self.E.shape[1])))
+            self.samples[unit_id] = []
+            self.val_samples[unit_id] = []
+            # Pick val_split indices to be used for validation
+            val_indices = np.random.choice(np.arange(ceil(self.E.shape[1] / section_len)), int(val_split * self.E.shape[1] / section_len), replace=False)
+            val_indices.sort()
+            indices = np.setdiff1d(np.arange(ceil(self.E.shape[1] / section_len)), val_indices)
+            for start in indices:
+                self.samples[unit_id].append((start * section_len, (start + 1) * section_len))
+            for start in val_indices:
+                self.val_samples[unit_id].append((start * section_len, (start + 1) * section_len))
         
         
 
     def __len__(self):
-        return len(self.data[self.small_epoch])
+        return len(self.samples[self.small_epoch])
     
     def __getitem__(self, idx):
         unit_id = self.unit_ids[self.small_epoch]
-        start, end = self.data[unit_id][idx]
+        start, end = self.samples[unit_id][idx]
 
         Yra_sample = self.YrA.sel(unit_id=unit_id, frame=slice(start, end)).values
         C_sample = self.C.sel(unit_id=unit_id, frame=slice(start, end)).values
@@ -55,9 +70,6 @@ class GRUDataset(Dataset):
         backward_hidden = self.hidden_states[end, 1, :]
 
         return sample, forward_hidden, backward_hidden
-    
-    def increment_small_epoch(self):
-        self.small_epoch  = (self.small_epoch + 1) % len(self.unit_ids)
 
     def update_hidden_states(self, hidden_states):
         # Shape (sequence_len, 2, hidden_size)
@@ -66,66 +78,75 @@ class GRUDataset(Dataset):
     def get_event_ratio(self):
         E = self.E.values
         return np.sum(E) / E.size
+    
+    def get_current_sample(self):
+        # Necessary for getting the initial hidden states
+        unit_id = self.unit_ids[self.small_epoch]
+
+        Yra_sample = self.YrA.sel(unit_id=unit_id).values
+        C_sample = self.C.sel(unit_id=unit_id).values
+        DDF_sample = self.DDF.sel(unit_id=unit_id).values
+
+        sample = torch.as_tensor(np.concatenate([Yra_sample, C_sample, DDF_sample], axis=0))
+
+        return sample
+    
+    def get_data(self):
+        return self.E, self.YrA, self.C, self.DDF
 
     
 class TestDataset(Dataset):
-    def __init__(self, path, unit_ids):
+    def __init__(self, data, unit_ids):
         '''
         This dataset will be provided by unit_ids through random sub-selection from GRUDataset
         '''
-        data = open_minian(path)
-        self.E = data['E'].load()
-        self.YrA = data['YrA'].load()
-        self.C = data['C'].load()
-        self.DDF = data['DDF'].load()
+        self.E, self.YrA, self.C, self.DDF = data
 
         self.unit_ids = unit_ids
 
-        self.data = {}
+        self.samples = {}
 
         for unit_id in self.unit_ids:
             Yra_sample = self.YrA.sel(unit_id=unit_id).values
             C_sample = self.C.sel(unit_id=unit_id).values
             DDF_sample = self.DDF.sel(unit_id=unit_id).values
 
-            self.data[unit_id] = np.concatenate([Yra_sample, C_sample, DDF_sample], axis=0)
+            self.samples[unit_id] = np.concatenate([Yra_sample, C_sample, DDF_sample], axis=0)
         
 
         
         
 
     def __len__(self):
-        return len(self.data)
+        return len(self.samples)
     
     def __getitem__(self, idx):
         unit_id = self.unit_ids[idx]
         
-        sample = torch.as_tensor(self.data[unit_id])
+        sample = torch.as_tensor(self.samples[unit_id])
 
         return sample
     
 class ValDataset(Dataset):
-    def __init__(self, path, data):
+    def __init__(self, data, indices, unit_ids):
         '''
         This dataset will be provided through random sub-selection from GRUDataset
         '''
-        data = open_minian(path)
-        self.E = data['E'].load()
-        self.YrA = data['YrA'].load()
-        self.C = data['C'].load()
-        self.DDF = data['DDF'].load()
+        self.E, self.YrA, self.C, self.DDF = data
 
-        self.data = data      
+        self.indices = indices
+        self.unit_ids = unit_ids    
+
+        self.hidden_states = None
         
 
     def __len__(self):
-        return len(self.data)
+        return len(self.indices)
     
     def __getitem__(self, idx):
-        # STILL NEEDS WORK
-        unit_id = self.data[idx]    
+        unit_id = self.indices[idx]    
 
-        start, end = self.data[unit_id]
+        start, end = self.indices[unit_id]
 
         Yra_sample = self.YrA.sel(unit_id=unit_id, frame=slice(start, end)).values
         C_sample = self.C.sel(unit_id=unit_id, frame=slice(start, end)).values
@@ -136,3 +157,19 @@ class ValDataset(Dataset):
         backward_hidden = self.hidden_states[end, 1, :]
 
         return sample, forward_hidden, backward_hidden
+    
+    def update_hidden_states(self, hidden_states):
+        # Shape (sequence_len, 2, hidden_size)
+        self.hidden_states = hidden_states
+
+    def get_current_sample(self):
+        # Necessary for getting the initial hidden states
+        unit_id = self.unit_ids[self.small_epoch]
+
+        Yra_sample = self.YrA.sel(unit_id=unit_id).values
+        C_sample = self.C.sel(unit_id=unit_id).values
+        DDF_sample = self.DDF.sel(unit_id=unit_id).values
+
+        sample = torch.as_tensor(np.concatenate([Yra_sample, C_sample, DDF_sample], axis=0))
+
+        return sample

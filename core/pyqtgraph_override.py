@@ -25,6 +25,7 @@ getMillis = lambda: perf_counter_ns() // 10 ** 6
 class GraphicsSceneOverride(GraphicsScene):
     sigMousePressMove = QtCore.Signal(object)
     sigMousePressAltMove = QtCore.Signal(object)
+    sigMouseMoved = QtCore.Signal(object)
     sigMouseRelease = QtCore.Signal(object)
     def __init__(self, *args, **kwargs):
         super(GraphicsSceneOverride, self).__init__(*args, **kwargs)
@@ -35,6 +36,8 @@ class GraphicsSceneOverride(GraphicsScene):
             self.sigMousePressMove.emit(ev.scenePos())
         elif (ev.buttons() & QtCore.Qt.MouseButton.RightButton):
             self.sigMousePressAltMove.emit(ev.scenePos())
+        else:
+            self.sigMouseMoved.emit(ev.scenePos())
 
     def mouseReleaseEvent(self, ev):
         super(GraphicsSceneOverride, self).mouseReleaseEvent(ev)
