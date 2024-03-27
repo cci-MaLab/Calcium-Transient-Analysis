@@ -788,6 +788,7 @@ class ExplorationWidget(QWidget):
                                 item.getViewBox().setXRange(0, window, padding=0)
                             else:
                                 item.getViewBox().setXRange(xs[0] - jump, xs[1] - jump, padding=0)
+                i += 1
         if self.w_signals and action_trace == "toggle_dff":
             self.chkbox_plot_options_dff.setChecked(not self.chkbox_plot_options_dff.isChecked())
             self.visualize_signals(reset_view=False)
