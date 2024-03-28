@@ -14,10 +14,10 @@ from sklearn.model_selection import train_test_split
 
 def train(): 
 	# load the image and mask filepaths in a sorted manner
-	path = config.DATASET_PATH
+	paths = config.DATASET_PATH
 
 	# create the train and test datasets
-	trainDS = GRUDataset(normalPaths=path, test_split=config.TEST_SIZE,
+	trainDS = GRUDataset(paths=paths, test_split=config.TEST_SIZE,
 					     val_split=config.VAL_SIZE, section_len=config.SECTION_LEN)
 	valDS = ValDataset(data = trainDS.get_data(), indices=trainDS.val_indices, unit_ids=trainDS.unit_ids)
 	testDS = TestDataset(data=trainDS.get_data(), unit_ids=trainDS.test_unit_ids)

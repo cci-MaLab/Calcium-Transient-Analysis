@@ -6,7 +6,7 @@ import numpy as np
 from math import ceil
 
 class GRUDataset(Dataset):
-    def __init__(self, path, test_split=0.1, val_split=0.1, section_len=200):
+    def __init__(self, paths, test_split=0.1, val_split=0.1, section_len=200):
         '''
         We want to create a truncated version of the dataset for training purposes. For the time being, we will
         split the dataset into chunks of length of 200. We will slide the window by 200.
@@ -21,7 +21,7 @@ class GRUDataset(Dataset):
         passes of the updated model. The intuition here is that over time the hidden states will converge to a stable representation of past and future
         events.
         '''
-        data = open_minian(path)
+        data = open_minian(paths)
         # Loading into memory may take up some space but it is necessary for fast access during training
         self.E = data['E'].load()
         self.YrA = data['YrA'].load()

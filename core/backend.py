@@ -462,12 +462,16 @@ class DataInstance:
         for dt in data_types:            
             if dt in data:
                 self.data[dt] = data[dt]
+                if "unit_id" in self.data[dt].coords:
+                    self.data[dt] = self.data[dt].dropna(dim="unit_id")
                 # Safe guard against deprecated E standard and erroneous E data
                 if dt == 'E':
                     self.data[dt] = self.data[dt].fillna(0).where(self.data[dt] == 0, 1)
             else:
                 print("No %s data found in minian file" % (dt))
                 self.data[dt] = None
+
+        self.unit_id_consistency()
 
         self.data['unit_ids'] = self.data['C'].coords['unit_id'].values
         self.dpath = dpath
@@ -489,6 +493,7 @@ class DataInstance:
         cells = self.data['unit_ids']
 
         cent = self.centroid(self.data['A'])
+
         
         self.A = {}
         self.centroids = {}
@@ -504,6 +509,24 @@ class DataInstance:
 
         if(os.path.exists(self.output_path) == False):
             os.makedirs(self.output_path)
+
+    def unit_id_consistency(self):
+        """
+        This function will check if the unit_ids are consistent across all data arrays.
+        If not, it will drop the inconsistent unit_ids from all data arrays.
+        This will be achieved by taking the intersection of all unit_ids and then filtering
+        the data arrays.
+        """
+        unit_id_list = []
+        keys = ['A', 'C', 'S', 'YrA']
+        for key in keys:
+            unit_id_list.append(set(self.data[key].coords["unit_id"].values))
+        
+        intersection = set.intersection(*unit_id_list)
+
+        for key in keys:
+            self.data[key] = self.data[key].sel(unit_id=list(intersection))
+        
 
     def get_filtered_C(self) -> None:
         normalized_S = xr.apply_ufunc(
