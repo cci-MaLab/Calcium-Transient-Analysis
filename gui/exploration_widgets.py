@@ -16,6 +16,14 @@ from scipy.signal import find_peaks
 from core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget)
 from core.pyqtgraph_override import ImageViewOverride
 from skimage.segmentation import flood_fill
+import os
+import sys
+
+try:
+    import torch
+    torch_imported = True
+except ImportError:
+    torch_imported = False
 
 class ExplorationWidget(QWidget):
     def __init__(self, session, name, main_window_ref, timestamps=None, parent=None):
@@ -205,6 +213,22 @@ class ExplorationWidget(QWidget):
 
         btn_generate_stats = QPushButton("Generate Local Statistics")
         btn_generate_stats.clicked.connect(self.generate_local_stats)
+
+        model_name_label = QLabel("Model")
+        self.cmb_model_name = QComboBox()
+        # Check if there is a model available in ./ml_training/output
+        if os.path.exists("./ml_training/output"):
+            for model in os.listdir("./ml_training/output"):
+                if model.endswith(".pth"):
+                    self.cmb_model_name.addItem(model)
+
+        if self.cmb_model_name.count() > 0:
+            btn_run_model = QPushButton("Run Model")
+            btn_run_model.clicked.connect(self.run_model)
+        else:
+            btn_run_model = QPushButton("No Model Available")
+            btn_run_model.setEnabled(False)
+
 
         # Force Transients Utility
         label_force_transient = QLabel("Force/Readjust Transient Event")
@@ -441,6 +465,31 @@ class ExplorationWidget(QWidget):
         layout_algo_events.addWidget(btn_algo_event)
         layout_algo_events.addStretch()
 
+        # Machine Learning Event Generation
+        frame_ml_events = QFrame()
+        frame_ml_events.setFrameShape(QFrame.Box)
+        frame_ml_events.setFrameShadow(QFrame.Raised)
+        frame_ml_events.setLineWidth(3)
+
+        layout_ml_name = QHBoxLayout()
+        layout_ml_name.addWidget(model_name_label)
+        layout_ml_name.addWidget(self.cmb_model_name)
+        layout_ml = QVBoxLayout(frame_ml_events)
+        layout_ml.addLayout(layout_ml_name)
+        layout_ml.addWidget(btn_run_model)
+
+
+        
+        layout_auto_ml = QVBoxLayout()
+        layout_auto_ml.addWidget(self.frame_algo_events)
+        # Auto and ML into one widget if torch exists
+        if torch_imported:
+            layout_auto_ml.addWidget(frame_ml_events)
+        layout_auto_ml.addStretch()
+        w_auto_ml = QWidget()
+        w_auto_ml.setLayout(layout_auto_ml)
+
+
         # Manual Event Generation
         self.frame_manual_events = QFrame()
         self.frame_manual_events.setFrameShape(QFrame.Box)
@@ -480,7 +529,7 @@ class ExplorationWidget(QWidget):
 
         # Event Generation Tab
         tab_transient_detection = QTabWidget()
-        tab_transient_detection.addTab(self.frame_algo_events, "Automatic")
+        tab_transient_detection.addTab(w_auto_ml, "Automatic")
         tab_transient_detection.addTab(w_force_manual, "Manual")       
 
         # Statistics buttons
@@ -645,6 +694,39 @@ class ExplorationWidget(QWidget):
         self.missed_cell_init()
 
         self.imv.scene.sigMouseMoved.connect(self.detect_cell_hover)
+
+    def run_model(self):
+        model_name = self.cmb_model_name.currentText()
+
+        if model_name:
+            model = torch.load(f"./ml_training/output/{model_name}")
+            model.eval()
+            with torch.no_grad():
+                i = 0
+                while self.w_signals.getItem(i,0) is not None:
+                    item = self.w_signals.getItem(i,0)
+                    if isinstance(item, PlotItemEnhanced):
+                        if item.cell_type == "Standard":
+                            unit_id = item.id
+                            
+                            Yra_sample = self.session.data["YrA"].sel(unit_id=unit_id).values
+                            C_sample = self.session.data["C"].sel(unit_id=unit_id).values
+                            DFF_sample = self.session.data["DFF"].sel(unit_id=unit_id).values
+
+                            x = np.stack([Yra_sample, C_sample, DFF_sample]).T
+                            x = torch.as_tensor(x).to(torch.float32)
+
+                            pred = model(x)
+                            pred = torch.sigmoid(pred)
+                            pred = pred.cpu().detach().numpy().flatten().round() # Lol
+
+                            # Prediction made now update the events
+                            self.session.update_and_save_E(unit_id, pred)
+                    i += 1
+
+            self.refresh_cell_list()
+
+    
 
     def selected_event_change(self, ev):
         id, total, ranges, removed = ev

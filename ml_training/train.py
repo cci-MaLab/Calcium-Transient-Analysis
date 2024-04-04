@@ -33,7 +33,7 @@ def train():
 		num_workers=8)
 
 	# initialize our CNN model
-	gru = GRU().to(config.DEVICE)
+	gru = GRU(hidden_size=config.HIDDEN_SIZE).to(config.DEVICE)
 	# initialize loss function and optimizer
 
 	lossFunc = BCEWithLogitsLoss(pos_weight=trainDS.weight.to(config.DEVICE))

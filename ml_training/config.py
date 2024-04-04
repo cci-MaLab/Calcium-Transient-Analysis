@@ -12,7 +12,7 @@ PIN_MEMORY = True if DEVICE == "cuda" else False
 # initialize learning rate, number of epochs to train for, and the
 # batch size
 INIT_LR = 0.001
-NUM_EPOCHS = 5
+NUM_EPOCHS = 10
 BATCH_SIZE = 1
 # define threshold to filter weak predictions
 THRESHOLD = 0.5
@@ -27,3 +27,4 @@ TEST_PATHS = os.path.sep.join([BASE_OUTPUT, "test_paths.txt"])
 TEST_SIZE = 0.1
 VAL_SIZE = 0.1
 SECTION_LEN=200
+HIDDEN_SIZE=64

@@ -874,20 +874,23 @@ class DataInstance:
         cents_df["width"] = cents_df["width"] * (w_rg[1] - w_rg[0]) + w_rg[0]
         return cents_df
 
-    def update_and_save_E(self, unit_id: int, spikes):
+    def update_and_save_E(self, unit_id: int, spikes: Union[list, np.ndarray]):
         """
         Update the E array with the final peaks and save it to the minian file.
         """
-
         # First convert final peaks into a numpy array
         E = self.data['E']
-        new_e = np.zeros(E.shape[1])
-        for spike in spikes:
-            new_e[spike[0]:spike[1]] = 1
+        if isinstance(spikes, list):
+            new_e = np.zeros(E.shape[1])
+            for spike in spikes:
+                new_e[spike[0]:spike[1]] = 1
+        else:
+            new_e = spikes
         E.load() # Load into memory
         E.loc[dict(unit_id=unit_id)] = new_e
         # Now save the E array to disk
         save_xarray(E, self.minian_path)
+
 
     def remove_from_E(self, clear_selected_events_local: {}):
         E = self.data['E']
