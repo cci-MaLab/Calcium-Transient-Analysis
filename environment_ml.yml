@@ -15,3 +15,5 @@ dependencies:
   - zarr
   - nvidia::cudatoolkit=11
   - pytorch::pytorch
+  - ipykernel
+  - tqdm
