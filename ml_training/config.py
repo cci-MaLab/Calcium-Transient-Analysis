@@ -20,7 +20,6 @@ THRESHOLD = 0.5
 BASE_OUTPUT = "ml_training/output"
 # define the path to the output serialized model, model training
 # plot, and testing image paths
-MODEL_PATH = os.path.join(BASE_OUTPUT, "gru_cells.pth")
 PLOT_PATH = os.path.sep.join([BASE_OUTPUT, "plot.png"])
 TEST_PATHS = os.path.sep.join([BASE_OUTPUT, "test_paths.txt"])
 
