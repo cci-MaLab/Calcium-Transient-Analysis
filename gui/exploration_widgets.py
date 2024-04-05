@@ -43,8 +43,6 @@ class ExplorationWidget(QWidget):
         self.savgol_params = {}
         self.noise_params = {}
         self.hovered_cells = {} # id, item
-        self.selected_events = {} # cell id, total_selected
-        self.only_one_normal_cell_selected = False
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -238,7 +236,7 @@ class ExplorationWidget(QWidget):
         label_force_end = QLabel("End")
         self.input_force_end = QLineEdit()
         self.input_force_end.setValidator(QIntValidator(0, 1000000))
-        self.btn_force_transient = QPushButton("Force Transient")
+        self.btn_force_transient = QPushButton("No Plot Selected")
         self.btn_force_transient.clicked.connect(self.force_adjust_transient)
         self.btn_force_transient.setEnabled(False)
         
@@ -717,8 +715,7 @@ class ExplorationWidget(QWidget):
                             x = torch.as_tensor(x).to(torch.float32)
 
                             pred = model(x)
-                            pred = torch.sigmoid(pred)
-                            pred = pred.cpu().detach().numpy().flatten().round() # Lol
+                            pred = torch.sigmoid(pred).cpu().detach().numpy().flatten().round() # Lol
 
                             # Prediction made now update the events
                             self.session.update_and_save_E(unit_id, pred)
@@ -729,31 +726,67 @@ class ExplorationWidget(QWidget):
     
 
     def selected_event_change(self, ev):
-        id, total, ranges, removed = ev
-        start, end = ranges
-        if total == 0:
-            self.selected_events.pop(id)
-        else:
-            self.selected_events[id] = total
+        '''
+        This method is not the most efficient but at least I'll have certainty that 
+        the selected events are tracked correctly. This should still be quite fast
+        regardless, due to looping through only a few plots.
 
-        if removed:
+        This method should be called whenever:
+        1.) Cell Selection is made.
+        2.) Event Selection/Deselection is made.
+        3.) When Plots are cleared.
+        '''
+        # Iterate through all the plots and make sure the number of selected events is 1
+        deselected = ev
+        selected_event = None
+        too_many_selected = False
+        i = 0
+        plot_count = 0
+        while self.w_signals.getItem(i,0) is not None:
+            item = self.w_signals.getItem(i,0)
+            if isinstance(item, PlotItemEnhanced):
+                plot_count += 1
+                if plot_count > 1:
+                    too_many_selected = True
+                    break
+                if item.selected_events:
+                    if len(item.selected_events) > 1 or selected_event is not None:
+                        too_many_selected = True
+                        break
+                    else:
+                        selected_event = next(iter(item.selected_events))
+                
+            i += 1
+        """
+        Case 1.) No events are selected -> Enable the button and "Force Transient" and clear values.
+        Case 2.) One event is selected -> Enable the button, set the values to the selected event and "Adjust Selected Transient"
+        Case 3.) More than one event is selected -> Disable the button and set the text to "Too Many Selections"
+
+        There is an optional case that can occur in any of the above cases: if deselected then clear the values
+        """
+        if plot_count == 0:
+            self.btn_force_transient.setEnabled(False)
+            self.btn_force_transient.setText("No Plots")
             self.input_force_start.setText("")
             self.input_force_end.setText("")
-        else:
+        if deselected:
+            self.input_force_start.setText("")
+            self.input_force_end.setText("")
+        if selected_event is None and not too_many_selected:
+            self.btn_force_transient.setEnabled(True)
+            self.btn_force_transient.setText("Force Transient")
+            self.input_force_start.setText("")
+            self.input_force_end.setText("")
+        elif selected_event is not None and not too_many_selected:
+            self.btn_force_transient.setEnabled(True)
+            self.btn_force_transient.setText("Adjust Transient")
+            x = selected_event.xData
+            start, end = int(x[0]), int(x[-1])
             self.input_force_start.setText(str(start))
             self.input_force_end.setText(str(end))
-
-
-        if self.only_one_normal_cell_selected:
-            if not self.selected_events:
-                self.btn_force_transient.setText("Force Transient")
-                self.btn_force_transient.setEnabled(True)
-            elif len(self.selected_events) == 1 and self.selected_events[next(iter(self.selected_events))] == 1:
-                self.btn_force_transient.setEnabled(True)
-                self.btn_force_transient.setText("Adjust Transient")
-        else:
+        elif too_many_selected:
             self.btn_force_transient.setEnabled(False)
-            self.btn_force_transient.setText("Too Many Selections")
+            self.btn_force_transient.setText("Too Many Plots/Selections")
 
 
 
@@ -761,38 +794,42 @@ class ExplorationWidget(QWidget):
         '''
         This is for the two cases where we want to either create a new transient or adjust an existing one.
         '''
-        if self.only_one_normal_cell_selected:
-            start = int(self.input_force_start.text())
-            end = int(self.input_force_end.text())
-            if start >= end:
-                print("Invalid Range")
-                return
-            
-            # Clear the events
-            item = self.w_signals.getItem(0, 0)
-            id = next(iter(self.video_cell_selection))
+        if not self.input_force_start.text() or not self.input_force_end.text():
+            print("Invalid Range")
+            return
+        start = int(self.input_force_start.text())
+        end = int(self.input_force_end.text())
+        if start >= end:
+            print("Invalid Range")
+            return
+        
+        # Clear the events
+        item = self.w_signals.getItem(0, 0)
+        id = next(iter(self.video_cell_selection))
 
-            if self.selected_events:
-                # Remove the currently selected transient from data
-                removed_transient = {id: item.clear_selected_events_local()}
-                self.session.remove_from_E(removed_transient)
-            # For the current selected ranges, add to E the new event and redraw the events
-            new_transient = {id: np.arange(start, end+1)}
-            self.session.add_to_E(new_transient)
+        if item.selected_events:
+            # Remove the currently selected transient from data
+            removed_transient = {id: item.clear_selected_events_local()}
+            self.session.remove_from_E(removed_transient)
+        # For the current selected ranges, add to E the new event and redraw the events
+        new_transient = {id: np.arange(start, end+1)}
+        self.session.add_to_E(new_transient)
 
 
-            item.clear_event_curves()
+        item.clear_event_curves()
 
-            # Redraw the events
-            events = self.session.data['E'].sel(unit_id=id).values
-            events = np.nan_to_num(events, nan=0) # Sometimes saving errors can cause NaNs
-            indices = events.nonzero()[0]
-            if indices.any():
-                # Split up the indices into groups
-                indices = np.split(indices, np.where(np.diff(indices) != 1)[0]+1)
-                # Now Split the indices into pairs of first and last indices
-                indices = [(indices_group[0], indices_group[-1]+1) for indices_group in indices]
-                item.draw_event_curves(indices)
+        # Redraw the events
+        events = self.session.data['E'].sel(unit_id=id).values
+        events = np.nan_to_num(events, nan=0) # Sometimes saving errors can cause NaNs
+        indices = events.nonzero()[0]
+        if indices.any():
+            # Split up the indices into groups
+            indices = np.split(indices, np.where(np.diff(indices) != 1)[0]+1)
+            # Now Split the indices into pairs of first and last indices
+            indices = [(indices_group[0], indices_group[-1]+1) for indices_group in indices]
+            item.draw_event_curves(indices)
+
+        self.selected_event_change(False)
 
 
 
@@ -905,6 +942,7 @@ class ExplorationWidget(QWidget):
         self.reset_mask()
         self.w_signals.clear()
         self.selected_events = {}
+        self.selected_event_change(True)
 
     def start_justification(self):
         self.show_justification = True
@@ -957,6 +995,8 @@ class ExplorationWidget(QWidget):
         if not self.btn_play.isChecked():
             self.current_frame -= 1
             self.next_frame()
+
+        self.selected_event_change(False)
 
 
     def switch_missed_cell_mode(self):
@@ -1144,6 +1184,8 @@ class ExplorationWidget(QWidget):
             if not self.btn_play.isChecked():
                 self.current_frame -= 1
                 self.next_frame()
+            
+            self.selected_event_change(False)
         
         if converted_point in self.A_pos_to_missed_cell:
             temp_ids = set()
@@ -1156,14 +1198,6 @@ class ExplorationWidget(QWidget):
                 self.current_frame -= 1
                 self.next_frame()
             self.visualize_signals(reset_view=False)
-
-        # Check if only one normal cell is selected
-        if len(self.video_cell_selection) == 1 and not self.missed_cells_selection:
-            self.only_one_normal_cell_selected = True
-            self.btn_force_transient.setEnabled(True)
-        else:
-            self.only_one_normal_cell_selected = False
-            self.btn_force_transient.setEnabled(False)
             
             
     def enable_disable_justification(self, enable=True):
@@ -1281,7 +1315,6 @@ class ExplorationWidget(QWidget):
         if missed_ids:
             for i, id in enumerate(missed_ids):
                 p = PlotItemEnhanced(id=id, cell_type="Missed")
-                p.signalChangedSelection.connect(self.selected_event_change)
                 p.plotLine.setPos(self.scroll_video.value())
                 p.plotLine.sigDragged.connect(self.pause_video)
                 p.plotLine.sigPositionChangeFinished.connect(self.update_slider_pos)
@@ -1475,6 +1508,8 @@ class ExplorationWidget(QWidget):
             i += 1
         
         self.session.remove_from_E(accumulated_selected_events)
+
+        self.selected_event_change(False)
 
     def create_event(self):
         accumulated_created_events = {}
@@ -1672,15 +1707,11 @@ class PlotItemEnhanced(PlotItem):
 
     def add_selection(self, item):
         self.selected_events.add(item)
-        start = item.xData.min()
-        end = item.xData.max()
-        self.signalChangedSelection.emit((self.id, len(self.selected_events), (start, end), False))
+        self.signalChangedSelection.emit(False)
     
     def remove_selection(self, item):
         self.selected_events.remove(item)
-        start = item.xData.min()
-        end = item.xData.max()
-        self.signalChangedSelection.emit((self.id, len(self.selected_events), (start, end), True))
+        self.signalChangedSelection.emit(True)
         
     def create_event_local(self):
         event_curve = None
