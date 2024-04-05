@@ -13,6 +13,9 @@ from sklearn.metrics import f1_score, roc_auc_score, roc_curve, precision_score,
 
 
 def train(): 
+	# For saving purposes get the hour and minute and date of the run
+	t = time.localtime()
+	current_time = time.strftime("%m_%d_%H_%M", t)
 	# load the image and mask filepaths in a sorted manner
 	paths = config.DATASET_PATH
 
@@ -118,7 +121,8 @@ def train():
 		# save the model if the validation loss has decreased
 		if avgValLoss < lowest_loss:
 			print("[INFO] saving the model...")
-			torch.save(gru, config.MODEL_PATH)
+			model_path = config.BASE_OUTPUT + "/gru_model_val_" + current_time + ".pth"
+			torch.save(gru, model_path)
 			lowest_loss = avgValLoss
 		
 		
@@ -138,6 +142,9 @@ def train():
 	plt.ylabel("Loss")
 	plt.legend(loc="lower left")
 	plt.savefig(config.PLOT_PATH)
+	print("[INFO] saving the model...")
+	model_path = config.BASE_OUTPUT + "/gru_model_final_" + current_time + ".pth"
+	torch.save(gru, model_path)
 
 	# Start testing
 	gru.eval()

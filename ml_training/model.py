@@ -12,7 +12,7 @@ class GRU(Module):
         self.hidden_size = hidden_size
 
         self.gru = nn.GRU(input_size=input_size, hidden_size=self.hidden_size, bidirectional=True, batch_first=True)
-        self.fc = nn.Linear(64, classes)
+        self.fc = nn.Linear(hidden_size*2, classes)
         # No activation function is used because we are using BCEWithLogitsLoss
         
     def forward(self, x, h0=None):
