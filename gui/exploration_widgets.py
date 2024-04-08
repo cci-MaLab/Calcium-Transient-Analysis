@@ -16,6 +16,7 @@ from scipy.signal import find_peaks
 from core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget)
 from core.pyqtgraph_override import ImageViewOverride
 from skimage.segmentation import flood_fill
+from skimage.feature import canny
 import os
 import sys
 
@@ -114,9 +115,11 @@ class ExplorationWidget(QWidget):
         self.btn_cell_focus.clicked.connect(self.focus_mask)
         self.btn_cell_reset = QPushButton("Reset Mask")
         self.btn_cell_reset.clicked.connect(self.reset_mask)
-        self.btn_cell_clear_color = QPushButton("Clear Color")
-        self.btn_cell_clear_color.setCheckable(True)
-        self.btn_cell_clear_color.clicked.connect(self.refresh_image)
+        cell_highlight_mode_label = QLabel("Highlight Mode:")
+        self.cmb_cell_highlight_mode = QComboBox()
+        self.cmb_cell_highlight_mode.addItems(["Outline", "Color", "Clear"])
+        self.cmb_cell_highlight_mode.setCurrentIndex(0)
+        self.cmb_cell_highlight_mode.currentIndexChanged.connect(self.refresh_image)
         self.btn_cell_reject = QPushButton("Reject Cell(s)")
         self.btn_cell_reject.clicked.connect(self.reject_cells)
 
@@ -388,12 +391,16 @@ class ExplorationWidget(QWidget):
         layout_video.addWidget(self.imv)
         layout_video.addLayout(layout_video_tools)
 
+        layout_highlight_mode = QHBoxLayout()
+        layout_highlight_mode.addWidget(cell_highlight_mode_label)
+        layout_highlight_mode.addWidget(self.cmb_cell_highlight_mode)
+
         layout_cells = QVBoxLayout()
         layout_cells.addWidget(w_cell_label)
         layout_cells.addWidget(self.list_cell)
         layout_cells.addWidget(self.btn_cell_focus)
         layout_cells.addWidget(self.btn_cell_reset)
-        layout_cells.addWidget(self.btn_cell_clear_color)
+        layout_cells.addLayout(layout_highlight_mode)
         layout_cells.addWidget(self.btn_cell_reject)
         layout_cells.addWidget(btn_verified)
         w_cells = QWidget()
@@ -1424,9 +1431,17 @@ class ExplorationWidget(QWidget):
         image = self.current_video.sel(frame=self.current_frame).values // self.mask
         if self.video_cell_selection or self.missed_cells_selection or self.select_missed_mode:
             image = np.stack((image,)*3, axis=-1)
-            if not self.btn_cell_clear_color.isChecked():
+            if self.cmb_cell_highlight_mode.currentText() == "Color":
                 image[:,:,0][self.video_cell_mask == 1] = 0
                 image[:,:,1][self.video_missed_mask == 1] = 0
+            elif self.cmb_cell_highlight_mode.currentText() == "Outline":
+                # Use Canny filter to get the edges
+                if self.video_cell_mask.any():
+                    edges = canny(self.video_cell_mask, sigma=2)
+                    image[edges == 1] = np.array([0, 255, 255])
+                if self.video_missed_mask.any():
+                    edges = canny(self.video_missed_mask, sigma=2)
+                    image[edges == 1] = np.array([255, 0, 255])
             if self.select_missed_mode:
                 image[:,:,1][self.video_missed_mask_candidate == 1] = 0                
         return image
