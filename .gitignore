@@ -2,6 +2,5 @@
 *.json
 *.pdf
 *.ini
-*.pth
 *.png
 data/*

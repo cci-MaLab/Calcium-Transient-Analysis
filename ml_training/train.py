@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import torch
 import time
 import numpy as np
+import os
 from sklearn.metrics import f1_score, roc_auc_score, roc_curve, precision_score, recall_score, confusion_matrix, accuracy_score, ConfusionMatrixDisplay
 
 
@@ -27,16 +28,16 @@ def train():
 	# create the training and test data loaders
 	trainLoader = DataLoader(trainDS, shuffle=True,
 		batch_size=config.BATCH_SIZE, pin_memory=config.PIN_MEMORY,
-		num_workers=8)
+		num_workers=4)
 	testLoader = DataLoader(testDS, shuffle=False,
 		batch_size=config.BATCH_SIZE, pin_memory=config.PIN_MEMORY,
-		num_workers=8)
+		num_workers=4)
 	valLoader = DataLoader(valDS, shuffle=False,
 		batch_size=config.BATCH_SIZE, pin_memory=config.PIN_MEMORY,
-		num_workers=8)
+		num_workers=4)
 
 	# initialize our CNN model
-	gru = GRU(hidden_size=config.HIDDEN_SIZE).to(config.DEVICE)
+	gru = GRU(hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS).to(config.DEVICE)
 	# initialize loss function and optimizer
 
 	lossFunc = BCEWithLogitsLoss(pos_weight=trainDS.weight.to(config.DEVICE))
@@ -74,9 +75,9 @@ def train():
 				# loop over the training set
 				for (i, (inputs, hidden, target)) in enumerate(tqdm(trainLoader, leave=False)):
 					# unpack the data and make sure they are on the same device
-					x, h0, y = inputs.to(config.DEVICE), hidden.to(config.DEVICE), target.to(config.DEVICE)
+					x, h0, y = inputs.to(config.DEVICE), hidden, target.to(config.DEVICE)
 					# Batch dimension has to be second for hidden
-					h0 = h0.swapaxes(0, 1)
+					h0 = [h.to(config.DEVICE).swapaxes(0, 1) for h in h0]
 					# perform a forward pass and calculate the training loss
 					pred = gru(x, h0)
 					loss = lossFunc(pred, y)
@@ -101,9 +102,9 @@ def train():
 					# loop over the validation set
 					for (i, (inputs, hidden, target)) in enumerate(tqdm(valLoader, leave=False)):
 						# unpack the data and make sure they are on the same device
-						x, h0, y = inputs.to(config.DEVICE), hidden.to(config.DEVICE), target.to(config.DEVICE)
+						x, h0, y = inputs.to(config.DEVICE), hidden, target.to(config.DEVICE)
 						# Batch dimension has to be second for hidden
-						h0 = h0.swapaxes(0, 1)
+						h0 = [h.to(config.DEVICE).swapaxes(0, 1) for h in h0]
 						# perform a forward pass and calculate the training loss
 						pred = gru(x, h0)
 						totalValLoss += lossFunc(pred, y)
@@ -121,7 +122,8 @@ def train():
 		# save the model if the validation loss has decreased
 		if avgValLoss < lowest_loss:
 			print("[INFO] saving the model...")
-			model_path = config.BASE_OUTPUT + "/gru_model_val_" + current_time + ".pth"
+			name ="gru_model_val_" + current_time + ".pth"
+			model_path = os.path.sep.join([config.BASE_OUTPUT, name])
 			torch.save(gru, model_path)
 			lowest_loss = avgValLoss
 		
@@ -141,9 +143,15 @@ def train():
 	plt.xlabel("Epoch #")
 	plt.ylabel("Loss")
 	plt.legend(loc="lower left")
-	plt.savefig(config.PLOT_PATH)
+	# Create the output folder
+	output_path = os.path.sep.join([config.PLOT_PATH, current_time])
+	if not os.path.exists(output_path):
+		os.makedirs(output_path)
+	output_path = os.path.sep.join([config.PLOT_PATH, current_time, "plot.png"])
+	plt.savefig(output_path)
 	print("[INFO] saving the model...")
-	model_path = config.BASE_OUTPUT + "/gru_model_final_" + current_time + ".pth"
+	name ="gru_model_final_" + current_time + ".pth"
+	model_path = os.path.sep.join([config.BASE_OUTPUT, name])
 	torch.save(gru, model_path)
 
 	# Start testing
@@ -164,7 +172,7 @@ def train():
 			preds.extend(pred)
 			# add the ground-truth to the list
 			gt.extend(y.numpy())
-	
+
 	preds = np.array(preds).flatten()
 	gt = np.array(gt).flatten()
 	# calculate the accuracy
@@ -182,10 +190,11 @@ def train():
 	print("[INFO] No Transient Event Recall: {:.4f}".format(recall))
 	# Get confusion Matrix plot
 	cm = confusion_matrix(gt, preds.round())
-	disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["No Transient Event", "Transient Event"])
+	disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["No TE", "TE"])
 	# Save confusion matrix plot
+	output_path = os.path.sep.join([config.PLOT_PATH, current_time, "confusion_matrix.png"])
 	disp.plot()
-	plt.savefig("confusion_matrix.png")	
+	plt.savefig(output_path)	
 	# calculate the F1 score and AUC ROC score	
 	f1 = f1_score(gt, preds.round())
 	print("[INFO] F1 score: {:.4f}".format(f1))
@@ -201,4 +210,5 @@ def train():
 	plt.xlabel("False Positive Rate")
 	plt.ylabel("True Positive Rate")
 	plt.legend(loc="lower right")
-	plt.savefig("roc.png")
+	output_path = os.path.sep.join([config.PLOT_PATH, current_time, "roc_curve.png"])
+	plt.savefig(output_path)

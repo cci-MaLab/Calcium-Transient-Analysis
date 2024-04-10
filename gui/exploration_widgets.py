@@ -230,6 +230,10 @@ class ExplorationWidget(QWidget):
             btn_run_model = QPushButton("No Model Available")
             btn_run_model.setEnabled(False)
 
+        model_conf_threshold_label = QLabel("Model Confidence Threshold")
+        self.model_conf_threshold_input = QLineEdit()
+        self.model_conf_threshold_input.setValidator(QDoubleValidator(0, 1, 3))
+        self.model_conf_threshold_input.setText("0.5")
 
         # Force Transients Utility
         label_force_transient = QLabel("Force/Readjust Transient Event")
@@ -479,8 +483,12 @@ class ExplorationWidget(QWidget):
         layout_ml_name = QHBoxLayout()
         layout_ml_name.addWidget(model_name_label)
         layout_ml_name.addWidget(self.cmb_model_name)
+        layout_ml_threshold = QHBoxLayout()
+        layout_ml_threshold.addWidget(model_conf_threshold_label)
+        layout_ml_threshold.addWidget(self.model_conf_threshold_input)
         layout_ml = QVBoxLayout(frame_ml_events)
         layout_ml.addLayout(layout_ml_name)
+        layout_ml.addLayout(layout_ml_threshold)
         layout_ml.addWidget(btn_run_model)
 
 
@@ -702,6 +710,7 @@ class ExplorationWidget(QWidget):
 
     def run_model(self):
         model_name = self.cmb_model_name.currentText()
+        confidence = float(self.model_conf_threshold_input.text()) if self.model_conf_threshold_input.text() else 0.5
 
         if model_name:
             model = torch.load(f"./ml_training/output/{model_name}")
@@ -722,13 +731,15 @@ class ExplorationWidget(QWidget):
                             x = torch.as_tensor(x).to(torch.float32)
 
                             pred = model(x)
-                            pred = torch.sigmoid(pred).cpu().detach().numpy().flatten().round() # Lol
+                            pred = torch.sigmoid(pred).cpu().detach().numpy().flatten() # Lol
+                            pred[pred >= confidence] = 1
+                            pred[pred < confidence] = 0
 
                             # Prediction made now update the events
                             self.session.update_and_save_E(unit_id, pred)
                     i += 1
 
-            self.refresh_cell_list()
+            self.visualize_signals(reset_view=False)
 
     
 

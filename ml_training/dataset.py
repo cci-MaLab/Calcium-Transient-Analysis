@@ -97,9 +97,20 @@ class GRUDataset(Dataset):
         DFF_sample = mouse.DFF.sel(unit_id=unit_id, frame=slice(start, end)).values
 
         sample = torch.as_tensor(np.stack([Yra_sample, C_sample, DFF_sample]).T).to(torch.float32)
-        forward_hidden = self.hidden_states[start, 0, :].to(torch.float32)
-        backward_hidden = self.hidden_states[end, 1, :].to(torch.float32)
-        hidden = torch.stack([forward_hidden, backward_hidden])
+        # These are called hidden states but in fact they are the outputs of the GRU
+        # Therefore we need to pick the last output of the forward and backward passes, whilst accounting
+        # for the fact that we may have 0 inputs.
+        hidden = []
+        for i in range(len(self.hidden_states)):
+            if start == 0:
+                forward_hidden = torch.zeros(self.hidden_states[i].shape[2]).to(torch.float32)
+            else:
+                forward_hidden = self.hidden_states[i][start-1, 0, :].to(torch.float32)
+            if end == mouse.E.shape[1] - 1:
+                backward_hidden = torch.zeros(self.hidden_states[i].shape[2]).to(torch.float32)
+            else:
+                backward_hidden = self.hidden_states[i][end+1, 1, :].to(torch.float32)
+            hidden.append(torch.stack([forward_hidden, backward_hidden]))
 
         target = torch.as_tensor(mouse.E.sel(unit_id=unit_id, frame=slice(start, end)).values).unsqueeze(-1).to(torch.float32)
 
@@ -193,9 +204,17 @@ class ValDataset(Dataset):
         DFF_sample = mouse.DFF.sel(unit_id=unit_id, frame=slice(start, end)).values
 
         sample = torch.as_tensor(np.stack([Yra_sample, C_sample, DFF_sample]).T).to(torch.float32)
-        forward_hidden = self.hidden_states[start, 0, :].to(torch.float32)
-        backward_hidden = self.hidden_states[end, 1, :].to(torch.float32)
-        hidden = torch.stack([forward_hidden, backward_hidden])
+        hidden = []
+        for i in range(len(self.hidden_states)):
+            if start == 0:
+                forward_hidden = torch.zeros(self.hidden_states[i].shape[2]).to(torch.float32)
+            else:
+                forward_hidden = self.hidden_states[i][start-1, 0, :].to(torch.float32)
+            if end == mouse.E.shape[1] - 1:
+                backward_hidden = torch.zeros(self.hidden_states[i].shape[2]).to(torch.float32)
+            else:
+                backward_hidden = self.hidden_states[i][end+1, 1, :].to(torch.float32)
+            hidden.append(torch.stack([forward_hidden, backward_hidden]))
 
         target = torch.as_tensor(mouse.E.sel(unit_id=unit_id, frame=slice(start, end)).values).unsqueeze(-1).to(torch.float32)
 
