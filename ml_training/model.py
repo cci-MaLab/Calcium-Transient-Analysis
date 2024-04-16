@@ -27,7 +27,7 @@ class GRU(Module):
         self.fc = nn.Linear(hidden_size*2, classes)
         # No activation function is used because we are using BCEWithLogitsLoss
         
-    def forward(self, x, h0: list):
+    def forward(self, x, h0: list = []):
         if not h0:
             h0 = [None]*self.num_layers
         for i in range(self.num_layers):

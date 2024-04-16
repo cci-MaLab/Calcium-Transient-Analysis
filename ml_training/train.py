@@ -17,6 +17,13 @@ def train():
 	# For saving purposes get the hour and minute and date of the run
 	t = time.localtime()
 	current_time = time.strftime("%m_%d_%H_%M", t)
+	output_path = os.path.sep.join([config.BASE_OUTPUT, current_time])
+	if not os.path.exists(output_path):
+		os.makedirs(output_path)
+	plot_path = os.path.sep.join([output_path, "plots"])
+	if not os.path.exists(plot_path):
+		os.makedirs(plot_path)
+	
 	# load the image and mask filepaths in a sorted manner
 	paths = config.DATASET_PATH
 
@@ -28,13 +35,13 @@ def train():
 	# create the training and test data loaders
 	trainLoader = DataLoader(trainDS, shuffle=True,
 		batch_size=config.BATCH_SIZE, pin_memory=config.PIN_MEMORY,
-		num_workers=4)
+		num_workers=0)
 	testLoader = DataLoader(testDS, shuffle=False,
 		batch_size=config.BATCH_SIZE, pin_memory=config.PIN_MEMORY,
-		num_workers=4)
+		num_workers=0)
 	valLoader = DataLoader(valDS, shuffle=False,
 		batch_size=config.BATCH_SIZE, pin_memory=config.PIN_MEMORY,
-		num_workers=4)
+		num_workers=0)
 
 	# initialize our CNN model
 	gru = GRU(hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS).to(config.DEVICE)
@@ -123,8 +130,8 @@ def train():
 		if avgValLoss < lowest_loss:
 			print("[INFO] saving the model...")
 			name ="gru_model_val_" + current_time + ".pth"
-			model_path = os.path.sep.join([config.BASE_OUTPUT, name])
-			torch.save(gru, model_path)
+			model_val_path = os.path.sep.join([output_path, name])
+			torch.save(gru, model_val_path)
 			lowest_loss = avgValLoss
 		
 		
@@ -143,16 +150,14 @@ def train():
 	plt.xlabel("Epoch #")
 	plt.ylabel("Loss")
 	plt.legend(loc="lower left")
-	# Create the output folder
-	output_path = os.path.sep.join([config.PLOT_PATH, current_time])
-	if not os.path.exists(output_path):
-		os.makedirs(output_path)
-	output_path = os.path.sep.join([config.PLOT_PATH, current_time, "plot.png"])
-	plt.savefig(output_path)
+	loss_path = os.path.sep.join([plot_path, "loss.png"])
+	plt.savefig(loss_path)
 	print("[INFO] saving the model...")
 	name ="gru_model_final_" + current_time + ".pth"
-	model_path = os.path.sep.join([config.BASE_OUTPUT, name])
-	torch.save(gru, model_path)
+	model_train_path = os.path.sep.join([output_path, name])
+	torch.save(gru, model_train_path)
+	# Load the best model
+	gru = torch.load(model_val_path)
 
 	# Start testing
 	gru.eval()
@@ -171,7 +176,7 @@ def train():
 			pred = pred.cpu().detach().numpy()
 			preds.extend(pred)
 			# add the ground-truth to the list
-			gt.extend(y.numpy())
+			gt.extend(y.cpu().detach().numpy())
 
 	preds = np.array(preds).flatten()
 	gt = np.array(gt).flatten()
@@ -179,22 +184,22 @@ def train():
 	acc = accuracy_score(gt, preds.round())
 	print("[INFO] Accuracy: {:.4f}".format(acc))
 	# calculate Precision and Recall per class
-	precision = precision_score(gt, preds.round())
-	recall = recall_score(gt, preds.round())
-	print("[INFO] Transient Event Precision: {:.4f}".format(precision))
-	print("[INFO] Transient Event Recall: {:.4f}".format(recall))
+	precision1 = precision_score(gt, preds.round())
+	recall1 = recall_score(gt, preds.round())
+	print("[INFO] Transient Event Precision: {:.4f}".format(precision1))
+	print("[INFO] Transient Event Recall: {:.4f}".format(recall1))
 	# precision and recall for other class
-	precision = precision_score(gt, preds.round(), pos_label=0)
-	recall = recall_score(gt, preds.round(), pos_label=0)
-	print("[INFO] No Transient Event Precision: {:.4f}".format(precision))
-	print("[INFO] No Transient Event Recall: {:.4f}".format(recall))
+	precision2 = precision_score(gt, preds.round(), pos_label=0)
+	recall2 = recall_score(gt, preds.round(), pos_label=0)
+	print("[INFO] No Transient Event Precision: {:.4f}".format(precision2))
+	print("[INFO] No Transient Event Recall: {:.4f}".format(recall2))
 	# Get confusion Matrix plot
 	cm = confusion_matrix(gt, preds.round())
 	disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["No TE", "TE"])
 	# Save confusion matrix plot
-	output_path = os.path.sep.join([config.PLOT_PATH, current_time, "confusion_matrix.png"])
+	cm_path = os.path.sep.join([plot_path, "confusion_matrix.png"])
 	disp.plot()
-	plt.savefig(output_path)	
+	plt.savefig(cm_path)	
 	# calculate the F1 score and AUC ROC score	
 	f1 = f1_score(gt, preds.round())
 	print("[INFO] F1 score: {:.4f}".format(f1))
@@ -210,5 +215,21 @@ def train():
 	plt.xlabel("False Positive Rate")
 	plt.ylabel("True Positive Rate")
 	plt.legend(loc="lower right")
-	output_path = os.path.sep.join([config.PLOT_PATH, current_time, "roc_curve.png"])
-	plt.savefig(output_path)
+	roc_path = os.path.sep.join([plot_path, "roc_curve.png"])
+	plt.savefig(roc_path)
+
+	# Create a text file with the parameters used
+	with open(os.path.sep.join([output_path, "parameters.txt"]), "w") as file:
+		file.write("INIT_LR: {}\nNUM_EPOCHS: {}\nBATCH_SIZE: {}\nTHRESHOLD: {}\nTEST_SIZE: {}\nVAL_SIZE: {}\nSECTION_LEN: {}\nHIDDEN_SIZE: {}\nNUM_LAYERS: {}\n".format(
+			config.INIT_LR, config.NUM_EPOCHS, config.BATCH_SIZE, config.THRESHOLD, config.TEST_SIZE, config.VAL_SIZE, config.SECTION_LEN, config.HIDDEN_SIZE, config.NUM_LAYERS))
+		file.write("Accuracy: {:.4f}\n".format(acc))
+		file.write("Transient Event Precision: {:.4f}\n".format(precision1))
+		file.write("Transient Event Recall: {:.4f}\n".format(recall1))
+		file.write("No Transient Event Precision: {:.4f}\n".format(precision2))
+		file.write("No Transient Event Recall: {:.4f}\n".format(recall2))
+		file.write("F1 score: {:.4f}\n".format(f1))
+		file.write("AUC ROC score: {:.4f}\n".format(auc))
+		# Write the data used for the training
+		file.write("Data used for training: \n")
+		for path in paths:
+			file.write(path + "\n")

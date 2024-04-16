@@ -4,6 +4,7 @@ import torch
 from core.backend import open_minian
 import numpy as np
 from math import ceil
+from ml_training import config
 
 class GRUDataset(Dataset):
     def __init__(self, paths: list[str], test_split=0.1, val_split=0.1, section_len=200):
@@ -37,15 +38,22 @@ class GRUDataset(Dataset):
             unit_ids = all_unit_ids[verified==1]
 
             # Loading into memory may take up some space but it is necessary for fast access during training
-            E = data['E'].sel(unit_id=unit_ids).load()
-            YrA = data['YrA'].sel(unit_id=unit_ids).load()
-            C = data['C'].sel(unit_id=unit_ids).load()
-            DFF = data['DFF'].sel(unit_id=unit_ids).load()
+            E = data['E'].sel(unit_id=unit_ids)
+            YrA = data['YrA'].sel(unit_id=unit_ids)
+            C = data['C'].sel(unit_id=unit_ids)
+            DFF = data['DFF'].sel(unit_id=unit_ids)
 
             # Normalize the datasets locally
             YrA = YrA / YrA.max(dim='frame')
             C = C / C.max(dim='frame')
             DFF = DFF / DFF.max(dim='frame')
+
+            # We want the data to be preloaded into memory for faster access.
+            # Convert into float32 tensors
+            YrA = torch.tensor(YrA.values.astype(np.float32)).to(config.DEVICE)
+            C = torch.tensor(C.values.astype(np.float32)).to(config.DEVICE)
+            DFF = torch.tensor(DFF.values.astype(np.float32)).to(config.DEVICE)
+            E = torch.tensor(E.values.astype(np.float32)).to(config.DEVICE)
 
             self.data.append(MouseData(path, C, DFF, E, YrA, unit_ids))
 
@@ -79,7 +87,8 @@ class GRUDataset(Dataset):
 
 
         self.weight = torch.tensor([total_0 / total_1]).to(torch.float32)
-        
+
+        self.hidden_zeros = torch.zeros(config.HIDDEN_SIZE).to(torch.float32).to(config.DEVICE)
         
 
     def __len__(self):
@@ -92,27 +101,21 @@ class GRUDataset(Dataset):
         unit_id = mouse.unit_ids[self.small_epoch]
         start, end = mouse.samples[unit_id][idx]
 
-        Yra_sample = mouse.YrA.sel(unit_id=unit_id, frame=slice(start, end)).values
-        C_sample = mouse.C.sel(unit_id=unit_id, frame=slice(start, end)).values
-        DFF_sample = mouse.DFF.sel(unit_id=unit_id, frame=slice(start, end)).values
-
-        sample = torch.as_tensor(np.stack([Yra_sample, C_sample, DFF_sample]).T).to(torch.float32)
+        sample, target = mouse.get_sample(unit_id, start, end)
         # These are called hidden states but in fact they are the outputs of the GRU
         # Therefore we need to pick the last output of the forward and backward passes, whilst accounting
         # for the fact that we may have 0 inputs.
         hidden = []
         for i in range(len(self.hidden_states)):
             if start == 0:
-                forward_hidden = torch.zeros(self.hidden_states[i].shape[2]).to(torch.float32)
+                forward_hidden = self.hidden_zeros
             else:
-                forward_hidden = self.hidden_states[i][start-1, 0, :].to(torch.float32)
-            if end == mouse.E.shape[1] - 1:
-                backward_hidden = torch.zeros(self.hidden_states[i].shape[2]).to(torch.float32)
+                forward_hidden = self.hidden_states[i][start-1, 0, :]
+            if end == mouse.E.shape[1]:
+                backward_hidden = self.hidden_zeros
             else:
-                backward_hidden = self.hidden_states[i][end+1, 1, :].to(torch.float32)
+                backward_hidden = self.hidden_states[i][end+1, 1, :]
             hidden.append(torch.stack([forward_hidden, backward_hidden]))
-
-        target = torch.as_tensor(mouse.E.sel(unit_id=unit_id, frame=slice(start, end)).values).unsqueeze(-1).to(torch.float32)
 
         return sample, hidden, target
 
@@ -125,11 +128,7 @@ class GRUDataset(Dataset):
         mouse = self.data[self.intermediate_epoch]
         unit_id = mouse.unit_ids[self.small_epoch]
 
-        Yra_sample = mouse.YrA.sel(unit_id=unit_id).values
-        C_sample = mouse.C.sel(unit_id=unit_id).values
-        DFF_sample = mouse.DFF.sel(unit_id=unit_id).values
-
-        sample = torch.as_tensor(np.stack([Yra_sample, C_sample, DFF_sample]).T).to(torch.float32)
+        sample, _ = mouse.get_sample(unit_id, 0, -1)
 
         return sample
     
@@ -159,12 +158,10 @@ class TestDataset(Dataset):
 
         for mouse in self.data:
             for unit_id in mouse.test_unit_ids:
-                Yra_sample = mouse.YrA.sel(unit_id=unit_id).values
-                C_sample = mouse.C.sel(unit_id=unit_id).values
-                DFF_sample = mouse.DFF.sel(unit_id=unit_id).values
+                sample, target = mouse.get_sample(unit_id, 0, -1)
 
-                self.samples.append(np.stack([Yra_sample, C_sample, DFF_sample]).T)
-                self.targets.append(torch.as_tensor(mouse.E.sel(unit_id=unit_id).values).unsqueeze(-1).to(torch.float32))
+                self.samples.append(sample)
+                self.targets.append(target)
         
 
         
@@ -187,6 +184,7 @@ class ValDataset(Dataset):
 
         self.small_epoch = 0
         self.intermediate_epoch = 0
+        self.hidden_zeros = torch.zeros(config.HIDDEN_SIZE).to(torch.float32).to(config.DEVICE)
         
 
     def __len__(self):
@@ -199,24 +197,19 @@ class ValDataset(Dataset):
         unit_id = mouse.unit_ids[self.small_epoch]
         start, end = mouse.samples[unit_id][idx]
 
-        Yra_sample = mouse.YrA.sel(unit_id=unit_id, frame=slice(start, end)).values
-        C_sample = mouse.C.sel(unit_id=unit_id, frame=slice(start, end)).values
-        DFF_sample = mouse.DFF.sel(unit_id=unit_id, frame=slice(start, end)).values
+        sample, target = mouse.get_sample(unit_id, start, end)
 
-        sample = torch.as_tensor(np.stack([Yra_sample, C_sample, DFF_sample]).T).to(torch.float32)
         hidden = []
         for i in range(len(self.hidden_states)):
             if start == 0:
-                forward_hidden = torch.zeros(self.hidden_states[i].shape[2]).to(torch.float32)
+                forward_hidden = self.hidden_zeros
             else:
-                forward_hidden = self.hidden_states[i][start-1, 0, :].to(torch.float32)
-            if end == mouse.E.shape[1] - 1:
-                backward_hidden = torch.zeros(self.hidden_states[i].shape[2]).to(torch.float32)
+                forward_hidden = self.hidden_states[i][start-1, 0, :]
+            if end == mouse.E.shape[1]:
+                backward_hidden = self.hidden_zeros
             else:
-                backward_hidden = self.hidden_states[i][end+1, 1, :].to(torch.float32)
+                backward_hidden = self.hidden_states[i][end+1, 1, :]
             hidden.append(torch.stack([forward_hidden, backward_hidden]))
-
-        target = torch.as_tensor(mouse.E.sel(unit_id=unit_id, frame=slice(start, end)).values).unsqueeze(-1).to(torch.float32)
 
         return sample, hidden, target
 
@@ -229,11 +222,7 @@ class ValDataset(Dataset):
         mouse = self.data[self.intermediate_epoch]
         unit_id = mouse.unit_ids[self.small_epoch]
 
-        Yra_sample = mouse.YrA.sel(unit_id=unit_id).values
-        C_sample = mouse.C.sel(unit_id=unit_id).values
-        DFF_sample = mouse.DFF.sel(unit_id=unit_id).values
-
-        sample = torch.as_tensor(np.stack([Yra_sample, C_sample, DFF_sample]).T).to(torch.float32)
+        sample, _ = mouse.get_sample(unit_id, 0, -1)
 
         return sample
     
@@ -264,6 +253,8 @@ class MouseData:
 
         self.samples = {}
         self.val_samples = {}
+
+        self.unit_to_index = {unit_id: i for i, unit_id in enumerate(self.unit_ids)}
     
     def __len__(self):
         return len(self.unit_ids)
@@ -281,17 +272,28 @@ class MouseData:
             val_indices.sort()
             indices = np.setdiff1d(np.arange(ceil(self.E.shape[1] / section_len)), val_indices)
             for start in indices:
-                self.samples[unit_id].append((start * section_len, (start + 1) * section_len - 1)) # -1 as xarray slicing is inclusive
+                self.samples[unit_id].append((start * section_len, (start + 1) * section_len))
             for start in val_indices:
-                self.val_samples[unit_id].append((start * section_len, (start + 1) * section_len - 1))
+                self.val_samples[unit_id].append((start * section_len, (start + 1) * section_len))
 
     def get_counts(self):
         total_0 = 0
         total_1 = 0
-        for unit_id in self.unit_ids:
-            E_sample = self.E.sel(unit_id=unit_id).values
+        for idx, unit_id in enumerate(self.unit_ids):
+            E_sample = self.E[idx]
             for sample in self.samples[unit_id]:
-                total_0 += np.sum(E_sample[sample[0]:sample[1]] == 0)
-                total_1 += np.sum(E_sample[sample[0]:sample[1]] == 1)
+                total_0 += torch.sum(E_sample[sample[0]:sample[1]] == 0)
+                total_1 += torch.sum(E_sample[sample[0]:sample[1]] == 1)
 
         return total_0, total_1
+    
+    def get_sample(self, unit_id, start, end):
+        idx = self.unit_to_index[unit_id]
+        Yra_sample = self.YrA[idx, start:end]
+        C_sample = self.C[idx, start:end]
+        DFF_sample = self.DFF[idx, start:end]
+        target = self.E[idx, start:end].unsqueeze(-1)
+
+        sample = torch.stack([Yra_sample, C_sample, DFF_sample]).T
+
+        return sample, target
