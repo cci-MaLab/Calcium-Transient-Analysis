@@ -1,6 +1,5 @@
 # import the necessary packages
 import torch
-import os
 # base path of the dataset
 DATASET_PATH = ["./data/ml_data1",
                 "./data/ml_data2",

@@ -891,6 +891,13 @@ class DataInstance:
         # Now save the E array to disk
         save_xarray(E, self.minian_path)
 
+    def clear_E(self, unit_id):
+        E = self.data['E']
+        E.load()
+        E.loc[dict(unit_id=unit_id)] = 0
+        save_xarray(E, self.minian_path)
+
+
 
     def remove_from_E(self, clear_selected_events_local: {}):
         E = self.data['E']

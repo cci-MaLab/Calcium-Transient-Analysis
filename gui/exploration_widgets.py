@@ -4,7 +4,7 @@ The following file will be used for doing a deeper dive into the selected sessio
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAction, QStyle, 
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
                             QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar, QCheckBox,
-                            QTextEdit, QComboBox, QGraphicsTextItem)
+                            QTextEdit, QComboBox, QGraphicsTextItem, QMessageBox)
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5 import QtCore
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont)
@@ -18,7 +18,7 @@ from core.pyqtgraph_override import ImageViewOverride
 from skimage.segmentation import flood_fill
 from skimage.feature import canny
 import os
-import sys
+
 
 try:
     import torch
@@ -455,6 +455,10 @@ class ExplorationWidget(QWidget):
         btn_clear_traces = QPushButton("Clear Selected Traces")
         btn_clear_traces.clicked.connect(self.clear_selected_traces)
 
+        # Clear Events Button
+        btn_clear_events = QPushButton("Clear All Events")
+        btn_clear_events.clicked.connect(self.clear_all_events)
+
         # Event Generation Algorithm
         layout_height = QHBoxLayout()
         layout_height.addWidget(self.min_height_label)
@@ -679,6 +683,7 @@ class ExplorationWidget(QWidget):
 
         layout_plot_utility = QVBoxLayout()
         layout_plot_utility.addWidget(btn_clear_traces)
+        layout_plot_utility.addWidget(btn_clear_events)
         layout_plot_utility.addWidget(tabs_signal)
 
         layout_plot = QHBoxLayout()
@@ -713,11 +718,12 @@ class ExplorationWidget(QWidget):
         self.imv.scene.sigMouseMoved.connect(self.detect_cell_hover)
 
     def run_model(self):
+        from ml_training import config
         model_path = self.name_to_path.get(self.cmb_model_name.currentText(), None)
         confidence = float(self.model_conf_threshold_input.text()) if self.model_conf_threshold_input.text() else 0.5
 
         if model_path:
-            model = torch.load(model_path)
+            model = torch.load(model_path, map_location=torch.device(config.DEVICE))
             model.eval()
             with torch.no_grad():
                 i = 0
@@ -992,6 +998,21 @@ class ExplorationWidget(QWidget):
         self.noise_params["type"] = self.noise_type_combobox.currentText()
         self.noise_params["cap"] = float(self.noise_cap_input.text())
         self.visualize_signals(reset_view=False)
+
+    def clear_all_events(self):
+        # First make sure that the user wants to clear all events
+        reply = QMessageBox.question(self, 'Warning!', "Are you sure you want to clear all events from the visible traces?\n This step is not reversible?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            i = 0
+            while self.w_signals.getItem(i,0) is not None:
+                item = self.w_signals.getItem(i,0)
+                if isinstance(item, PlotItemEnhanced):
+                    if item.cell_type == "Standard":
+                        id = item.id
+                        item.clear_event_curves()
+                        self.session.clear_E(id)
+                i += 1
+            self.selected_event_change(False)
 
     def clear_selected_traces(self):
         # Clear only the selected signals
