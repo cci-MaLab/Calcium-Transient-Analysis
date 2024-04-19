@@ -233,11 +233,11 @@ class Event:
     def set_postBinNum(self, postBinNum : int):
         self.postBinNum = postBinNum
 
-    def get_binList(self,event_frame,preBinNum,postBinNum,binSize):
+    def get_binList(self,event_frame,preBinNum,postBinNum,binSize,value_type):
         binList = []
         total_num = preBinNum + postBinNum
         for i in range(-preBinNum,postBinNum):
-            bin, start_frame, end_frame = self.get_section(event_frame,binSize,i*binSize)
+            bin, start_frame, end_frame, integrity= self.get_interval_section(event_frame,binSize,i*binSize,0,value_type)
             binList.append(bin)
         return binList
 
