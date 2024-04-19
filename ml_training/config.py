@@ -13,7 +13,7 @@ PIN_MEMORY = False #True if DEVICE == "cuda" else False
 # initialize learning rate, number of epochs to train for, and the
 # batch size
 INIT_LR = 0.001
-NUM_EPOCHS = 40
+NUM_EPOCHS = 100
 BATCH_SIZE = 1
 # define threshold to filter weak predictions
 THRESHOLD = 0.5
@@ -23,5 +23,6 @@ BASE_OUTPUT = "ml_training/output"
 TEST_SIZE = 0.1
 VAL_SIZE = 0.1
 SECTION_LEN=200
-HIDDEN_SIZE=24
+HIDDEN_SIZE=32
 NUM_LAYERS=3
+ATTENTION=False

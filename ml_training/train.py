@@ -44,7 +44,7 @@ def train():
 		num_workers=0)
 
 	# initialize our CNN model
-	gru = GRU(hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS).to(config.DEVICE)
+	gru = GRU(hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS, use_attention=config.ATTENTION).to(config.DEVICE)
 	# initialize loss function and optimizer
 
 	lossFunc = BCEWithLogitsLoss(pos_weight=trainDS.weight.to(config.DEVICE))
@@ -68,7 +68,7 @@ def train():
 		totalTrainLoss = 0
 		totalValLoss = 0
 		for m in tqdm(range(len(trainDS.data)), leave=False):
-			trainDS.moderate_epoch = m
+			trainDS.intermediate_epoch = m
 			for u in tqdm(range(trainDS.get_mouse_cell_count()), leave=False):
 				trainDS.small_epoch = u
 				# We need to get the local hidden states for the current unit
