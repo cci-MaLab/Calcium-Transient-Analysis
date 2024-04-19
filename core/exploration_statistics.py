@@ -2,7 +2,9 @@ from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QAction, QStyle,
                             QApplication, QTableWidgetItem, QTableWidget, QMenuBar, QLineEdit, QPushButton)
 
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QColor)
+from PyQt5.QtWidgets import QFileDialog
 
+import matplotlib.pyplot as plt
 import numpy as np
 from gui.clustering_inspection_widgets import MplCanvas
 import pandas as pd
@@ -206,7 +208,8 @@ class GeneralStatsWidget(StatsWidget):
         data = self.pd_table["Average interval (seconds)"].dropna()
         if data.empty:
             return
-        self.iei_win = GeneralVizWidget(data * 1000, "IEI")
+        data = data.drop(data[data == 'N/A'].index).astype(float) * 1000
+        self.iei_win = GeneralVizWidget(data, "IEI")
         self.iei_win.setWindowTitle("IEI Box Plot")
         self.iei_win.show()
 
@@ -228,18 +231,22 @@ class GeneralVizWidget(QWidget):
         '''
         The window will display either IEI or amplitude box plots for all cells.
         '''
-        visualization = MplCanvas()
+        self.visualization = MplCanvas()
+        btn_save_fig = QPushButton("Save Figure")
+        btn_save_fig.clicked.connect(lambda: save_figure(self.visualization.figure))
+
         layout = QVBoxLayout()
-        layout.addWidget(visualization)
+        layout.addWidget(self.visualization)
+        layout.addWidget(btn_save_fig)
         self.setLayout(layout)
 
         data = data.astype(float)
-        bp = data.plot.box(ax=visualization.axes)
+        bp = data.plot.box(ax=self.visualization.axes)
         bp.set_title(f"{viz_type} Box Plot")
         bp.set_ylabel(f"{viz_type} (msec)" if viz_type == "IEI" else f"{viz_type} (ΔF/F)")
         # Add jitter to the box plot
         for point in data:
-            visualization.axes.plot([np.random.normal(1, 0.04)], point, 'r.', alpha=0.2)
+            self.visualization.axes.plot([np.random.normal(1, 0.04)], point, 'r.', alpha=0.2)
 
 
 class LocalStatsWidget(StatsWidget):
@@ -382,12 +389,15 @@ class LocalIEIWidget(QWidget):
         btn_visualize.setFixedWidth(300)
 
         self.visualization = MplCanvas()
+        btn_save_fig = QPushButton("Save Figure")
+        btn_save_fig.clicked.connect(lambda: save_figure(self.visualization.figure))
 
         layout  = QVBoxLayout()
         layout.addLayout(layout_type)
         layout.addLayout(layout_bins)
         layout.addWidget(btn_visualize)
         layout.addWidget(self.visualization)
+        layout.addWidget(btn_save_fig)
         self.setLayout(layout)
 
         self.update_visualization()
@@ -447,12 +457,15 @@ class LocalAmpWidget(QWidget):
         btn_visualize.setFixedWidth(300)
 
         self.visualization = MplCanvas()
+        btn_save_fig = QPushButton("Save Figure")
+        btn_save_fig.clicked.connect(lambda: save_figure(self.visualization.figure))
 
         layout  = QVBoxLayout()
         layout.addLayout(layout_type)
         layout.addLayout(layout_bins)
         layout.addWidget(btn_visualize)
         layout.addWidget(self.visualization)
+        layout.addWidget(btn_save_fig)
         self.setLayout(layout)
 
         self.update_visualization()
@@ -491,12 +504,26 @@ class localFrequencyWidget(QWidget):
         layout = QVBoxLayout()
         self.setLayout(layout)
         self.visualization = MplCanvas()
+        btn_save_fig = QPushButton("Save Figure")
+        btn_save_fig.clicked.connect(lambda: save_figure(self.visualization.figure))
         self.visualization.axes.set_xlabel("Frequency (Hz)")
         self.visualization.axes.set_ylabel("Amplitude")
         layout.addWidget(self.visualization)
+        layout.addWidget(btn_save_fig)
 
         fft_values = fft(DFF)
         fft_values = np.abs(fft_values)
         self.visualization.axes.plot(fft_values)
 
         
+def save_figure(fig):
+    # Open file explorer to save the figure
+    file_path, ext = QFileDialog.getSaveFileName(None, "Save Figure", "", "SVG Files (*.svg);;PNG Files (*.png);;JPEG Files (*.jpeg);;PDF Files (*.pdf)")
+    if not file_path:
+        return
+    # Append the extension if it is not already there
+    ext = "." + ext.split()[0].lower()
+    if not file_path.endswith(ext):
+        file_path += ext
+
+    fig.savefig(file_path)
