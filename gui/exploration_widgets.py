@@ -217,11 +217,15 @@ class ExplorationWidget(QWidget):
 
         model_name_label = QLabel("Model")
         self.cmb_model_name = QComboBox()
+        self.name_to_path = {}
         # Check if there is a model available in ./ml_training/output
         if os.path.exists("./ml_training/output"):
-            for model in os.listdir("./ml_training/output"):
-                if model.endswith(".pth"):
-                    self.cmb_model_name.addItem(model)
+            for root, dirs, files in os.walk("./ml_training/output"):
+                for file in files:
+                    if file.endswith(".pth") and "val" in file:
+                        model = file.split(".")[0]
+                        self.cmb_model_name.addItem(model)
+                        self.name_to_path[model] = (os.path.join(root, file))
 
         if self.cmb_model_name.count() > 0:
             btn_run_model = QPushButton("Run Model")
@@ -709,11 +713,11 @@ class ExplorationWidget(QWidget):
         self.imv.scene.sigMouseMoved.connect(self.detect_cell_hover)
 
     def run_model(self):
-        model_name = self.cmb_model_name.currentText()
+        model_path = self.name_to_path.get(self.cmb_model_name.currentText(), None)
         confidence = float(self.model_conf_threshold_input.text()) if self.model_conf_threshold_input.text() else 0.5
 
-        if model_name:
-            model = torch.load(f"./ml_training/output/{model_name}")
+        if model_path:
+            model = torch.load(model_path)
             model.eval()
             with torch.no_grad():
                 i = 0

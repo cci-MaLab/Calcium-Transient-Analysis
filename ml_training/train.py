@@ -152,10 +152,6 @@ def train():
 	plt.legend(loc="lower left")
 	loss_path = os.path.sep.join([plot_path, "loss.png"])
 	plt.savefig(loss_path)
-	print("[INFO] saving the model...")
-	name ="gru_model_final_" + current_time + ".pth"
-	model_train_path = os.path.sep.join([output_path, name])
-	torch.save(gru, model_train_path)
 	# Load the best model
 	gru = torch.load(model_val_path)
 
