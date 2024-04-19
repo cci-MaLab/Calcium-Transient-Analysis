@@ -4,7 +4,7 @@ import math
 from torch.nn import Module
 from local_attention import LocalAttention
 
-class GRU(Module):
+class GRU_QWE(Module):
     def __init__(self, sequence_len=200, input_size=3, hidden_size=32, num_layers=1, classes=1):
         # call the parent constructor
         super(GRU, self).__init__()
@@ -48,7 +48,7 @@ class GRU(Module):
 
         return h0s
 
-class GRU_ATTN(Module):
+class GRU(Module):
     def __init__(self, sequence_len=200, input_size=3, hidden_size=32, num_layers=1, classes=1, use_attention=True, context_length=20):
         # call the parent constructor
         super(GRU, self).__init__()
