@@ -157,7 +157,7 @@ class GeneralStatsWidget(StatsWidget):
             # 3.) Total Ca2+ transient #
             self.pd_table.at[id, "Total Ca2+ transient #"] = int(total_transients.sel(unit_id=id).item())
 
-            # 4.) Average Frequency (Hz)
+            # 4.) Average Frequency (Hz)list_rejected_cell
             self.pd_table.at[id, "Average Frequency (Hz)"] = round(average_frequency.sel(unit_id=id).item(), 5)
 
             # 5.) Average Amplitude (ΔF/F)
@@ -190,6 +190,17 @@ class GeneralStatsWidget(StatsWidget):
 
             # 11.) MAD(ΔF/F)
             self.pd_table.at[id, "MAD(ΔF/F)"] = round(mad_dff.sel(unit_id=id).item(), 3)
+
+            # 12.) Verified
+            verified_val = ""
+            if self.E.sel(unit_id=id).coords["good_cells"].values.item():
+                if self.E.sel(unit_id=id).coords["verified"].values.item():
+                    verified_val = "Yes"
+                else:
+                    verified_val = "No"
+            else:
+                verified_val = "Rejected"
+            self.pd_table.at[id, "Verified"] = verified_val
 
         self.pandas_to_table()
         self.table.resizeColumnsToContents()  
