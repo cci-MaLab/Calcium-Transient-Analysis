@@ -26,6 +26,7 @@ from matplotlib import cm
 import matplotlib.pyplot as plt
 
 import configparser
+import time
 
 def open_minian(
     dpath: str, post_process: Optional[Callable] = None, return_dict=False
@@ -82,11 +83,12 @@ def open_minian(
         for d in listdir(dpath):
             arr_path = pjoin(dpath, d)
             if isdir(arr_path):
-                arr = list(xr.open_zarr(arr_path).values())[0]
-                arr.data = darr.from_zarr(
-                    os.path.join(arr_path, arr.name), inline_array=True
-                )
-                dslist.append(arr)
+                if not arr_path.endswith("backup"):
+                    arr = list(xr.open_zarr(arr_path).values())[0]
+                    arr.data = darr.from_zarr(
+                        os.path.join(arr_path, arr.name), inline_array=True
+                    )
+                    dslist.append(arr)
         if return_dict:
             ds = {d.name: d for d in dslist}
         else:
@@ -897,7 +899,20 @@ class DataInstance:
         E.loc[dict(unit_id=unit_id)] = 0
         save_xarray(E, self.minian_path)
 
+    def backup_E(self):
+        """
+        Backup the E array to disk
+        """
+        E = self.data['E']
+        E.load()
+        # Save to backup folder but first check if it exists
+        if not os.path.exists(os.path.join(self.minian_path, "backup")):
+            os.makedirs(os.path.join(self.minian_path, "backup"))
+        t = time.localtime()
+        current_time = time.strftime("%m_%d_%H_%M_%S", t)
 
+        
+        save_xarray(E, os.path.join(self.minian_path, "backup", "E_" + current_time))
 
     def remove_from_E(self, clear_selected_events_local: {}):
         E = self.data['E']
