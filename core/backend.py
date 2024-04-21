@@ -978,7 +978,7 @@ class DataInstance:
             print("Creating DFF array. Sit tight this could take a while.")
             # Convert the data into caiman format
             A, b, C, f, YrA = minian_to_caiman(self.data['A'], self.data['b'], self.data['C'], self.data['f'], self.data['YrA'])
-            dff_array = detrend_df_f(A, b, C, f, YrA)
+            dff_array = detrend_df_f(A, b, C, f, YrA, flag_auto=False)
                 
             DFF = xr.DataArray(
                 dff_array,
