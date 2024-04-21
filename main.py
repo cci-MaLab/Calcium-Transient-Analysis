@@ -151,6 +151,8 @@ class MainWindow(QMainWindow):
             if wid is not None:
                 wid.setWindowTitle(name)
                 self.windows[name] = wid
+                # Create a backup of E data
+                instance.backup_E()
                 wid.show()
 
     def start_ga(self, ga):
@@ -275,8 +277,7 @@ class MainWindow(QMainWindow):
                     self.cl_tools.update_defaults(self.event_defaults)
 
                 for path in self.path_list.keys():
-                    results = self.path_list[path]
-                    self.load_instance(path, results)
+                    self.load_instance(path)
 
                 self.setWindowTitle("Cell Exploration Tool")      
         
