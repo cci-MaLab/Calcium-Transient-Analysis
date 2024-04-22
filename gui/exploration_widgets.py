@@ -734,11 +734,14 @@ class ExplorationWidget(QWidget):
                             unit_id = item.id
                             
                             Yra_sample = self.session.data["YrA"].sel(unit_id=unit_id).values
+                            Yra_sample /= np.max(Yra_sample)
                             C_sample = self.session.data["C"].sel(unit_id=unit_id).values
+                            C_sample /= np.max(C_sample)
                             DFF_sample = self.session.data["DFF"].sel(unit_id=unit_id).values
+                            DFF_sample /= np.max(DFF_sample)
 
                             x = np.stack([Yra_sample, C_sample, DFF_sample]).T
-                            x = torch.as_tensor(x).to(torch.float32)
+                            x = torch.as_tensor(x).to(torch.float32).to(config.DEVICE)
 
                             pred = model(x)
                             pred = torch.sigmoid(pred).cpu().detach().numpy().flatten() # Lol

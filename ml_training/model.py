@@ -4,10 +4,10 @@ import math
 from torch.nn import Module
 from local_attention import LocalAttention
 
-class GRU_QWE(Module):
+class GRU_2(Module):
     def __init__(self, sequence_len=200, input_size=3, hidden_size=32, num_layers=1, classes=1):
         # call the parent constructor
-        super(GRU, self).__init__()
+        super(GRU_2, self).__init__()
 
         self.sequence_len = sequence_len
         self.hidden_size = hidden_size
