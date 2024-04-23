@@ -3,6 +3,7 @@ sys.path.insert(0, ".")
 from sklearn import svm
 from sklearn.model_selection import train_test_split
 from sklearn.decomposition import PCA
+from sklearn.metrics import f1_score
 import pandas as pd
 from .backend import DataInstance 
 from typing import List
@@ -197,9 +198,10 @@ class advanced:
         feature_train, feature_test, label_train,lable_test = train_test_split(final_features,labels,test_size = 0.33,random_state = 20)
         clf = svm.SVC()
         clf.fit(feature_train, label_train)
-        clf.score(feature_test,lable_test)
+        score = clf.score(feature_test,lable_test)       
         print(clf.score(feature_test,lable_test))
         prediction = clf.predict(feature_test)
+        f1Score = f1_score(lable_test,prediction,pos_label='Cocaine')
         true_positive = 0
         false_positive = 0
         true_negative = 0
@@ -219,4 +221,4 @@ class advanced:
                 false_positive += 1
         specifity = true_negative/(true_negative+false_positive)
         sensitivity = true_positive/(true_positive+false_negative)
-        return clf.score(feature_test,lable_test), traces,framelines,labels, specifity, sensitivity
+        return np.asarray([score,f1Score]), traces,framelines,labels, specifity, sensitivity

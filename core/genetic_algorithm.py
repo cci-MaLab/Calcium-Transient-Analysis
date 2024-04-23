@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import sys
 sys.path.insert(0, ".")
 from .backend import DataInstance
@@ -42,6 +43,9 @@ class Genetic_Algorithm:
         self.feature_type = feature_type
         self.value_type = value_type
 
+    def setMice(self,mice):
+        self.mice = mice
+
     def mice_demo(self):
         di1= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/05.2023_Tenth_group/AA058_D1/2023_05_05/11_02_42/Miniscope_2/S4/config.ini") # Coke demo
         di2= DataInstance("/N/project/Cortical_Calcium_Image/Miniscope data/12.2022_Seventh_group/AA042_D1/2022_12_12/12_35_11/Miniscope_2/S1/config.ini") # Saline demo
@@ -65,7 +69,7 @@ class Genetic_Algorithm:
 
     
     def get_fitness(self, population,mice):
-        fitness = []
+        fitness = np.empty((0,2))
         all_traces = []
         all_framelines = []
         preBinNum_DNA = population[:, 0 : DNA_PREBINNUM_SIZE]
@@ -84,12 +88,12 @@ class Genetic_Algorithm:
             log.write('preBinNum: ' + str(preBinNum[i]) + ' postBinNum: ' + str(postBinNum[i]) + ' binSize: ' + str(binSize[i]) +'\n')
             log.close()
             advanced_calculator = advanced(preBinNum[i],postBinNum[i],binSize[i],mice,self.event_type,self.value_type,self.feature_type)
-            score,traces,framelines,labels,specifity, sensitivity = advanced_calculator.generate_model(event_type = self.event_type, value_type = self.value_type,feature_type = self.feature_type)
-            fitness.append(score)
+            scores,traces,framelines,labels,specifity, sensitivity = advanced_calculator.generate_model(event_type = self.event_type, value_type = self.value_type,feature_type = self.feature_type)
+            fitness = np.append(fitness,[scores],axis = 0)
             all_traces.append(traces)
             all_framelines.append(framelines)
             log = open(self.logfile, mode = 'a')
-            log.write('Score:' + str(score)+'\n')
+            log.write('Score:' + str(scores)+'\n')
             log.write('Specifity: '+str(specifity)+' Sensitivity: '+ str(sensitivity)+'\n')
             log.close()
         return np.array(fitness), all_traces, all_framelines
@@ -130,7 +134,7 @@ class Genetic_Algorithm:
         
 
     def select(self, population,fitness):
-        index = np.random.choice(np.arange(self.population_size), size=self.population_size, replace=True, p=(fitness) / (fitness.sum()))
+        index = np.random.choice(np.arange(self.population_size), size=self.population_size, replace=True, p=(fitness[:,0]) / (fitness[:,0].sum()))
         print(index)
         # index = np.argsort(fitness)
         # print("1:",index)
@@ -156,7 +160,8 @@ class Genetic_Algorithm:
 
     def execute(self):
         population = np.random.randint(0,2,(self.population_size,DNA_PREBINNUM_SIZE+DNA_POSTBINNUM_SIZE+DNA_BINSIZE_SIZE))
-        curve = []
+        self.curve = []
+        self.f1Curve = []
         var = []
         log = open(self.logfile,mode = 'a')
         log.write('Max generation: '+str(self.max_generation)+' Population: '+ str(self.population_size)+'\n')
@@ -174,11 +179,14 @@ class Genetic_Algorithm:
             print("After:------------")
             print(population)
             fitness, traces,framelines = self.get_fitness(population,self.mice)
-            curve.append(np.mean(fitness))
+            print(fitness)
+            mean_value = np.mean(fitness,axis = 1)
+            self.curve.append(mean_value[0])
+            self.f1Curve.append(mean_value[1])
             var.append(np.var(fitness))
             population = self.select(population,fitness)
         log = open(self.logfile, mode = 'a')
-        log.write('Average score:' + str(curve)+'\n')
+        log.write('Average score:' + str(self.curve)+'\n')
         log.write('var:' + str(var)+'\n')
         log.close()
         examples = []
@@ -186,7 +194,7 @@ class Genetic_Algorithm:
         AUCs = []
         good_number = min(5, self.population_size)
         number_of_samples = 20
-        best_windows, best_fitness,best_traces,best_frameline = self.output_results(population,fitness,traces,framelines,good_number)
+        best_windows, best_fitness,best_traces,best_frameline = self.output_results(population,fitness[:,0],traces,framelines,good_number)
         preBinNum,postBinNum,binSize = self.decoded_dna(best_windows)
         print('w:',len(best_windows),'t:',len(best_traces))
         for i in range(good_number):
@@ -221,8 +229,47 @@ class Genetic_Algorithm:
     # def return_results(self,rank:int):
     #     return self.preBinNum[rank],self.postBinNum[rank],self.binSize[rank], self.fitness[rank], self.examples[rank]
 
-    def return_x_values(self, rank:int):
-        pass
+    def calculate_data(self, preBinNum:int,postBinNum:int,binSize:int,event_type,value_type:str = 'C'):
+        print(preBinNum)
+        print(postBinNum)
+        mouseID_list = []
+        day_list = []
+        session_list = []
+        unitID_list = []
+        group_list = []
+        auc_list = []
+        freq_list = []
+        list_title = []
+        for i in range(preBinNum-1,-1,-1):
+            list_title.append('pre bin '+ str(i+1))
+        for i in range(postBinNum):
+            list_title.append('post bin '+ str(i+1))
+        bin_auc = {}
+        for i in range(preBinNum+postBinNum):
+            bin_auc[i] = []
+        for instance in self.mice:
+            unit_ids = instance.data['unit_ids']
+            for timestamp in instance.get_timestep(event_type):
+                bin_list = instance.events[event_type].get_binList(timestamp,preBinNum,postBinNum,binSize,value_type)   
+                for uid in unit_ids:
+                    for idx,bin in enumerate(bin_list):
+                        auc = np.sum(np.asarray(bin.sel(unit_id = uid)))
+                        bin_auc[idx].append(auc)
+                    mouseID_list.append(instance.mouseID)
+                    day_list.append(instance.day)
+                    session_list.append(instance.session)
+                    unitID_list.append(uid)       
+                    group_list.append(instance.group)      
+        res_data = {'mouse_id' : mouseID_list, 'group':group_list,'day':day_list,'session':session_list,'unit_id':unitID_list}
+        for i,j in zip(list_title,bin_auc.keys()):
+            res_data[i] = bin_auc[j]
+        print('res_data')
+        for i in res_data:
+            print(type(res_data[i][0]))
+
+        res_df = pd.DataFrame(res_data)
+
+        return res_df
 
     ##steps : select mouse first
     ## step 2 : fixed the parameter

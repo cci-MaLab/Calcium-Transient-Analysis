@@ -1,7 +1,10 @@
 from PyQt5.QtWidgets import (QVBoxLayout, QLabel, QHBoxLayout, QWidget, QComboBox, QTableWidget, 
-                             QTableWidgetItem, QMainWindow)
+                             QTableWidgetItem, QMainWindow, QGridLayout, QPushButton,QMenu,QGroupBox,QCheckBox)
+from PyQt5 import QtCore
 import pyqtgraph as pg
 from core.genetic_algorithm import Genetic_Algorithm  
+import pandas as pd
+import numpy as np
 
 
 class GAWindowWidget(QWidget):
@@ -15,19 +18,19 @@ class GAWindowWidget(QWidget):
         self.cocaine_view = pg.GraphicsLayoutWidget(title="Cocaine")
         self.saline_view = pg.GraphicsLayoutWidget(title="Saline")
 
-        # Dropdown
-        layout_dropdown = QHBoxLayout()
-        self.dropdown = QComboBox()
-        self.dropdown.addItems([f"Rank {i+1}" for i in range(self.length)])
-        self.dropdown.setCurrentIndex(0)
-        self.dropdown.currentIndexChanged.connect(self.update)
-        layout_dropdown.addWidget(self.dropdown)
-
         # Trace Visualization
         layout_trace = QHBoxLayout()
         layout_trace.addWidget(self.cocaine_view)
         layout_trace.addWidget(self.saline_view)
-        self.update()
+
+        # Dropdown
+        layout_dropdown = QHBoxLayout()
+        self.rank_dropdown = QComboBox()
+        self.rank_dropdown.addItems([f"Rank {i+1}" for i in range(self.length)])
+        self.rank_dropdown.setCurrentIndex(0)
+        self.rank_dropdown.currentIndexChanged.connect(self.update)
+        layout_dropdown.addWidget(self.rank_dropdown)
+        
 
         # Table of top 5 values
         layout_table = QVBoxLayout()
@@ -51,15 +54,52 @@ class GAWindowWidget(QWidget):
         layout_table.addWidget(label_table)
         layout_table.addWidget(table)
 
+        # Button for table
+        button_table = QPushButton('Show detail',self)
+        layout_button_table = QHBoxLayout()
+        layout_button_table.addWidget(button_table)      
+        button_table.clicked.connect(self.showDetails)
+   
+        button_figure = QPushButton('Show figure',self)
+        layout_button_table.addWidget(button_figure)      
+        button_table.clicked.connect(self.showfigure)
+        
+        # Table of result
+        layout_res_table = QVBoxLayout()
+        self.res_table = QTableWidget()
+        layout_res_table.addWidget(self.res_table)
+        
+        # Histogram
+        # mouseID, day, session, unit_id
+        self.hist_view = pg.GraphicsLayoutWidget(title="histogram")
+        layout_hist = QVBoxLayout()
+        layout_hist.addWidget(self.hist_view)
+        # self.histogram
+        
+        
+        self.update()
+
         # Layout
         layout = QVBoxLayout()
         layout.addLayout(layout_dropdown)
         layout.addLayout(layout_trace)
         layout.addLayout(layout_table)
+        layout.addLayout(layout_button_table)
+        # layout.addLayout(layout_res_table)
+        # layout.addLayout(layout_hist)
         self.setLayout(layout)
+    
+    def showDetails(self):
+        self.detail_win = GADetailTableWindowWidget(self,self.ga)
+        self.detail_win.show()
+    
+    def showfigure(self):
+        self.figure_win = GADetailFigureWindowWidget(self,self.ga,res_df=self.res_df)
+        self.figure_win.show()
+
 
     def update(self):
-        index = self.dropdown.currentIndex()
+        index = self.rank_dropdown.currentIndex()
         cocaine_traces = self.ga.examples[index]["Cocaine"]
         saline_traces = self.ga.examples[index]["Saline"]
 
@@ -79,7 +119,288 @@ class GAWindowWidget(QWidget):
                 cocaine_item.plot(self.ga.xvalues[index]["Cocaine"][i*4+j], cocaine_traces[i*4+j])
                 saline_item = self.saline_view.addPlot(row=i+1, col=j)
                 saline_item.plot(self.ga.xvalues[index]["Saline"][i*4+j], saline_traces[i*4+j])
+        
+        # result table
+        self.res_df = self.ga.calculate_data(self.ga.preBinNum[index],self.ga.postBinNum[index],self.ga.binSize[index],'RNFS')
+        print(self.res_df.dtypes)
+        self.res_table.setColumnCount(len(self.res_df.columns))
+        self.res_table.setHorizontalHeaderLabels(self.res_df.columns)
+        self.res_table.setRowCount(len(self.res_df.index))
+        for i in range(len(self.res_df.index)):
+            for j in range(len(self.res_df.columns)):
+                self.res_table.setItem(i, j, QTableWidgetItem(str(self.res_df.iloc[i,j])))
+
+        
+        
     
     def closeEvent(self, event):
         super(GAWindowWidget, self).closeEvent(event)
         self.main_ref.remove_window(self.name)
+
+
+class GAGenerationScoreWindowWidget(QWidget):
+    def __init__(self, main_ref: QMainWindow, ga: Genetic_Algorithm, parent=None):
+        super().__init__(parent)
+        self.main_ref = main_ref
+        self.ga = ga
+        self.name = "Genetic Algorithm Average Score"
+        self.setWindowTitle("Genetic Algorithm Average Score.")
+
+        self.layout_plot = QGridLayout()
+        self.plot_win = pg.PlotWidget()
+        self.plot_win.showGrid(x=True,y=True)
+        
+        self.layout_plot.addWidget(self.plot_win)
+        self.plot_win.setYRange(max=1,min=0)
+        self.plot_win.addLegend()
+        average_accuracy = self.plot_win.plot(self.ga.curve,pen='r',name = 'average accuracy')
+        average_f1Curve = self.plot_win.plot(self.ga.f1Curve,pen='g',name = 'average F1 score')
+
+        self.plot_win.setLabel('bottom','Generation')
+        self.plot_win.setLabel('left','Score')
+        # self.plot_view.addLegend()
+        # Layout
+        layout = QVBoxLayout()
+        layout.addLayout(self.layout_plot)
+        ax = self.plot_win.getAxis('right')
+        ticks = [x for x in range(ga.max_generation)]
+        ax.setTicks([[(v, str(v)) for v in ticks ]])
+        self.setLayout(layout)
+        print('curve')
+        
+        # self.update()
+
+
+    # def update(self):
+    #     self.timer = QtCore.QTimer(self)
+    #     self.timer.timeout.connect(self.get_generation_info)
+    #     self.timer.start(60000)
+
+    # def get_generation_info(self):
+    #     self.plot_plt.plot().setData(self.ga.curve,pen='r')
+
+
+class GADetailTableWindowWidget(QWidget):
+    def __init__(self, main_ref: QMainWindow, ga: Genetic_Algorithm, parent=None):
+        super(GADetailTableWindowWidget,self).__init__(parent)
+        self.main_ref = main_ref
+        self.ga = ga
+        self.length = len(self.ga.examples)
+        self.resize(200,200)
+        self.name = "Detail Table"
+        self.setWindowTitle("Detail Table")
+
+        # Dropdown for rank
+        layout_dropdown = QHBoxLayout()
+        self.rank_dropdown = QComboBox()
+        self.rank_dropdown.addItems([f"Rank {i+1}" for i in range(self.length)])
+        self.rank_dropdown.setCurrentIndex(0)
+        self.rank_dropdown.currentIndexChanged.connect(self.update)
+        layout_dropdown.addWidget(self.rank_dropdown)
+
+        # dropdown for events
+        layout_event_dropdown = QHBoxLayout()
+        self.event_dropdown = QComboBox()
+        self.event_dropdown.addItems(["IALP","ALP","RNFS","ALP_Timeout"])
+        self.event_dropdown.setCurrentIndex(0)
+        self.event_dropdown.currentIndexChanged.connect(self.update)
+        layout_dropdown.addWidget(self.event_dropdown)    
+
+
+        # Table of result
+        layout_res_table = QVBoxLayout()
+        self.res_table = QTableWidget()
+        self.res_table.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.res_table.customContextMenuRequested.connect(self.generateMenu)
+        layout_res_table.addWidget(self.res_table)
+
+        self.update()
+
+        # Layout
+        layout = QVBoxLayout()
+        layout.addLayout(layout_dropdown)
+        layout.addLayout(layout_event_dropdown)
+        layout.addLayout(layout_res_table)
+        self.setLayout(layout)
+
+    def generateMenu(self):
+        menu = QMenu()
+
+    def update(self):
+        index = self.rank_dropdown.currentIndex()
+        event_type = self.event_dropdown.currentText()
+
+        # result table
+        self.res_df = self.ga.calculate_data(self.ga.preBinNum[index],self.ga.postBinNum[index],self.ga.binSize[index],event_type)
+        print(self.res_df.dtypes)
+        self.res_table.setColumnCount(len(self.res_df.columns))
+        self.res_table.setHorizontalHeaderLabels(self.res_df.columns)
+        self.res_table.setRowCount(len(self.res_df.index))
+        for i in range(len(self.res_df.index)):
+            for j in range(len(self.res_df.columns)):
+                self.res_table.setItem(i, j, QTableWidgetItem(str(self.res_df.iloc[i,j])))
+
+
+
+class GADetailFigureWindowWidget(QWidget):
+    def __init__(self, main_ref: QMainWindow, ga: Genetic_Algorithm,res_df, parent=None):
+        super(GADetailFigureWindowWidget,self).__init__(parent)
+        self.main_ref = main_ref
+        self.ga = ga
+        self.length = len(self.ga.examples)
+        self.resize(200,200)
+        self.name = "Figure"
+        self.res_df = res_df
+        self.setWindowTitle("Figure")
+
+        #checkboxs
+        groupBox = QGroupBox("Define group")
+        groupBox.setFlat(False)
+        layout_groupBox = QHBoxLayout()
+        groupBox.setLayout(layout_groupBox)
+        
+
+        self.checkbox_group = QCheckBox("Group")
+        self.checkbox_group.setChecked(True)
+        
+        self.checkbox_day = QCheckBox("Day")
+        self.checkbox_day.setChecked(False)
+
+        self.checkbox_session = QCheckBox("Session")
+        self.checkbox_session.setChecked(False)
+
+        layout_groupBox.addWidget(self.checkbox_group)
+        layout_groupBox.addWidget(self.checkbox_day)
+        layout_groupBox.addWidget(self.checkbox_session)
+
+
+        # start button
+        button_start = QPushButton()
+        button_start.setText("Update")
+        layout_button = QHBoxLayout()
+        layout_button.addWidget(button_start)
+        button_start.clicked.connect(self.update_group)
+
+        # figure type
+        layout_dropdown = QHBoxLayout()
+        label_dropdown = QLabel("Figure Type: ")
+        self.dropdown = QComboBox()
+        self.dropdown.addItems(["Histogram","Line"])
+        layout_dropdown.addWidget(label_dropdown)
+        layout_dropdown.addWidget(self.dropdown)
+
+        # Figure
+        self.figure_view = pg.GraphicsLayoutWidget(title = "figure")
+        layout_figure = QVBoxLayout()
+        layout_figure.addWidget(self.figure_view)
+
+        layout = QVBoxLayout()
+        layout.addWidget(groupBox)
+        layout.addLayout(layout_dropdown)
+        layout.addLayout(layout_button)
+        layout.addLayout(layout_figure)
+        self.setLayout(layout)
+
+    def update_group(self):
+        color_list = ['b','g','r','c','m','y','k','w','d','l','s']
+        
+        self.figure_view.clear()
+        
+        checks = []
+        if self.checkbox_group.isChecked() == True:
+            checks.append('group')
+        if self.checkbox_day.isChecked() == True:
+            checks.append('day')
+        if self.checkbox_session.isChecked() == True:
+            checks.append('session')
+        head_hist = self.res_df.columns.values[6:]
+        x_dict = dict(enumerate(head_hist))
+        x_axis_1 = [(i,list(head_hist)[i]) for i in range(len(head_hist))] 
+        stringaxis = pg.AxisItem(orientation='bottom')
+        stringaxis.setTicks([x_axis_1,x_dict.items()]) 
+
+        # Histogram
+        if self.dropdown.currentText()=='Histogram':
+            hist_plot = self.figure_view.addPlot()
+            hist_plot.addLegend()
+        
+            
+            
+            # legend = pg.LegendItem((80,60), offset=(70,20))
+            # legend.setParentItem(self.hist_view.graphicsItem())     
+            # self.hist_view.setLabel('bottom','Generation')
+            
+            print(checks)
+            if not checks:
+                x = []
+                for i in range(len(head_hist)):
+                    x.append(i)
+                ave = self.res_df[head_hist].mean()
+                sem = self.res_df[head_hist].sem()
+                bar = pg.BarGraphItem(x = x, width = 0.5, height=ave, pen='w', brush=(0,0,255,150))
+                errorbar = pg.ErrorBarItem(x = np.asarray(x), y = np.asarray(ave), top = np.asarray(sem), bottom = np.asarray(sem),beam = 0.5, pen = 'w')
+                hist_plot.addItem(bar)
+                hist_plot.addItem(errorbar)
+                
+                # legend.addItem(bar, 'total')
+            else:
+                hist = self.res_df
+                ave = hist.groupby(checks)[head_hist].mean()
+                print(ave)
+                print(ave.index.values)
+                sem = hist.groupby(checks)[head_hist].sem()
+                print(sem)
+
+                
+                x = []
+                for i in range(len(head_hist)):
+                    x.append(i)
+                # for i in range(head_hist):
+                #     x.append(i)
+                for i, group_name in enumerate(ave.index.values):
+                    print
+                    bar = pg.BarGraphItem(x=np.asarray(x)+i*1/len(ave.index.values),width = 1/len(ave.index.values),height = ave.loc[group_name,:],pen = 'w', brush = color_list[i],name = group_name)
+                    hist_plot.addItem(bar)
+                    # legend.addItem(bar, str(group_name))
+                for i, group_name in enumerate(sem.index.values):
+                    errorbar = pg.ErrorBarItem(x = np.asarray(x)+i*1/len(ave.index.values), y = np.asarray(ave.loc[group_name,:]), top = np.asarray(sem.loc[group_name,:]), bottom = np.asarray(sem.loc[group_name,:]),beam = 1/(3*(len(ave.index.values))), pen = 'w')
+                    hist_plot.addItem(errorbar)
+                # hist_plot.addLegend()
+        elif self.dropdown.currentText() == 'Line':
+            line_plot = self.figure_view.addPlot(axisItems={'bottom': stringaxis})
+            line_plot.addLegend()
+            if not checks:
+                ave = self.res_df[head_hist].mean()
+                sem = self.res_df[head_hist].sem()
+                # x = []
+                # for i in range(len(head_hist)):
+                #     x.append(i)
+                line_plot.plot(list(x_dict.keys()),ave)
+                errorbar = pg.ErrorBarItem(x = np.asarray(list(x_dict.keys())), y = np.asarray(ave), top = np.asarray(sem), bottom = np.asarray(sem),beam = 0.5, pen = 'w')
+                line_plot.addItem(errorbar)
+                # legend.addItem(bar, 'total')
+            else:
+                hist = self.res_df
+                ave = hist.groupby(checks)[head_hist].mean()
+                print(ave)
+                print(ave.index.values)
+                sem = hist.groupby(checks)[head_hist].sem()
+                print(sem)
+
+                
+                x = []
+                for i in range(len(head_hist)):
+                    x.append(i)
+                for i, group_name in enumerate(ave.index.values):
+                    line_plot.plot(x,ave.loc[group_name,:],pen = color_list[i], name = group_name)
+                    # legend.addItem(bar, str(group_name))
+                for i, group_name in enumerate(sem.index.values):
+                    errorbar = pg.ErrorBarItem(x = np.asarray(list(x_dict.keys())), y = np.asarray(ave.loc[group_name,:]), top = np.asarray(sem.loc[group_name,:]), bottom = np.asarray(sem.loc[group_name,:]),beam = 1/(3*(len(ave.index.values))), pen = 'w')
+                    line_plot.addItem(errorbar)
+                
+            
+                
+    def update_figure(self):
+        pass
+
+        

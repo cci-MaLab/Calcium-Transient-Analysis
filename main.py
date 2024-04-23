@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMe
 from gui.main_widgets import (UpdateDialog, ParamDialog, VisualizeInstanceWidget, Viewer, ClusteringToolWidget,
                             GAToolWidget, ExplorationToolWidget)
 
-from gui.genetic_algorithm_widgets import GAWindowWidget
+from gui.genetic_algorithm_widgets import GAWindowWidget,GAGenerationScoreWindowWidget
 from gui.exploration_widgets import ExplorationWidget
 import sys
 import os
@@ -157,6 +157,12 @@ class MainWindow(QMainWindow):
 
     def start_ga(self, ga):
         name = "Genetic Algorithm"
+        name2 = "Score"
+        # ga.setMice(list(self.instances.values()))
+        window = GAGenerationScoreWindowWidget(self,ga)
+        window.setWindowTitle(window.name)
+        self.windows[name2] = window
+        window.show()
         if name not in self.windows:
             wid = GAWindowWidget(self,ga = ga)
             wid.setWindowTitle(name)

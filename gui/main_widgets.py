@@ -385,14 +385,63 @@ class ClusteringToolWidget(QWidget):
         self.wid_sub.setHidden(True)
 
         # Set up default view
+
+        # Input section
+        # Pre Bin Number
+        layout_event_ALP = QVBoxLayout()
+
+        self.checkBox1 = QCheckBox("ALP")
+        self.checkBox1.setChecked(False)
+        layout_event_ALP.addWidget(self.checkBox1)
+        layout_event_input = QHBoxLayout()
+        
+        label_pre_bin = QLabel("Window:")
+        self.input_pre_bin = QLineEdit()
+        onlyInt = QIntValidator()
+        self.input_pre_bin.setValidator(onlyInt)
+        layout_pre_bin = QHBoxLayout()
+        layout_pre_bin.addWidget(label_pre_bin)
+        layout_pre_bin.addWidget(self.input_pre_bin)
+        layout_event_input.addLayout(layout_pre_bin)
+
+        # Post Bin Number 
+        label_post_bin = QLabel("Delay")
+        self.input_post_bin = QLineEdit()
+        self.input_post_bin.setValidator(onlyInt)
+        layout_post_bin = QHBoxLayout()
+        layout_post_bin.addWidget(label_post_bin)
+        layout_post_bin.addWidget(self.input_post_bin)
+
+        layout_event_input.addLayout(layout_post_bin)
+        layout_event_ALP.addLayout(layout_event_input)
+
+        # # Crossover Rate
+        # label_cross_rate = QLabel("Crossover Rate:")
+        # self.input_cross_rate = QLineEdit("0.5")
+        # onlyFloat = QDoubleValidator()
+        # self.input_cross_rate.setValidator(onlyFloat)
+        # layout_cross_rate = QHBoxLayout()
+        # layout_cross_rate.addWidget(label_cross_rate)
+        # layout_cross_rate.addWidget(self.input_cross_rate)
+
+        # Mutation Rate
+        # label_mut_rate = QLabel("Mutation Rate:")
+        # self.input_mut_rate = QLineEdit("0.15")
+        # self.input_mut_rate.setValidator(onlyFloat)
+        # layout_mut_rate = QHBoxLayout()
+        # layout_mut_rate.addWidget(label_mut_rate)
+        # layout_mut_rate.addWidget(self.input_mut_rate)
+
+        # Start Clustering button
         self.btn_clustering = QPushButton("Start Clustering")
         self.btn_clustering.clicked.connect(self.init_clustering)
         self.btn_clustering.setStyleSheet("background-color : green")
         
 
 
-        self.layout_tools = QHBoxLayout()
-        self.layout_tools.addWidget(self.wid_sub)       
+        self.layout_tools = QVBoxLayout()
+        self.layout_tools.addWidget(self.wid_sub)
+        self.layout_tools.addLayout(layout_event_ALP)       
         self.layout_tools.addWidget(self.btn_clustering) 
 
 
@@ -549,6 +598,7 @@ class ClusteringToolWidget(QWidget):
 class GAToolWidget(QWidget):
     def __init__(self, main_ref, parent=None):
         super().__init__(parent)
+        self.value_feature_dict = {"C":["Signal","AUC"], "S":["Signal","AUC","Frequency"], "C_filtered":["Signal","AUC"],"DFF":["Signal","AUC"]}
         # Max Generations
         self.main_ref = main_ref
         label_max_gen = QLabel("Max Generations:")
@@ -596,7 +646,7 @@ class GAToolWidget(QWidget):
         # Value Type
         label_value_type = QLabel("Value Type:")
         self.dropdown_value_type = QComboBox()
-        self.dropdown_value_type.addItems(["C", "S", "C_filtered"])
+        self.dropdown_value_type.addItems(self.value_feature_dict.keys())
         layout_value_type = QHBoxLayout()
         layout_value_type.addWidget(label_value_type)
         layout_value_type.addWidget(self.dropdown_value_type)
@@ -604,11 +654,13 @@ class GAToolWidget(QWidget):
         # Feature Vector
         label_feature_type = QLabel("Feature Type:")
         self.dropdown_feature_type = QComboBox()
-        self.dropdown_feature_type.addItems(["Signal","AUC", "Frequency"])
+        self.dropdown_feature_type.addItems(self.value_feature_dict[self.dropdown_value_type.currentText()])
         layout_feature_type = QHBoxLayout()
         layout_feature_type.addWidget(label_feature_type)
         layout_feature_type.addWidget(self.dropdown_feature_type)
         
+        self.dropdown_value_type.currentIndexChanged.connect(lambda: self.update_feature(self.dropdown_value_type.currentText()))
+
         # Log File
         label_file_name = QLabel("Log File:")
         self.input_log_file_name = QLineEdit("log.txt")
@@ -633,6 +685,10 @@ class GAToolWidget(QWidget):
         layout.addLayout(layout_population)
         layout.addLayout(layout_max_gen)
         self.setLayout(layout)
+    
+    def update_feature(self,key):
+        self.dropdown_feature_type.clear()
+        self.dropdown_feature_type.addItems(self.value_feature_dict[key])
 
     def run_ga(self):
         print("Started GA")
