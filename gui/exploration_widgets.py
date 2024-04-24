@@ -44,6 +44,8 @@ class ExplorationWidget(QWidget):
         self.savgol_params = {}
         self.noise_params = {}
         self.hovered_cells = {} # id, item
+        self.temp_picks = {}
+        self.show_temp_picks = True
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -238,6 +240,16 @@ class ExplorationWidget(QWidget):
         self.model_conf_threshold_input = QLineEdit()
         self.model_conf_threshold_input.setValidator(QDoubleValidator(0, 1, 3))
         self.model_conf_threshold_input.setText("0.5")
+
+        # Temp Picks Utility
+        self.btn_toggle_temp_picks = QPushButton("Toggle Temp Picks")
+        self.btn_toggle_temp_picks.clicked.connect(self.show_hide_picks)
+        self.btn_confirm_temp_picks = QPushButton("Confirm Temp Picks")
+        self.btn_confirm_temp_picks.clicked.connect(self.confirm_picks)
+        self.btn_confirm_temp_picks.setStyleSheet("background-color: green")
+        self.btn_clear_temp_picks = QPushButton("Clear Temp Picks")
+        self.btn_clear_temp_picks.clicked.connect(self.discard_picks)
+        self.btn_clear_temp_picks.setStyleSheet("background-color: red")
 
         # Force Transients Utility
         label_force_transient = QLabel("Force/Readjust Transient Event")
@@ -499,6 +511,16 @@ class ExplorationWidget(QWidget):
         layout_ml.addLayout(layout_ml_threshold)
         layout_ml.addWidget(btn_run_model)
 
+        # Temp toggling/confirming layout
+        frame_temp_picks = QFrame()
+        frame_temp_picks.setFrameShape(QFrame.Box)
+        frame_temp_picks.setFrameShadow(QFrame.Raised)
+        frame_temp_picks.setLineWidth(3)
+
+        layout_temp_picks = QVBoxLayout(frame_temp_picks)
+        layout_temp_picks.addWidget(self.btn_toggle_temp_picks)
+        layout_temp_picks.addWidget(self.btn_confirm_temp_picks)
+        layout_temp_picks.addWidget(self.btn_clear_temp_picks)
 
         
         layout_auto_ml = QVBoxLayout()
@@ -506,6 +528,7 @@ class ExplorationWidget(QWidget):
         # Auto and ML into one widget if torch exists
         if torch_imported:
             layout_auto_ml.addWidget(frame_ml_events)
+        layout_auto_ml.addWidget(frame_temp_picks)
         layout_auto_ml.addStretch()
         w_auto_ml = QWidget()
         w_auto_ml.setLayout(layout_auto_ml)
@@ -749,12 +772,44 @@ class ExplorationWidget(QWidget):
                             pred[pred < confidence] = 0
 
                             # Prediction made now update the events
-                            self.session.update_and_save_E(unit_id, pred)
+                            self.temp_picks[unit_id] = pred
+                            
                     i += 1
 
             self.visualize_signals(reset_view=False)
 
-    
+    def confirm_picks(self):
+        """
+        Iterate through the current visible plots and save the picks if they are stored in temp
+        """
+        i = 0
+        while self.w_signals.getItem(i,0) is not None:
+            item = self.w_signals.getItem(i,0)
+            if isinstance(item, PlotItemEnhanced):
+                if item.id in self.temp_picks and item.cell_type == "Standard":
+                    self.session.update_and_save_E(item.id, self.temp_picks[item.id])
+                    del self.temp_picks[item.id]
+            i += 1
+
+        self.visualize_signals(reset_view=False)
+
+    def discard_picks(self):
+        """
+        Discard the picks that are in view
+        """
+        i = 0
+        while self.w_signals.getItem(i,0) is not None:
+            item = self.w_signals.getItem(i,0)
+            if isinstance(item, PlotItemEnhanced):
+                if item.id in self.temp_picks and item.cell_type == "Standard":
+                    del self.temp_picks[item.id]
+            i += 1
+
+        self.visualize_signals(reset_view=False)
+
+    def show_hide_picks(self):
+        self.show_temp_picks = not self.show_temp_picks
+        self.visualize_signals(reset_view=False)
 
     def selected_event_change(self, ev):
         '''
@@ -1353,6 +1408,13 @@ class ExplorationWidget(QWidget):
                             # Now Split the indices into pairs of first and last indices
                             indices = [(indices_group[0], indices_group[-1]+1) for indices_group in indices]
                             p.draw_event_curves(indices)
+                        if id in self.temp_picks and self.show_temp_picks:
+                            events_temp = self.temp_picks[id]
+                            indices_temp = events_temp.nonzero()[0]
+                            if indices_temp.any():
+                                indices_temp = np.split(indices_temp, np.where(np.diff(indices_temp) != 1)[0]+1)
+                                indices_temp = [(indices_group[0], indices_group[-1]+1) for indices_group in indices_temp]
+                                p.draw_temp_curves(indices_temp)
                 if selected_types and id in views["Standard"]:
                     p.getViewBox().setRange(xRange=views["Standard"][id][0], yRange=views["Standard"][id][1], padding=0)
 
@@ -1636,14 +1698,14 @@ class ExplorationWidget(QWidget):
 
                     spikes.append([beg, current_peak+1])
                     final_peaks.append([current_peak])
-                # Remove events
-                item.clear_event_curves()
-                # Plot spikes
-                item.draw_event_curves(spikes)
-                # Save back to E
-                self.session.update_and_save_E(item.id, spikes)
-                
+                # Convert spikes to a numpy array
+                spike_arr = np.zeros(len(C_signal), dtype=int)
+                for beg, end in spikes:
+                    spike_arr[beg:end] = 1
+                self.temp_picks[item.id] = spike_arr
             idx += 1
+        
+        self.visualize_signals(reset_view=False)
 
 
 
@@ -1712,6 +1774,11 @@ class PlotItemEnhanced(PlotItem):
     def draw_event_curves(self, spikes):
         for beg, end in spikes:
             event_curve = PlotCurveItemEnhanced(np.arange(beg, end), self.C_signal[beg:end], pen='r', is_event=True, main_plot=self)
+            self.addItem(event_curve)
+
+    def draw_temp_curves(self, spikes):
+        for beg, end in spikes:
+            event_curve = PlotCurveItemEnhanced(np.arange(beg, end), self.C_signal[beg:end], pen=(255,140,0), is_event=False, main_plot=self)
             self.addItem(event_curve)
 
     def add_main_curve(self, data, is_C=False, pen='w'):
