@@ -221,7 +221,9 @@ class Genetic_Algorithm:
         self.binSize = binSize
         self.examples = examples # Make sure they are all the same size in timeline
         self._best_fitness = best_fitness
-        self.xvalues = xvalues
+        self.example_xvalues = xvalues
+        self.traces = best_traces
+        self.xvalues = best_frameline
         # self.AUCs = AUCs
         # return preBinNum,postBinNum,binSize
             #print traces and footprint

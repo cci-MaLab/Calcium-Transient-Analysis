@@ -17,6 +17,7 @@ class GAWindowWidget(QWidget):
         self.setWindowTitle("Genetic Algorithm Results")
         self.cocaine_view = pg.GraphicsLayoutWidget(title="Cocaine")
         self.saline_view = pg.GraphicsLayoutWidget(title="Saline")
+        self.current_page = 0
 
         # Trace Visualization
         layout_trace = QHBoxLayout()
@@ -31,6 +32,11 @@ class GAWindowWidget(QWidget):
         self.rank_dropdown.currentIndexChanged.connect(self.update)
         layout_dropdown.addWidget(self.rank_dropdown)
         
+
+        button_next_page = QPushButton("Next Page")
+        layout_dropdown.addWidget(button_next_page)
+        button_next_page.clicked.connect(self.update_traces)
+
 
         # Table of top 5 values
         layout_table = QVBoxLayout()
@@ -97,38 +103,67 @@ class GAWindowWidget(QWidget):
         self.figure_win = GADetailFigureWindowWidget(self,self.ga,res_df=self.res_df)
         self.figure_win.show()
 
+    def update_traces(self):
+        if self.current_page<self.total_pages:
+            self.current_page+=1
+        self.update()
+
 
     def update(self):
         index = self.rank_dropdown.currentIndex()
-        cocaine_traces = self.ga.examples[index]["Cocaine"]
-        saline_traces = self.ga.examples[index]["Saline"]
+        cocaine_traces = self.ga.traces[index]["Cocaine"]
+        saline_traces = self.ga.traces[index]["Saline"]
+        # # Example version
+        # cocaine_traces = self.ga.examples[index]["Cocaine"]
+        # saline_traces = self.ga.examples[index]["Saline"]
+        cocaine_traces_number = len(cocaine_traces)
+        print(cocaine_traces_number)
+        # There are 20 traces in one page
+        traces_per_page = 20
+        self.total_pages = cocaine_traces_number//traces_per_page
 
         self.cocaine_view.clear()
         self.saline_view.clear()
         # We'll set a label that spans the middle of the grid
         cocaine_label = pg.LabelItem(justify='center')
         cocaine_label.setText("Cocaine Traces")
+        cocaine_page_label = pg.LabelItem(justify = 'center')
+        cocaine_page_label.setText("Current Page/Total Page: {}/{}".format(self.current_page+1,self.total_pages+1))
         saline_label = pg.LabelItem(justify='center')
         saline_label.setText("Saline Traces")
+        saline_page_label = pg.LabelItem(justify = 'center')
+        saline_page_label.setText("Current Page/Total Page: {}/{}".format(self.current_page+1,self.total_pages+1))
         self.cocaine_view.addItem(cocaine_label, row=0, col=0)
+        self.cocaine_view.addItem(cocaine_page_label, row = 0, col = 1)
         self.saline_view.addItem(saline_label, row=0, col=0)
+        self.saline_view.addItem(saline_page_label, row = 0, col = 1)
         # In both cases we'll create a 5 by 4 grid
         for i in range(5):
             for j in range(4):
-                cocaine_item = self.cocaine_view.addPlot(row=i+1, col=j)
-                cocaine_item.plot(self.ga.xvalues[index]["Cocaine"][i*4+j], cocaine_traces[i*4+j])
-                saline_item = self.saline_view.addPlot(row=i+1, col=j)
-                saline_item.plot(self.ga.xvalues[index]["Saline"][i*4+j], saline_traces[i*4+j])
+                if self.current_page*traces_per_page+i*4+j< cocaine_traces_number:
+                    cocaine_item = self.cocaine_view.addPlot(row=i+1, col=j)
+                    cocaine_item.plot(self.ga.xvalues[index]["Cocaine"][self.current_page*traces_per_page+i*4+j], cocaine_traces[self.current_page*traces_per_page+i*4+j])
+                    saline_item = self.saline_view.addPlot(row=i+1, col=j)
+                    saline_item.plot(self.ga.xvalues[index]["Saline"][self.current_page*traces_per_page+i*4+j], saline_traces[self.current_page*traces_per_page+i*4+j])
         
-        # result table
-        self.res_df = self.ga.calculate_data(self.ga.preBinNum[index],self.ga.postBinNum[index],self.ga.binSize[index],'RNFS')
-        print(self.res_df.dtypes)
-        self.res_table.setColumnCount(len(self.res_df.columns))
-        self.res_table.setHorizontalHeaderLabels(self.res_df.columns)
-        self.res_table.setRowCount(len(self.res_df.index))
-        for i in range(len(self.res_df.index)):
-            for j in range(len(self.res_df.columns)):
-                self.res_table.setItem(i, j, QTableWidgetItem(str(self.res_df.iloc[i,j])))
+        # Example version
+        # for i in range(5):
+        #     for j in range(4):
+        #         if self.current_page*traces_per_page+i*4+j< cocaine_traces_number:
+        #             cocaine_item = self.cocaine_view.addPlot(row=i+1, col=j)
+        #             cocaine_item.plot(self.ga.example_xvalues[index]["Cocaine"][self.current_page*traces_per_page+i*4+j], cocaine_traces[self.current_page*traces_per_page+i*4+j])
+        #             saline_item = self.saline_view.addPlot(row=i+1, col=j)
+        #             saline_item.plot(self.ga.example_xvalues[index]["Saline"][self.current_page*traces_per_page+i*4+j], saline_traces[self.current_page*traces_per_page+i*4+j])
+        
+        # # result table
+        # self.res_df = self.ga.calculate_data(self.ga.preBinNum[index],self.ga.postBinNum[index],self.ga.binSize[index],'RNFS')
+        # print(self.res_df.dtypes)
+        # self.res_table.setColumnCount(len(self.res_df.columns))
+        # self.res_table.setHorizontalHeaderLabels(self.res_df.columns)
+        # self.res_table.setRowCount(len(self.res_df.index))
+        # for i in range(len(self.res_df.index)):
+        #     for j in range(len(self.res_df.columns)):
+        #         self.res_table.setItem(i, j, QTableWidgetItem(str(self.res_df.iloc[i,j])))
 
         
         
