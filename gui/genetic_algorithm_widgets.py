@@ -314,60 +314,63 @@ class GADetailFigureWindowWidget(QWidget):
         if self.checkbox_session.isChecked() == True:
             checks.append('session')
         head_hist = self.res_df.columns.values[6:]
-        x_dict = dict(enumerate(head_hist))
-        x_axis_1 = [(i,list(head_hist)[i]) for i in range(len(head_hist))] 
-        stringaxis = pg.AxisItem(orientation='bottom')
-        stringaxis.setTicks([x_axis_1,x_dict.items()]) 
+        x_dict_line = dict(enumerate(head_hist))
+        x_axis_line = [(i,list(head_hist)[i]) for i in range(len(head_hist))] 
+        binNumberAxis_line = pg.AxisItem(orientation='bottom')
+        binNumberAxis_line.setTicks([x_axis_line,x_dict_line.items()]) 
+        
 
         # Histogram
-        if self.dropdown.currentText()=='Histogram':
-            hist_plot = self.figure_view.addPlot()
-            hist_plot.addLegend()
-        
-            
-            
-            # legend = pg.LegendItem((80,60), offset=(70,20))
-            # legend.setParentItem(self.hist_view.graphicsItem())     
-            # self.hist_view.setLabel('bottom','Generation')
-            
+        if self.dropdown.currentText()=='Histogram':            
             print(checks)
             if not checks:
-                x = []
-                for i in range(len(head_hist)):
-                    x.append(i)
+                hist_plot = self.figure_view.addPlot(axisItems={'bottom': binNumberAxis_line})
+                hist_plot.addLegend()
+
                 ave = self.res_df[head_hist].mean()
                 sem = self.res_df[head_hist].sem()
-                bar = pg.BarGraphItem(x = x, width = 0.5, height=ave, pen='w', brush=(0,0,255,150))
-                errorbar = pg.ErrorBarItem(x = np.asarray(x), y = np.asarray(ave), top = np.asarray(sem), bottom = np.asarray(sem),beam = 0.5, pen = 'w')
+                bar = pg.BarGraphItem(x = np.asarray(list(x_dict_line.keys())), width = 0.5, height=ave, pen='w', brush=(0,0,255,150))
+                errorbar = pg.ErrorBarItem(x = np.asarray(list(x_dict_line.keys())), y = np.asarray(ave), top = np.asarray(sem), bottom = np.asarray(sem),beam = 0.5, pen = 'w')
                 hist_plot.addItem(bar)
                 hist_plot.addItem(errorbar)
                 
-                # legend.addItem(bar, 'total')
             else:
+                
                 hist = self.res_df
                 ave = hist.groupby(checks)[head_hist].mean()
+
+                group_number = len(hist.groupby(checks))
+                x_dict_hist = {}
+                for idx, binNumber in enumerate(head_hist):
+                    for n in range(group_number):
+                        x_dict_hist[idx*group_number+n] = binNumber
+                x_axis_hist = [list(x_dict_hist.items())[i] for i in range(group_number//2,len(list(x_dict_hist.items())),group_number)] 
+                binNumberAxis_host = pg.AxisItem(orientation='bottom')
+                binNumberAxis_host.setTicks([x_axis_hist,x_dict_hist.items()]) 
+                hist_plot = self.figure_view.addPlot(axisItems={'bottom': binNumberAxis_host})
+                hist_plot.addLegend()
                 print(ave)
                 print(ave.index.values)
                 sem = hist.groupby(checks)[head_hist].sem()
                 print(sem)
 
-                
-                x = []
-                for i in range(len(head_hist)):
-                    x.append(i)
-                # for i in range(head_hist):
-                #     x.append(i)
+
+                x = np.array([i for i in range(len(head_hist))])
+
                 for i, group_name in enumerate(ave.index.values):
-                    print
-                    bar = pg.BarGraphItem(x=np.asarray(x)+i*1/len(ave.index.values),width = 1/len(ave.index.values),height = ave.loc[group_name,:],pen = 'w', brush = color_list[i],name = group_name)
+                    
+                    bar = pg.BarGraphItem(x=x*group_number+i,width = 1,height = ave.loc[group_name,:],pen = 'w', brush = color_list[i],name = group_name)
+                    
+                    # bar = pg.BarGraphItem(x=np.asarray(x)+i*1/len(ave.index.values),width = 1/len(ave.index.values),height = ave.loc[group_name,:],pen = 'w', brush = color_list[i],name = group_name)
                     hist_plot.addItem(bar)
                     # legend.addItem(bar, str(group_name))
                 for i, group_name in enumerate(sem.index.values):
-                    errorbar = pg.ErrorBarItem(x = np.asarray(x)+i*1/len(ave.index.values), y = np.asarray(ave.loc[group_name,:]), top = np.asarray(sem.loc[group_name,:]), bottom = np.asarray(sem.loc[group_name,:]),beam = 1/(3*(len(ave.index.values))), pen = 'w')
+                    errorbar = pg.ErrorBarItem(x = x*group_number+i, y = np.asarray(ave.loc[group_name,:]), top = np.asarray(sem.loc[group_name,:]), bottom = np.asarray(sem.loc[group_name,:]),beam = 1/(3*(len(ave.index.values))), pen = 'w')
+                    # errorbar = pg.ErrorBarItem(x = np.asarray(x)+i*1/len(ave.index.values), y = np.asarray(ave.loc[group_name,:]), top = np.asarray(sem.loc[group_name,:]), bottom = np.asarray(sem.loc[group_name,:]),beam = 1/(3*(len(ave.index.values))), pen = 'w')
                     hist_plot.addItem(errorbar)
                 # hist_plot.addLegend()
         elif self.dropdown.currentText() == 'Line':
-            line_plot = self.figure_view.addPlot(axisItems={'bottom': stringaxis})
+            line_plot = self.figure_view.addPlot(axisItems={'bottom': binNumberAxis_line})
             line_plot.addLegend()
             if not checks:
                 ave = self.res_df[head_hist].mean()
@@ -375,8 +378,8 @@ class GADetailFigureWindowWidget(QWidget):
                 # x = []
                 # for i in range(len(head_hist)):
                 #     x.append(i)
-                line_plot.plot(list(x_dict.keys()),ave)
-                errorbar = pg.ErrorBarItem(x = np.asarray(list(x_dict.keys())), y = np.asarray(ave), top = np.asarray(sem), bottom = np.asarray(sem),beam = 0.5, pen = 'w')
+                line_plot.plot(list(x_dict_line.keys()),ave)
+                errorbar = pg.ErrorBarItem(x = np.asarray(list(x_dict_line.keys())), y = np.asarray(ave), top = np.asarray(sem), bottom = np.asarray(sem),beam = 0.5, pen = 'w')
                 line_plot.addItem(errorbar)
                 # legend.addItem(bar, 'total')
             else:
@@ -395,7 +398,7 @@ class GADetailFigureWindowWidget(QWidget):
                     line_plot.plot(x,ave.loc[group_name,:],pen = color_list[i], name = group_name)
                     # legend.addItem(bar, str(group_name))
                 for i, group_name in enumerate(sem.index.values):
-                    errorbar = pg.ErrorBarItem(x = np.asarray(list(x_dict.keys())), y = np.asarray(ave.loc[group_name,:]), top = np.asarray(sem.loc[group_name,:]), bottom = np.asarray(sem.loc[group_name,:]),beam = 1/(3*(len(ave.index.values))), pen = 'w')
+                    errorbar = pg.ErrorBarItem(x = np.asarray(list(x_dict_line.keys())), y = np.asarray(ave.loc[group_name,:]), top = np.asarray(sem.loc[group_name,:]), bottom = np.asarray(sem.loc[group_name,:]),beam = 1/(3*(len(ave.index.values))), pen = 'w')
                     line_plot.addItem(errorbar)
                 
             
