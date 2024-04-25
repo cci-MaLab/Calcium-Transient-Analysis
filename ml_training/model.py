@@ -3,6 +3,8 @@ import torch
 import math
 from torch.nn import Module
 from local_attention import LocalAttention
+from local_attention.transformer import LocalMHA, FeedForward, DynamicPositionBias, eval_decorator, exists, rearrange, top_k
+import torch.nn.functional as F
 
 class GRU_2(Module):
     def __init__(self, sequence_len=200, input_size=3, hidden_size=32, num_layers=1, classes=1):
@@ -125,3 +127,72 @@ class GRU(Module):
         pe = pe.unsqueeze(0)
         # the output has a shape of (1, max_length, d_model)
         return pe    
+
+
+class LocalTransformer(nn.Module):
+    """ 
+    Taken from: https://github.com/lucidrains/local-attention
+    Adjusted slightly to work with numerical non-tokenized data
+    """
+    def __init__(
+        self,
+        *,
+        max_seq_len,
+        dim=3,
+        depth,
+        causal = True,
+        local_attn_window_size = 30,
+        dim_head = 32,
+        heads = 1,
+        ff_mult = 2,
+        attn_dropout = 0.,
+        ff_dropout = 0.,
+        use_xpos = False,
+        xpos_scale_base = None,
+        use_dynamic_pos_bias = False,
+        slack = 50,
+        **kwargs
+    ):
+        super().__init__()
+        self.pos_emb = nn.Embedding(max_seq_len, dim)
+        self.slack = slack
+
+        self.max_seq_len = max_seq_len
+        self.layers = nn.ModuleList([])
+
+        self.local_attn_window_size = local_attn_window_size
+        self.dynamic_pos_bias = None
+        if use_dynamic_pos_bias:
+            self.dynamic_pos_bias = DynamicPositionBias(dim = dim // 2, heads = heads)
+
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                LocalMHA(dim = dim, dim_head = dim_head, heads = heads, dropout = attn_dropout, causal = causal, window_size = local_attn_window_size, use_xpos = use_xpos, xpos_scale_base = xpos_scale_base, use_rotary_pos_emb = not use_dynamic_pos_bias, prenorm = True, **kwargs),
+                FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout)
+            ]))
+
+        self.to_logits = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, 1, bias = False)
+        )
+
+    def forward(self, x, mask = None):
+        n, device = x.shape[1], x.device
+
+        assert n <= self.max_seq_len
+        x = x + self.pos_emb(torch.arange(n, device = device))
+
+        # dynamic pos bias
+        attn_bias = None
+        if exists(self.dynamic_pos_bias):
+            w = self.local_attn_window_size
+            attn_bias = self.dynamic_pos_bias(w, w * 2)
+
+        # go through layers
+        for attn, ff in self.layers:
+            x = attn(x, mask = mask, attn_bias = attn_bias) + x
+            x = ff(x) + x
+
+        logits = self.to_logits(x)
+
+        return torch.squeeze(logits[:, self.slack:-self.slack,:], dim=-1)

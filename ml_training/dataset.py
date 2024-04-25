@@ -306,31 +306,52 @@ class LocalTransformerDataset:
         '''
         self.paths_to_unit_ids = paths_to_unit_ids
         self.data = []
+        total_0 = 0
+        total_1 = 0
         
         for path, unit_ids in paths_to_unit_ids.items():
-            data = open_minian(path)
-            E = data['E'].sel(unit_id=unit_ids)
-            YrA = data['YrA'].sel(unit_id=unit_ids)
-            C = data['C'].sel(unit_id=unit_ids)
-            DFF = data['DFF'].sel(unit_id=unit_ids)
+            for unit_id in unit_ids:
+                minian_data = open_minian(path)
+                E = minian_data['E'].sel(unit_id=unit_id)
+                YrA = minian_data['YrA'].sel(unit_id=unit_id)
+                C = minian_data['C'].sel(unit_id=unit_id)
+                DFF = minian_data['DFF'].sel(unit_id=unit_id)
 
-            # Normalize the datasets locally
-            YrA = YrA / YrA.max(dim='frame')
-            C = C / C.max(dim='frame')
-            DFF = DFF / DFF.max(dim='frame')
+                # Normalize the datasets locally
+                YrA = YrA / YrA.max(dim='frame')
+                C = C / C.max(dim='frame')
+                DFF = DFF / DFF.max(dim='frame')
 
-            # We want the data to be preloaded into memory for faster access.
-            # Convert into float32 tensors
-            YrA = torch.tensor(YrA.values.astype(np.float32)).to(config.DEVICE)
-            C = torch.tensor(C.values.astype(np.float32)).to(config.DEVICE)
-            DFF = torch.tensor(DFF.values.astype(np.float32)).to(config.DEVICE)
-            input_data = torch.stack([YrA, C, DFF]).T
-            E = torch.tensor(E.values.astype(np.float32)).to(config.DEVICE)
+                # We want the data to be preloaded into memory for faster access.
+                # Convert into float32 tensors
+                YrA = torch.tensor(YrA.values.astype(np.float32)).to(config.DEVICE)
+                C = torch.tensor(C.values.astype(np.float32)).to(config.DEVICE)
+                DFF = torch.tensor(DFF.values.astype(np.float32)).to(config.DEVICE)
 
+                input_data = torch.stack([YrA, C, DFF]).T
+                output = torch.tensor(E.values.astype(np.float32)).to(config.DEVICE)
+
+                for i in range(0, len(input_data) - (section_len+2*slack), rolling):
+                    sample = input_data[i:i+section_len+2*slack]
+                    target = output[i+slack:i+section_len+slack]
+                    self.data.append((sample, target))
+                    total_0 += torch.sum(target == 0)
+                    total_1 += torch.sum(target == 1)
+
+        self.weight = torch.tensor([total_0 / total_1]).to(torch.float32)
+
+
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, idx):
+        sample, target = self.data[idx]
+        return sample, target
+    
             
     
 
-def train_val_test_split(paths, val_split=0.1, test_split=0.1):
+def train_val_test_split(paths, val_split=0.1, test_split=0.1) -> tuple[dict[str, list[int]], dict[str, list[int]], dict[str, list[int]]]:
     total_len = 0
     path_to_ids = {}
     for path in paths:
