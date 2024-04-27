@@ -100,7 +100,7 @@ class GAWindowWidget(QWidget):
         self.detail_win.show()
     
     def showfigure(self):
-        self.figure_win = GADetailFigureWindowWidget(self,self.ga,res_df=self.res_df)
+        self.figure_win = GADetailFigureWindowWidget(self,self.ga,res_df=self.detail_win.res_df)
         self.figure_win.show()
 
     def update_traces(self):
@@ -155,19 +155,8 @@ class GAWindowWidget(QWidget):
         #             saline_item = self.saline_view.addPlot(row=i+1, col=j)
         #             saline_item.plot(self.ga.example_xvalues[index]["Saline"][self.current_page*traces_per_page+i*4+j], saline_traces[self.current_page*traces_per_page+i*4+j])
         
-        # # result table
-        # self.res_df = self.ga.calculate_data(self.ga.preBinNum[index],self.ga.postBinNum[index],self.ga.binSize[index],'RNFS')
-        # print(self.res_df.dtypes)
-        # self.res_table.setColumnCount(len(self.res_df.columns))
-        # self.res_table.setHorizontalHeaderLabels(self.res_df.columns)
-        # self.res_table.setRowCount(len(self.res_df.index))
-        # for i in range(len(self.res_df.index)):
-        #     for j in range(len(self.res_df.columns)):
-        #         self.res_table.setItem(i, j, QTableWidgetItem(str(self.res_df.iloc[i,j])))
-
         
-        
-    
+           
     def closeEvent(self, event):
         super(GAWindowWidget, self).closeEvent(event)
         self.main_ref.remove_window(self.name)
@@ -190,6 +179,10 @@ class GAGenerationScoreWindowWidget(QWidget):
         self.plot_win.addLegend()
         average_accuracy = self.plot_win.plot(self.ga.curve,pen='r',name = 'average accuracy')
         average_f1Curve = self.plot_win.plot(self.ga.f1Curve,pen='g',name = 'average F1 score')
+        self.plot_win.plot(self.ga.curve_max, pen = 'b', name = 'max accuracy')
+        self.plot_win.plot(self.ga.curve_min, pen = 'y', name = 'min accuracy')
+        self.plot_win.plot(self.ga.f1Curve_max, pen = 'c', name = 'max F1 score')
+        self.plot_win.plot(self.ga.f1Curve_min, pen = 'm', name = 'min F1 score')
 
         self.plot_win.setLabel('bottom','Generation')
         self.plot_win.setLabel('left','Score')
@@ -233,13 +226,13 @@ class GADetailTableWindowWidget(QWidget):
         self.rank_dropdown.currentIndexChanged.connect(self.update)
         layout_dropdown.addWidget(self.rank_dropdown)
 
-        # dropdown for events
-        layout_event_dropdown = QHBoxLayout()
-        self.event_dropdown = QComboBox()
-        self.event_dropdown.addItems(["IALP","ALP","RNFS","ALP_Timeout"])
-        self.event_dropdown.setCurrentIndex(0)
-        self.event_dropdown.currentIndexChanged.connect(self.update)
-        layout_dropdown.addWidget(self.event_dropdown)    
+        # # dropdown for events
+        # layout_event_dropdown = QHBoxLayout()
+        # self.event_dropdown = QComboBox()
+        # self.event_dropdown.addItems(["IALP","ALP","RNFS","ALP_Timeout"])
+        # self.event_dropdown.setCurrentIndex(0)
+        # self.event_dropdown.currentIndexChanged.connect(self.update)
+        # layout_dropdown.addWidget(self.event_dropdown)    
 
 
         # Table of result
@@ -254,7 +247,7 @@ class GADetailTableWindowWidget(QWidget):
         # Layout
         layout = QVBoxLayout()
         layout.addLayout(layout_dropdown)
-        layout.addLayout(layout_event_dropdown)
+        # layout.addLayout(layout_event_dropdown)
         layout.addLayout(layout_res_table)
         self.setLayout(layout)
 
@@ -263,7 +256,8 @@ class GADetailTableWindowWidget(QWidget):
 
     def update(self):
         index = self.rank_dropdown.currentIndex()
-        event_type = self.event_dropdown.currentText()
+        # event_type = self.event_dropdown.currentText()
+        event_type = self.ga.event_type
 
         # result table
         self.res_df = self.ga.calculate_data(self.ga.preBinNum[index],self.ga.postBinNum[index],self.ga.binSize[index],event_type)

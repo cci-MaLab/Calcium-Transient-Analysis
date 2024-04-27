@@ -81,7 +81,7 @@ class Genetic_Algorithm:
         print(preBinNum)
         print(postBinNum)
         print(binSize)
-        RNFS_time = mice[0].events[self.event_type].timesteps
+        # RNFS_time = mice[0].events[self.event_type].timesteps
         for i in range(len(population)):
             log = open(self.logfile, mode = 'a')
             log.write('No. '+ str(i)+'\n')
@@ -146,11 +146,6 @@ class Genetic_Algorithm:
     def output_results(self, population, fitness,traces, framelines,number:int = 5):
         index = np.argsort(fitness)[-number:]       # temporary method
         index = index[::-1]
-        # temp_population = population[index]
-        # uni_population,uni_index = np.unique(temp_population, return_index=True)
-        # print('uni_index:',len(uni_index))
-        # f_index = index[uni_index][:number]
-        # print('index_len:',len(f_index))
         f_traces = []
         f_framelines = []
         for i in index:
@@ -161,7 +156,11 @@ class Genetic_Algorithm:
     def execute(self):
         population = np.random.randint(0,2,(self.population_size,DNA_PREBINNUM_SIZE+DNA_POSTBINNUM_SIZE+DNA_BINSIZE_SIZE))
         self.curve = []
+        self.curve_max = []
+        self.curve_min = []
         self.f1Curve = []
+        self.f1Curve_max = []
+        self.f1Curve_min = []
         var = []
         log = open(self.logfile,mode = 'a')
         log.write('Max generation: '+str(self.max_generation)+' Population: '+ str(self.population_size)+'\n')
@@ -180,9 +179,15 @@ class Genetic_Algorithm:
             print(population)
             fitness, traces,framelines = self.get_fitness(population,self.mice)
             print(fitness)
-            mean_value = np.mean(fitness,axis = 1)
+            mean_value = np.mean(fitness,axis = 0)
+            max_value = np.max(fitness,axis = 0)
+            min_value = np.min(fitness,axis = 0)
             self.curve.append(mean_value[0])
             self.f1Curve.append(mean_value[1])
+            self.curve_max.append(max_value[0])
+            self.curve_min.append(min_value[0])
+            self.f1Curve_max.append(max_value[1])
+            self.f1Curve_min.append(min_value[1])
             var.append(np.var(fitness))
             population = self.select(population,fitness)
         log = open(self.logfile, mode = 'a')
@@ -250,8 +255,12 @@ class Genetic_Algorithm:
         for i in range(preBinNum+postBinNum):
             bin_auc[i] = []
         for instance in self.mice:
+            print(instance.group+": ",end=' ')
             unit_ids = instance.data['unit_ids']
+            print(unit_ids,end= ' ')
+            print('{}: {}'.format(event_type,instance.get_timestep(event_type)))
             for timestamp in instance.get_timestep(event_type):
+                print(timestamp)
                 bin_list = instance.events[event_type].get_binList(timestamp,preBinNum,postBinNum,binSize,value_type)   
                 for uid in unit_ids:
                     for idx,bin in enumerate(bin_list):
@@ -262,15 +271,12 @@ class Genetic_Algorithm:
                     session_list.append(instance.session)
                     unitID_list.append(uid)       
                     group_list.append(instance.group)      
+                    # print(instance.group,end = ',')
+            # print(" ")
         res_data = {'mouse_id' : mouseID_list, 'group':group_list,'day':day_list,'session':session_list,'unit_id':unitID_list}
         for i,j in zip(list_title,bin_auc.keys()):
             res_data[i] = bin_auc[j]
-        print('res_data')
-        for i in res_data:
-            print(type(res_data[i][0]))
-
         res_df = pd.DataFrame(res_data)
-
         return res_df
 
     ##steps : select mouse first
