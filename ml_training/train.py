@@ -203,7 +203,7 @@ def train():
 	# Create a text file with the parameters used
 	with open(os.path.sep.join([output_path, "parameters.txt"]), "w") as file:
 		file.write("TYPE: Local Transformer\n")
-		file.write("INIT_LR: {}\nNUM_EPOCHS: {}\nBATCH_SIZE: {}\nTHRESHOLD: {}\nTEST_SIZE: {}\nVAL_SIZE: {}\nSECTION_LEN: {}\nHIDDEN_SIZE: {}\nNUM_LAYERS: {}\n SLACK: {} \n ROLLING: {}".format(
+		file.write("INIT_LR: {}\nNUM_EPOCHS: {}\nBATCH_SIZE: {}\nTHRESHOLD: {}\nTEST_SIZE: {}\nVAL_SIZE: {}\nSECTION_LEN: {}\nHIDDEN_SIZE: {}\nNUM_LAYERS: {}\n SLACK: {} \n ROLLING: {}\n".format(
 			config.INIT_LR, config.NUM_EPOCHS, config.BATCH_SIZE, config.THRESHOLD, config.TEST_SIZE, config.VAL_SIZE, config.SECTION_LEN, config.HIDDEN_SIZE, config.NUM_LAYERS, config.SLACK, config.ROLLING))
 		file.write("Accuracy: {:.4f}\n".format(acc))
 		file.write("Transient Event Precision: {:.4f}\n".format(precision1))
