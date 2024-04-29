@@ -742,6 +742,8 @@ class ExplorationWidget(QWidget):
 
     def run_model(self):
         from ml_training import config
+        from ml_training.dataset import extract_data
+        from ml_training.ml_util import sequence_to_predictions
         model_path = self.name_to_path.get(self.cmb_model_name.currentText(), None)
         confidence = float(self.model_conf_threshold_input.text()) if self.model_conf_threshold_input.text() else 0.5
 
@@ -756,18 +758,10 @@ class ExplorationWidget(QWidget):
                         if item.cell_type == "Standard":
                             unit_id = item.id
                             
-                            Yra_sample = self.session.data["YrA"].sel(unit_id=unit_id).values
-                            Yra_sample /= np.max(Yra_sample)
-                            C_sample = self.session.data["C"].sel(unit_id=unit_id).values
-                            C_sample /= np.max(C_sample)
-                            DFF_sample = self.session.data["DFF"].sel(unit_id=unit_id).values
-                            DFF_sample /= np.max(DFF_sample)
+                            input_data, _ = extract_data(self.session.data, unit_id, model.slack)
 
-                            x = np.stack([Yra_sample, C_sample, DFF_sample]).T
-                            x = torch.as_tensor(x).to(torch.float32).to(config.DEVICE)
+                            pred = sequence_to_predictions(model, input_data, config.ROLLING, voting="min")
 
-                            pred = model(x)
-                            pred = torch.sigmoid(pred).cpu().detach().numpy().flatten() # Lol
                             pred[pred >= confidence] = 1
                             pred[pred < confidence] = 0
 
