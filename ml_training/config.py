@@ -12,7 +12,7 @@ PIN_MEMORY = False #True if DEVICE == "cuda" else False
 # initialize learning rate, number of epochs to train for, and the
 # batch size
 INIT_LR = 0.001
-NUM_EPOCHS = 100
+NUM_EPOCHS = 10
 BATCH_SIZE = 1
 # define threshold to filter weak predictions
 THRESHOLD = 0.5
@@ -24,6 +24,10 @@ VAL_SIZE = 0.1
 SECTION_LEN=200
 HIDDEN_SIZE=32
 NUM_LAYERS=3
-ATTENTION=False
 ROLLING=50
-SLACK=50
+SLACK=100
+HEADS=1
+
+WEIGHT_MULTIPLIER = 1
+
+MODEL_TYPE = "BasicTransformer"

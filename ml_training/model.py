@@ -1,57 +1,39 @@
 from torch import nn
 import torch
 import math
-from torch.nn import Module
+from torch.nn import Module, TransformerEncoderLayer, TransformerEncoder
 from local_attention import LocalAttention
 from local_attention.transformer import LocalMHA, FeedForward, DynamicPositionBias, eval_decorator, exists, rearrange, top_k
 import torch.nn.functional as F
 
-class GRU_2(Module):
-    def __init__(self, sequence_len=200, input_size=3, hidden_size=32, num_layers=1, classes=1):
+class GRU(Module):
+    def __init__(self, sequence_len=200, slack=50, input_size=3, hidden_size=32, num_layers=1, classes=1):
         # call the parent constructor
-        super(GRU_2, self).__init__()
+        super(GRU, self).__init__()
 
         self.sequence_len = sequence_len
         self.hidden_size = hidden_size
         self.num_layers = num_layers
+        self.slack = slack
 
         '''
         We cannot use the num_layers because Pytorch only provides the output for the last layer. The reason why we need
         to the intermediary layer is because of the mini-epoch approach that requires us to preserve those hidden states
         in each layer. We will have to manually create into a list the GRU layers.
         '''
-        self.grus = nn.ModuleList([])
-        for i in range(num_layers):
-            if i == 0:
-                self.grus.append(nn.GRU(input_size=input_size, hidden_size=self.hidden_size, bidirectional=True, batch_first=True))
-            else:
-                self.grus.append(nn.GRU(input_size=hidden_size*2, hidden_size=self.hidden_size, bidirectional=True, batch_first=True))
+        self.gru = nn.GRU(input_size=input_size, hidden_size=self.hidden_size, bidirectional=True, batch_first=True, num_layers=num_layers)
 
         self.fc = nn.Linear(hidden_size*2, classes)
 
-
         
-    def forward(self, x, h0: list = []):
-        if not h0:
-            h0 = [None]*self.num_layers
-        for i in range(self.num_layers):
-            x, _ = self.grus[i](x, h0[i])
+    def forward(self, x):
+        x, _ = self.gru(x)
 
         x = self.fc(x)
-        return x
-    
-    def forward_hidden(self, x):
-        # This assumes that the data is unbatched
-        h0s = []
-        length = x.shape[0]
-        for i in range(self.num_layers):           
-            x, _ = self.grus[i](x)
-            h0s.append(x.view(length, 2, self.hidden_size))
+        return torch.squeeze(x[:,self.slack:-self.slack,:], dim=-1)
 
-        return h0s
-
-class GRU(Module):
-    def __init__(self, sequence_len=200, input_size=3, hidden_size=32, num_layers=1, classes=1, use_attention=True, context_length=20):
+class GRU_ATTN(Module):
+    def __init__(self, sequence_len=200, input_size=3, hidden_size=32, num_layers=1, classes=1, context_length=20):
         # call the parent constructor
         super(GRU, self).__init__()
 
@@ -59,7 +41,6 @@ class GRU(Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.context_length = context_length
-        self.use_attention = use_attention
 
         '''
         We cannot use the num_layers because Pytorch only provides the output for the last layer. The reason why we need
@@ -73,21 +54,17 @@ class GRU(Module):
             else:
                 self.grus.append(nn.GRU(input_size=hidden_size*2, hidden_size=self.hidden_size, bidirectional=True, batch_first=True))
 
-        if self.use_attention:
-            self.local_attention = LocalAttention(dim=hidden_size*2,
-                                            window_size=20, 
-                                            causal=False, 
-                                            look_forward=1, 
-                                            look_backward=0,
-                                            dropout=0.1,
-                                            exact_windowsize=True,
-                                            autopad=True)
+        self.local_attention = LocalAttention(dim=hidden_size*2,
+                                        window_size=20, 
+                                        causal=False, 
+                                        look_forward=1, 
+                                        look_backward=0,
+                                        dropout=0.1,
+                                        exact_windowsize=True,
+                                        autopad=True)
 
         self.fc = nn.Linear(hidden_size*2, classes)
         # No activation function is used because we are using BCEWithLogitsLoss
-
-        # We need to create the default positional embeddings
-        #self.positional_embeddings = 
 
         
     def forward(self, x, h0: list = []):
@@ -95,9 +72,7 @@ class GRU(Module):
             h0 = [None]*self.num_layers
         for i in range(self.num_layers):
             x, _ = self.grus[i](x, h0[i])
-        #x = self.positional_embeddings(x)
-        if self.use_attention:
-            x = self.local_attention(x, x, x)
+        x = self.local_attention(x, x, x)
         x = self.fc(x)
         return x
     
@@ -139,7 +114,7 @@ class LocalTransformer(nn.Module):
         *,
         max_seq_len,
         dim=3,
-        depth,
+        depth=1,
         causal = True,
         local_attn_window_size = 30,
         dim_head = 32,
@@ -151,11 +126,13 @@ class LocalTransformer(nn.Module):
         xpos_scale_base = None,
         use_dynamic_pos_bias = False,
         slack = 50,
+        sequence_len = 200,
         **kwargs
     ):
         super().__init__()
         self.pos_emb = nn.Embedding(max_seq_len, dim)
         self.slack = slack
+        self.sequence_len = sequence_len
 
         self.max_seq_len = max_seq_len
         self.layers = nn.ModuleList([])
@@ -196,3 +173,35 @@ class LocalTransformer(nn.Module):
         logits = self.to_logits(x)
 
         return torch.squeeze(logits[:, self.slack:-self.slack,:], dim=-1)
+    
+
+class BasicTransformer(Module):
+    def __init__(self, sequence_len=200, slack=50, input_size=3, hidden_size=32, num_layers=1, num_heads=1, classes=1):
+        # call the parent constructor
+        super(BasicTransformer, self).__init__()
+
+        self.sequence_len = sequence_len
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.slack = slack
+
+        self.linear_expansion = nn.Linear(input_size, hidden_size)
+
+        self.pos_emb = nn.Embedding(sequence_len+2*slack, hidden_size)
+
+        self.transformer_layer = TransformerEncoderLayer(d_model=hidden_size, nhead=num_heads, dim_feedforward=hidden_size, batch_first=True)
+        self.transformer = TransformerEncoder(self.transformer_layer, num_layers=num_layers)
+
+        self.fc = nn.Linear(hidden_size, classes)
+
+    def forward(self, x):
+        n, device = x.shape[1], x.device
+
+        x = self.linear_expansion(x)
+
+        x = x + self.pos_emb(torch.arange(n, device = device))
+
+        x = self.transformer(x)
+
+        x = self.fc(x)
+        return torch.squeeze(x[:,self.slack:-self.slack,:], dim=-1)
