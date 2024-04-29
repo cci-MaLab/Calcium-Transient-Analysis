@@ -5,6 +5,7 @@ from torch.nn import Module, TransformerEncoderLayer, TransformerEncoder
 from local_attention import LocalAttention
 from local_attention.transformer import LocalMHA, FeedForward, DynamicPositionBias, eval_decorator, exists, rearrange, top_k
 import torch.nn.functional as F
+from ml_training import config
 
 class GRU(Module):
     def __init__(self, sequence_len=200, slack=50, input_size=3, hidden_size=32, num_layers=1, classes=1):
@@ -187,7 +188,7 @@ class BasicTransformer(Module):
 
         self.linear_expansion = nn.Linear(input_size, hidden_size)
 
-        self.pos_emb = nn.Embedding(sequence_len+2*slack, hidden_size)
+        self.pos_emb = pos_enc(sequence_len+2*slack, hidden_size).to(config.DEVICE)
 
         self.transformer_layer = TransformerEncoderLayer(d_model=hidden_size, nhead=num_heads, dim_feedforward=hidden_size, batch_first=True)
         self.transformer = TransformerEncoder(self.transformer_layer, num_layers=num_layers)
@@ -195,13 +196,22 @@ class BasicTransformer(Module):
         self.fc = nn.Linear(hidden_size, classes)
 
     def forward(self, x):
-        n, device = x.shape[1], x.device
-
         x = self.linear_expansion(x)
 
-        x = x + self.pos_emb(torch.arange(n, device = device))
+        x = x + self.pos_emb
 
         x = self.transformer(x)
 
         x = self.fc(x)
         return torch.squeeze(x[:,self.slack:-self.slack,:], dim=-1)
+    
+
+def pos_enc(length, dim):
+    assert (dim % 2 == 0), "Dimension of positional encoding should be even"
+    encoding = torch.zeros(length, dim)
+    position = torch.arange(0, length).unsqueeze(1)
+    div_term = torch.exp(torch.arange(0, dim, 2) * -(math.log(10000.0) / dim))
+    encoding[:, 0::2] = torch.sin(position * div_term)
+    encoding[:, 1::2] = torch.cos(position * div_term)
+
+    return encoding
