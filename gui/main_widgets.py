@@ -698,9 +698,10 @@ class GAToolWidget(QWidget):
         mut_rate = float(self.input_mut_rate.text())
         event_type = self.dropdown_event_type.currentText()
         value_type = self.dropdown_value_type.currentText()
-        feature_type = self.dropdown_feature_type.currentText()     
-
-        ga = Genetic_Algorithm(None, max_gen, population, cross_rate, mut_rate, event_type,value_type, feature_type)
+        feature_type = self.dropdown_feature_type.currentText()    
+        print("-------GA mice amount: {}--------".format(len(self.main_ref.instances_list)))
+        print("mice id: {}".format([x.mouseID for x in self.main_ref.instances_list]))
+        ga = Genetic_Algorithm(self.main_ref.instances_list, max_gen, population, cross_rate, mut_rate, event_type,value_type, feature_type)
         ga.addLog(self.input_log_file_name.text())
         ga.execute()
         self.main_ref.start_ga(ga)

@@ -26,6 +26,7 @@ class MainWindow(QMainWindow):
         # Data stuff
         self.instances = {}
         self.path_list = {}
+        self.instances_list = []
 
         # Event defaults:
         self.event_defaults = {"ALP": {"window": 20, "delay": 0},
@@ -158,7 +159,6 @@ class MainWindow(QMainWindow):
     def start_ga(self, ga):
         name = "Genetic Algorithm"
         name2 = "Score"
-        # ga.setMice(list(self.instances.values()))
         window = GAGenerationScoreWindowWidget(self,ga)
         window.setWindowTitle(window.name)
         self.windows[name2] = window
@@ -334,6 +334,7 @@ class MainWindow(QMainWindow):
     def load_instance(self, fname):
         self.setWindowTitle("Loading...")
         instance = DataInstance(fname)
+        self.instances_list.append(instance)
         # Check if the instance is valid
         if instance.check_essential_data():
             mouseID, session, day, group, viz_result = instance.get_vis_info()
