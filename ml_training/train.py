@@ -1,5 +1,5 @@
 from ml_training.dataset import LocalTransformerDataset, train_val_test_split, extract_data
-from ml_training.model import LocalTransformer, GRU, BasicTransformer
+from ml_training.model import LocalTransformer, GRU, BasicTransformer, LSTM
 from ml_training import config
 from torch.nn import BCEWithLogitsLoss
 from torch.optim import Adam
@@ -31,8 +31,8 @@ def train():
 	train_unit_ids, val_unit_ids, test_unit_ids = train_val_test_split(paths, config.TEST_SIZE, config.VAL_SIZE)
 
 	# create the train and test datasets
-	trainDS = LocalTransformerDataset(train_unit_ids, section_len=config.SECTION_LEN, rolling=config.ROLLING, slack=config.SLACK, only_events=True)
-	valDS = LocalTransformerDataset(val_unit_ids, section_len=config.SECTION_LEN, rolling=config.ROLLING, slack=config.SLACK, only_events=True)
+	trainDS = LocalTransformerDataset(train_unit_ids, section_len=config.SECTION_LEN, rolling=config.ROLLING, slack=config.SLACK, only_events=False)
+	valDS = LocalTransformerDataset(val_unit_ids, section_len=config.SECTION_LEN, rolling=config.ROLLING, slack=config.SLACK, only_events=False)
 	
 	# create the training and test data loaders
 	trainLoader = DataLoader(trainDS, shuffle=True,
@@ -54,6 +54,9 @@ def train():
 						   hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS, 
 						   num_heads=config.HEADS, classes=1).to(config.DEVICE)
 		model_name = "basic_transformer_"
+	elif config.MODEL_TYPE == "LSTM":
+		model = LSTM(hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS, sequence_len=config.SECTION_LEN, slack=config.SLACK).to(config.DEVICE)
+		model_name = "lstm_"
 	else:
 		model = GRU(hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS, sequence_len=config.SECTION_LEN, slack=config.SLACK).to(config.DEVICE)
 		model_name = "gru_"
@@ -155,7 +158,7 @@ def train():
 		minian_data = open_minian(path)
 		for unit_id in unit_ids:
 			input_data, output = extract_data(minian_data, unit_id, config.SLACK)
-			pred = sequence_to_predictions(model, input_data, config.ROLLING, voting="max")
+			pred = sequence_to_predictions(model, input_data, config.ROLLING, voting="average")
 			preds.append(pred)
 			gt.append(output.cpu().detach().numpy())
 	

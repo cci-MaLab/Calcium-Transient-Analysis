@@ -32,6 +32,32 @@ class GRU(Module):
 
         x = self.fc(x)
         return torch.squeeze(x[:,self.slack:-self.slack,:], dim=-1)
+    
+class LSTM(Module):
+    def __init__(self, sequence_len=200, slack=50, input_size=3, hidden_size=32, num_layers=1, classes=1):
+        # call the parent constructor
+        super(LSTM, self).__init__()
+
+        self.sequence_len = sequence_len
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.slack = slack
+
+        '''
+        We cannot use the num_layers because Pytorch only provides the output for the last layer. The reason why we need
+        to the intermediary layer is because of the mini-epoch approach that requires us to preserve those hidden states
+        in each layer. We will have to manually create into a list the GRU layers.
+        '''
+        self.gru = nn.LSTM(input_size=input_size, hidden_size=self.hidden_size, bidirectional=True, batch_first=True, num_layers=num_layers)
+
+        self.fc = nn.Linear(hidden_size*2, classes)
+
+        
+    def forward(self, x):
+        x, _ = self.gru(x)
+
+        x = self.fc(x)
+        return torch.squeeze(x[:,self.slack:-self.slack,:], dim=-1)
 
 class GRU_ATTN(Module):
     def __init__(self, sequence_len=200, input_size=3, hidden_size=32, num_layers=1, classes=1, context_length=20):
