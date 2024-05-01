@@ -13,7 +13,7 @@ import pyqtgraph as pg
 import numpy as np
 from pyqtgraph import InfiniteLine
 from scipy.signal import find_peaks
-from core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget)
+from core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget, MetricsWidget)
 from core.pyqtgraph_override import ImageViewOverride
 from skimage.segmentation import flood_fill
 from skimage.feature import canny
@@ -34,6 +34,7 @@ class ExplorationWidget(QWidget):
         self.main_window_ref = main_window_ref
         self.timestamps = timestamps
         self.gen_stats_window = None
+        self.metrics_window = None
         self.local_stats_windows = {}
         self.select_missed_mode = False
         self.missed_cell_indices = set()
@@ -244,6 +245,8 @@ class ExplorationWidget(QWidget):
         # Temp Picks Utility
         self.btn_toggle_temp_picks = QPushButton("Toggle Temp Picks")
         self.btn_toggle_temp_picks.clicked.connect(self.show_hide_picks)
+        self.btn_show_metrics = QPushButton("Show Evaluation Metrics")
+        self.btn_show_metrics.clicked.connect(self.show_metrics)
         self.btn_confirm_temp_picks = QPushButton("Confirm Temp Picks")
         self.btn_confirm_temp_picks.clicked.connect(self.confirm_picks)
         self.btn_confirm_temp_picks.setStyleSheet("background-color: green")
@@ -519,6 +522,7 @@ class ExplorationWidget(QWidget):
 
         layout_temp_picks = QVBoxLayout(frame_temp_picks)
         layout_temp_picks.addWidget(self.btn_toggle_temp_picks)
+        layout_temp_picks.addWidget(self.btn_show_metrics)
         layout_temp_picks.addWidget(self.btn_confirm_temp_picks)
         layout_temp_picks.addWidget(self.btn_clear_temp_picks)
 
@@ -804,6 +808,26 @@ class ExplorationWidget(QWidget):
     def show_hide_picks(self):
         self.show_temp_picks = not self.show_temp_picks
         self.visualize_signals(reset_view=False)
+
+    def show_metrics(self):
+        i = 0
+        ids = []
+        ground_truths = []
+        predictions = []
+        while self.w_signals.getItem(i,0) is not None:
+            item = self.w_signals.getItem(i,0)
+            if isinstance(item, PlotItemEnhanced):
+                if item.id in self.temp_picks and item.cell_type == "Standard":
+                    ids.append(item.id)
+                    ground_truths.append(self.session.data['E'].sel(unit_id=item.id).values)
+                    predictions.append(self.temp_picks[item.id])
+            i += 1
+        
+        if ids:
+            self.metrics_window = MetricsWidget(ids, ground_truths, predictions)
+            self.metrics_window.setWindowTitle("Evluation Metrics")
+            self.metrics_window.show()
+
 
     def selected_event_change(self, ev):
         '''
@@ -1408,7 +1432,7 @@ class ExplorationWidget(QWidget):
                             if indices_temp.any():
                                 indices_temp = np.split(indices_temp, np.where(np.diff(indices_temp) != 1)[0]+1)
                                 indices_temp = [(indices_group[0], indices_group[-1]+1) for indices_group in indices_temp]
-                                p.draw_temp_curves(indices_temp)
+                                p.draw_temp_curves(indices_temp, indices)
                 if selected_types and id in views["Standard"]:
                     p.getViewBox().setRange(xRange=views["Standard"][id][0], yRange=views["Standard"][id][1], padding=0)
 
@@ -1770,10 +1794,21 @@ class PlotItemEnhanced(PlotItem):
             event_curve = PlotCurveItemEnhanced(np.arange(beg, end), self.C_signal[beg:end], pen='r', is_event=True, main_plot=self)
             self.addItem(event_curve)
 
-    def draw_temp_curves(self, spikes):
-        for beg, end in spikes:
-            event_curve = PlotCurveItemEnhanced(np.arange(beg, end), self.C_signal[beg:end], pen=(255,140,0), is_event=False, main_plot=self)
-            self.addItem(event_curve)
+    def draw_temp_curves(self, spikes, indices=None):
+        if not indices:
+            for beg, end in spikes:
+                event_curve = PlotCurveItemEnhanced(np.arange(beg, end), self.C_signal[beg:end], pen=(255,140,0), is_event=False, main_plot=self)
+                self.addItem(event_curve)
+        # If indices are provided then overlapping events are colored in red
+        else:
+            for beg, end in spikes:
+                color = (255,140,0)
+                for i, (beg_temp, end_temp) in enumerate(indices):
+                    if beg_temp <= beg <= end_temp or beg_temp <= end <= end_temp or beg <= beg_temp <= end or beg <= end_temp <= end: # This can be optimized!
+                        color = 'g'
+                        break
+                event_curve = PlotCurveItemEnhanced(np.arange(beg, end), self.C_signal[beg:end], pen=color, is_event=False, main_plot=self)
+                self.addItem(event_curve)
 
     def add_main_curve(self, data, is_C=False, pen='w'):
         if is_C:

@@ -259,6 +259,41 @@ class GeneralVizWidget(QWidget):
         for point in data:
             self.visualization.axes.plot([np.random.normal(1, 0.04)], point, 'r.', alpha=0.2)
 
+class MetricsWidget(StatsWidget):
+    def __init__(self, ids, ground_truths, predictions):
+        super(MetricsWidget, self).__init__()
+        # Output TP, FP, TN, FN, Precision, Recall, F1, Accuracy
+        self.table = QTableWidget(len(ids), 8)
+        self.pd_table = pd.DataFrame(index=ids, columns=["TP", "FP", "TN", "FN", "Precision", "Recall", "F1", "Accuracy"])
+
+        for i, id in enumerate(ids):
+            ground_truth = ground_truths[i]
+            prediction = predictions[i]
+
+            tp = np.sum(np.logical_and(ground_truth == 1, prediction == 1))
+            fp = np.sum(np.logical_and(ground_truth == 0, prediction == 1))
+            tn = np.sum(np.logical_and(ground_truth == 0, prediction == 0))
+            fn = np.sum(np.logical_and(ground_truth == 1, prediction == 0))
+            precision = tp / (tp + fp) if tp + fp != 0 else 0
+            recall = tp / (tp + fn) if tp + fn != 0 else 0
+            f1 = 2 * (precision * recall) / (precision + recall) if precision + recall != 0 else 0
+            accuracy = (tp + tn) / (tp + tn + fp + fn) if tp + tn + fp + fn != 0 else 0
+
+            self.pd_table.at[id, "TP"] = tp
+            self.pd_table.at[id, "FP"] = fp
+            self.pd_table.at[id, "TN"] = tn
+            self.pd_table.at[id, "FN"] = fn
+            self.pd_table.at[id, "Precision"] = round(precision, 3)
+            self.pd_table.at[id, "Recall"] = round(recall, 3)
+            self.pd_table.at[id, "F1"] = round(f1, 3)
+            self.pd_table.at[id, "Accuracy"] = round(accuracy, 3)
+
+        self.pandas_to_table()
+        self.table.resizeColumnsToContents()  
+
+        self.finalize_window()
+
+        
 
 class LocalStatsWidget(StatsWidget):
     def __init__(self, session, unit_id, main_win_ref, parent=None):
