@@ -203,8 +203,8 @@ class ExplorationWidget(QWidget):
 
         btn_algo_event = QPushButton("Calculate Events")
         btn_algo_event.clicked.connect(self.update_peaks)
-        btn_clear_events = QPushButton("Clear Selected Events")
-        btn_clear_events.clicked.connect(self.clear_selected_events)
+        btn_clear_selected_events = QPushButton("Clear Selected Events")
+        btn_clear_selected_events.clicked.connect(self.clear_selected_events)
         btn_create_event = QPushButton("Create Event")
         btn_create_event.clicked.connect(self.create_event)
         btn_verified = QPushButton("Verify/Unverify")
@@ -474,6 +474,8 @@ class ExplorationWidget(QWidget):
         btn_clear_events = QPushButton("Clear All Events")
         btn_clear_events.clicked.connect(self.clear_all_events)
 
+
+
         # Event Generation Algorithm
         layout_height = QHBoxLayout()
         layout_height.addWidget(self.min_height_label)
@@ -546,7 +548,7 @@ class ExplorationWidget(QWidget):
         layout_manual_events = QVBoxLayout(self.frame_manual_events)
         layout_manual_events.addWidget(self.manual_label)
         layout_manual_events.addWidget(btn_create_event)
-        layout_manual_events.addWidget(btn_clear_events) 
+        layout_manual_events.addWidget(btn_clear_selected_events) 
         
 
         # Force Event Generation
