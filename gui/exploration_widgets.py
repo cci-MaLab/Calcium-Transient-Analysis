@@ -761,13 +761,29 @@ class ExplorationWidget(QWidget):
                     if isinstance(item, PlotItemEnhanced):
                         if item.cell_type == "Standard":
                             unit_id = item.id
-                            
-                            input_data, _ = extract_data(self.session.data, unit_id, model.slack)
+                            if "hidden" in self.cmb_model_name.currentText():
+                                input_data = model.inputs
+                                inputs = []
+                                for input_type in input_data:
+                                    data = self.session.data[input_type].sel(unit_id=unit_id).values
+                                    data /= np.max(data)
+                                    inputs.append(data)
 
-                            pred = sequence_to_predictions(model, input_data, config.ROLLING, voting="min")
+                                x = np.stack(inputs).T
+                                x = torch.as_tensor(x).to(torch.float32).to(config.DEVICE)
 
-                            pred[pred >= confidence] = 1
-                            pred[pred < confidence] = 0
+                                pred = model(x)
+                                pred = torch.sigmoid(pred).cpu().detach().numpy().flatten()
+                                pred[pred >= confidence] = 1
+                                pred[pred < confidence] = 0
+
+                            else:                                
+                                input_data, _ = extract_data(self.session.data, unit_id, model.slack)
+
+                                pred = sequence_to_predictions(model, input_data, config.ROLLING, voting="min")
+
+                                pred[pred >= confidence] = 1
+                                pred[pred < confidence] = 0
 
                             # Prediction made now update the events
                             self.temp_picks[unit_id] = pred

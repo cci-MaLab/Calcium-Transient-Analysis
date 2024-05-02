@@ -11,8 +11,9 @@ PIN_MEMORY = False #True if DEVICE == "cuda" else False
 
 # initialize learning rate, number of epochs to train for, and the
 # batch size
+INPUT = ["C", "DFF"]
 INIT_LR = 0.001
-NUM_EPOCHS = 10
+NUM_EPOCHS = 20
 BATCH_SIZE = 1
 # define threshold to filter weak predictions
 THRESHOLD = 0.5
@@ -28,6 +29,6 @@ ROLLING=50
 SLACK=50
 HEADS=1
 
-WEIGHT_MULTIPLIER = 1.5
+WEIGHT_MULTIPLIER = 1
 
 MODEL_TYPE = "LSTM"

@@ -92,22 +92,30 @@ def train_val_test_split(paths, val_split=0.1, test_split=0.1) -> tuple[dict[str
 def extract_data(minian_data, unit_id, slack=50):
     padding = ConstantPad2d((0, 0, slack, slack), 0)
     E = minian_data['E'].sel(unit_id=unit_id)
-    YrA = minian_data['YrA'].sel(unit_id=unit_id)
-    C = minian_data['C'].sel(unit_id=unit_id)
-    DFF = minian_data['DFF'].sel(unit_id=unit_id)
+    
+    training_types = config.INPUT
+    YrA = None
+    C = None
+    DFF = None
+    input_data = []
+    for training_type in training_types:
+        if training_type == "YrA":
+            YrA = minian_data['YrA'].sel(unit_id=unit_id)
+            YrA = YrA / YrA.max(dim='frame')
+            YrA = torch.tensor(YrA.values.astype(np.float32)).to(config.DEVICE)
+            input_data.append(YrA)
+        elif training_type == "C":
+            C = minian_data['C'].sel(unit_id=unit_id)
+            C = C / C.max(dim='frame')
+            C = torch.tensor(C.values.astype(np.float32)).to(config.DEVICE)
+            input_data.append(C)
+        elif training_type == "DFF":
+            DFF = minian_data['DFF'].sel(unit_id=unit_id)
+            DFF = DFF / DFF.max(dim='frame')
+            DFF = torch.tensor(DFF.values.astype(np.float32)).to(config.DEVICE)
+            input_data.append(DFF)
 
-    # Normalize the datasets locally
-    YrA = YrA / YrA.max(dim='frame')
-    C = C / C.max(dim='frame')
-    DFF = DFF / DFF.max(dim='frame')
-
-    # We want the data to be preloaded into memory for faster access.
-    # Convert into float32 tensors
-    YrA = torch.tensor(YrA.values.astype(np.float32)).to(config.DEVICE)
-    C = torch.tensor(C.values.astype(np.float32)).to(config.DEVICE)
-    DFF = torch.tensor(DFF.values.astype(np.float32)).to(config.DEVICE)
-
-    input_data = torch.stack([YrA, C, DFF]).T
+    input_data = torch.stack(input_data).T
     input_data = padding(input_data)
     output = torch.tensor(E.values.astype(np.float32)).to(config.DEVICE)
 
