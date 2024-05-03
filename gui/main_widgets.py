@@ -865,8 +865,19 @@ class MouseGrid(QWidget):
         self.grid_frame.setFrameShadow(QFrame.Raised)
         self.grid_frame.setLineWidth(3)
 
+        self.add_frame()
+
+
+    def remove_frame(self):
+        """
+        Due to a quirk of PyQT5 in  qgridlayout the frame overlaps the widgets, which to the best  of my knowledge
+        doesn't allow us to access the widgets that are "beneath" the frame. To address this we temporarily remove the frame
+        when we need to access the widgets and add it afterwards.
+        """
+        self.layout.removeWidget(self.grid_frame)
+
+    def add_frame(self):
         self.layout.addWidget(self.grid_frame, 0, 0, -1, -1)
-        
         
     
     def add_visualization(self, image, session, day):
@@ -891,6 +902,8 @@ class MouseGrid(QWidget):
         self.redraw_grid()
         
     def remove_visualization(self, session, day):
+        # Temporarily remove the frame
+        self.remove_frame()
         day = int(day[1:])
         session = int(session[1:])
         session_index = self.sessions.index(session)
@@ -936,6 +949,9 @@ class MouseGrid(QWidget):
             self.layout.removeWidget(wid)
             wid.setParent(None)
             wid.deleteLater()
+        
+        else:
+            self.add_frame()
 
     def is_empty(self):
         return self.layout.count()
