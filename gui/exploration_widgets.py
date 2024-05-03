@@ -247,6 +247,8 @@ class ExplorationWidget(QWidget):
         self.btn_toggle_temp_picks.clicked.connect(self.show_hide_picks)
         self.btn_show_metrics = QPushButton("Show Evaluation Metrics")
         self.btn_show_metrics.clicked.connect(self.show_metrics)
+        self.cmb_confirmation_type = QComboBox()
+        self.cmb_confirmation_type.addItems(["Accept Incoming Only", "Accept Overlapping Only", "Accept All"])
         self.btn_confirm_temp_picks = QPushButton("Confirm Temp Picks")
         self.btn_confirm_temp_picks.clicked.connect(self.confirm_picks)
         self.btn_confirm_temp_picks.setStyleSheet("background-color: green")
@@ -525,6 +527,7 @@ class ExplorationWidget(QWidget):
         layout_temp_picks = QVBoxLayout(frame_temp_picks)
         layout_temp_picks.addWidget(self.btn_toggle_temp_picks)
         layout_temp_picks.addWidget(self.btn_show_metrics)
+        layout_temp_picks.addWidget(self.cmb_confirmation_type)
         layout_temp_picks.addWidget(self.btn_confirm_temp_picks)
         layout_temp_picks.addWidget(self.btn_clear_temp_picks)
 
@@ -798,12 +801,14 @@ class ExplorationWidget(QWidget):
         """
         Iterate through the current visible plots and save the picks if they are stored in temp
         """
+        ["Accept Incoming Only", "Accept Overlapping Only", "Accept All"]
         i = 0
         while self.w_signals.getItem(i,0) is not None:
             item = self.w_signals.getItem(i,0)
             if isinstance(item, PlotItemEnhanced):
                 if item.id in self.temp_picks and item.cell_type == "Standard":
-                    self.session.update_and_save_E(item.id, self.temp_picks[item.id])
+                    confirmation_type = self.cmb_confirmation_type.currentText()
+                    self.session.update_and_save_E(item.id, self.temp_picks[item.id], confirmation_type)
                     del self.temp_picks[item.id]
             i += 1
 
