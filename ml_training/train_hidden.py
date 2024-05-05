@@ -13,7 +13,8 @@ import os
 from sklearn.metrics import f1_score, roc_auc_score, roc_curve, precision_score, recall_score, confusion_matrix, accuracy_score, ConfusionMatrixDisplay
 
 
-def train(): 
+def train(train_size=None, test_size=None):
+	test_size = test_size if test_size is not None else config.TEST_SIZE 
 	# For saving purposes get the hour and minute and date of the run
 	t = time.localtime()
 	current_time = time.strftime("%m_%d_%H_%M", t)
@@ -28,8 +29,8 @@ def train():
 	paths = config.DATASET_PATH
 
 	# create the train and test datasets
-	trainDS = GRUDataset(paths=paths, test_split=config.TEST_SIZE,
-					     val_split=config.VAL_SIZE, section_len=config.SECTION_LEN)
+	trainDS = GRUDataset(paths=paths, train_size=train_size, test_split=test_size,
+					     val_split=config.VAL_SIZE, section_len=config.SECTION_LEN, stratification=config.STRATIFICATION)
 	valDS = ValDataset(data=trainDS.get_data())
 	testDS = TestDataset(data=trainDS.get_data())
 	# create the training and test data loaders
@@ -185,10 +186,10 @@ def train():
 	print("[INFO] Transient Event Precision: {:.4f}".format(precision1))
 	print("[INFO] Transient Event Recall: {:.4f}".format(recall1))
 	# precision and recall for other class
-	precision2 = precision_score(gt, preds.round(), pos_label=0)
-	recall2 = recall_score(gt, preds.round(), pos_label=0)
-	print("[INFO] No Transient Event Precision: {:.4f}".format(precision2))
-	print("[INFO] No Transient Event Recall: {:.4f}".format(recall2))
+	precision0 = precision_score(gt, preds.round(), pos_label=0)
+	recall0 = recall_score(gt, preds.round(), pos_label=0)
+	print("[INFO] No Transient Event Precision: {:.4f}".format(precision0))
+	print("[INFO] No Transient Event Recall: {:.4f}".format(recall0))
 	# Get confusion Matrix plot
 	cm = confusion_matrix(gt, preds.round())
 	disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["No TE", "TE"])
@@ -221,11 +222,16 @@ def train():
 		file.write("Accuracy: {:.4f}\n".format(acc))
 		file.write("Transient Event Precision: {:.4f}\n".format(precision1))
 		file.write("Transient Event Recall: {:.4f}\n".format(recall1))
-		file.write("No Transient Event Precision: {:.4f}\n".format(precision2))
-		file.write("No Transient Event Recall: {:.4f}\n".format(recall2))
+		file.write("No Transient Event Precision: {:.4f}\n".format(precision0))
+		file.write("No Transient Event Recall: {:.4f}\n".format(recall0))
 		file.write("F1 score: {:.4f}\n".format(f1))
 		file.write("AUC ROC score: {:.4f}\n".format(auc))
 		# Write the data used for the training
 		file.write("Data used for training: \n")
 		for path in paths:
 			file.write(path + "\n")
+
+	# Create dict that keeps all the outputs
+	outputs = {"accuracy": acc, "precision1": precision1, "recall1": recall1,
+			 "precision0": precision0, "recall0": recall0, "f1": f1, "auc": auc}
+	return outputs

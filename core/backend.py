@@ -632,8 +632,26 @@ class DataInstance:
             total_transients = (self.data["E"].sel(unit_id = unit_id).diff(dim="frame") == 1).sum(dim="frame") + (self.data["E"].sel(unit_id = unit_id).isel(frame=0))
             return total_transients.compute()
     
-    def get_amplitude_dff(self):
-        return self.data["DFF"].where(self.data["E"] == 1).sum(dim="frame").compute()
+    def get_average_peak_dff(self):
+        E = self.data["E"].compute()
+        DFF = self.data["DFF"].compute()
+        results = {}
+        for unit_id in self.data["unit_ids"]:
+            peaks = []
+            transients = E.sel(unit_id=unit_id).values.nonzero()[0]
+            if transients.any():
+                # Split up the indices into groups
+                transients = np.split(transients, np.where(np.diff(transients) != 1)[0]+1)
+                # Now Split the indices into pairs of first and last indices
+                transients = [(indices_group[0], indices_group[-1]+1) for indices_group in transients]
+            for start, stop in transients:
+                peaks.append(DFF.sel(unit_id=unit_id, frame=slice(start, stop)).max().values.item())
+            
+            if peaks:
+                results[unit_id] = np.mean(peaks)
+      
+
+        return results
 
 
     def get_total_rising_frames(self):

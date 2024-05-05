@@ -7,7 +7,7 @@ from math import ceil
 from ml_training import config
 
 class GRUDataset(Dataset):
-    def __init__(self, paths: list[str], test_split=0.1, val_split=0.1, section_len=200):
+    def __init__(self, paths: list[str], train_size=None, test_split=0.1, val_split=0.1, section_len=200, stratification=False):
         '''
         We want to create a truncated version of the dataset for training purposes. For the time being, we will
         split the dataset into chunks of length of 200. We will slide the window by 200.
@@ -36,6 +36,9 @@ class GRUDataset(Dataset):
             all_unit_ids = data['E'].unit_id.values
             verified = data['E'].verified.values.astype(int)
             unit_ids = all_unit_ids[verified==1]
+            if train_size is not None and test_split >= 1:
+                # randomly select unit_ids of size train_size+test_size
+                unit_ids = np.random.choice(unit_ids, train_size+test_split, replace=False)
 
             # Loading into memory may take up some space but it is necessary for fast access during training
             E = data['E'].sel(unit_id=unit_ids)
@@ -68,7 +71,8 @@ class GRUDataset(Dataset):
             total += len(mouse_data)
             cell_counts.append(total)
         # Total contains the total number of cells in the dataset
-        test_unit_indices = np.random.choice(np.arange(total), int(test_split * total), replace=False)
+        test_count = int(test_split * total) if test_split < 1 else test_split
+        test_unit_indices = np.random.choice(np.arange(total), test_count, replace=False)
         test_unit_indices.sort()
 
         test_unit_ids = [[] for _ in range(len(self.data))]
@@ -82,7 +86,7 @@ class GRUDataset(Dataset):
         total_1 = 0
         for i, mouse_data in enumerate(self.data):
             mouse_data.create_test_ids(test_unit_ids[i])
-            mouse_data.create_samples(val_split, section_len)
+            mouse_data.create_samples(val_split, section_len, stratification=stratification)
 
             sub_total_0, sub_total_1 = mouse_data.get_counts()
             total_0 += sub_total_0
@@ -266,14 +270,25 @@ class MouseData:
         self.test_unit_ids = self.unit_ids[indices]
         self.unit_ids = np.setdiff1d(self.unit_ids, self.test_unit_ids)
 
-    def create_samples(self, val_split, section_len):
+    def create_samples(self, val_split, section_len, stratification=False):
         for unit_id in self.unit_ids:
             self.samples[unit_id] = []
             self.val_samples[unit_id] = []
+            all_samples = []
+            for i in range(ceil(self.E.shape[1] / section_len)):
+                start, end = i * section_len, (i + 1) * section_len
+                if stratification:
+                    E = self.E[self.unit_to_index[unit_id], start:end]
+                    C = self.C[self.unit_to_index[unit_id], start:end]
+                    EC = E + C
+                    if torch.sum(EC) == 0:
+                        continue
+                all_samples.append((start, end))
+
             # Pick val_split indices to be used for validation
-            val_indices = np.random.choice(np.arange(ceil(self.E.shape[1] / section_len)), int(val_split * self.E.shape[1] / section_len), replace=False)
+            val_indices = np.random.choice(np.arange(len(all_samples)), int(val_split * len(all_samples)), replace=False)
             val_indices.sort()
-            indices = np.setdiff1d(np.arange(ceil(self.E.shape[1] / section_len)), val_indices)
+            indices = np.setdiff1d(np.arange(len(all_samples)), val_indices)
             for start in indices:
                 self.samples[unit_id].append((start * section_len, (start + 1) * section_len))
             for start in val_indices:

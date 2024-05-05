@@ -138,7 +138,7 @@ class GeneralStatsWidget(StatsWidget):
         timestamps = E.coords["timestamp(ms)"].values
         total_time = timestamps[-1] - timestamps[0]
         average_frequency = total_transients / total_time * 1000
-        average_amplitude = session.get_amplitude_dff() / total_transients
+        average_amplitude = session.get_average_peak_dff()
         total_rising_frames = session.get_total_rising_frames()
         average_rising_frames = total_rising_frames / total_transients
         frames_per_second = len(timestamps) / total_time * 1000
@@ -160,11 +160,11 @@ class GeneralStatsWidget(StatsWidget):
             # 4.) Average Frequency (Hz)list_rejected_cell
             self.pd_table.at[id, "Average Frequency (Hz)"] = round(average_frequency.sel(unit_id=id).item(), 5)
 
-            # 5.) Average Amplitude (ΔF/F)
-            if average_amplitude.sel(unit_id=id).isnull().item():
-                self.pd_table.at[id, "Average Amplitude (ΔF/F)"] = np.NaN
+            # 5.) Average Peak Amplitude (ΔF/F)
+            if average_amplitude.get(id, None) is None:
+                self.pd_table.at[id, "Average Peak Amplitude (ΔF/F)"] = np.NaN
             else:
-                self.pd_table.at[id, "Average Amplitude (ΔF/F)"] = str(round(average_amplitude.sel(unit_id=id).item(), 3))
+                self.pd_table.at[id, "Average Peak Amplitude (ΔF/F)"] = str(round(average_amplitude[id], 3))
 
             # 6.) Average Rising (# of frames)
             if average_rising_frames.sel(unit_id=id).isnull().item():

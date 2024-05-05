@@ -1,0 +1,18 @@
+INIT_LR: 0.001
+NUM_EPOCHS: 20
+BATCH_SIZE: 1
+THRESHOLD: 0.5
+TEST_SIZE: 0.1
+VAL_SIZE: 0.1
+SECTION_LEN: 200
+HIDDEN_SIZE: 32
+NUM_LAYERS: 3
+Accuracy: 0.9924
+Transient Event Precision: 0.8943
+Transient Event Recall: 0.7514
+No Transient Event Precision: 0.9943
+No Transient Event Recall: 0.9980
+F1 score: 0.8167
+AUC ROC score: 0.9923
+Data used for training: 
+./data/ml_data1
