@@ -4,7 +4,7 @@ The following file will be used for doing a deeper dive into the selected sessio
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAction, QStyle, 
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
                             QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar, QCheckBox,
-                            QTextEdit, QComboBox, QGraphicsTextItem, QMessageBox)
+                            QTextEdit, QComboBox, QGraphicsTextItem, QMessageBox, QFileDialog)
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5 import QtCore
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont)
@@ -18,6 +18,7 @@ from core.pyqtgraph_override import ImageViewOverride
 from skimage.segmentation import flood_fill
 from skimage.feature import canny
 import os
+from PIL import Image, ImageEnhance
 
 
 try:
@@ -88,6 +89,16 @@ class ExplorationWidget(QWidget):
         btn_general_stats.triggered.connect(self.generate_gen_stats)
         stats_menu = menu.addMenu("&Statistics")
         stats_menu.addAction(btn_general_stats)
+        btn_max_projection_processed = QAction(self.style().standardIcon(pixmapi_tools), "&Max Projection All", self)
+        btn_max_projection_processed.setStatusTip("Save Max Projection")
+        btn_max_projection_processed.triggered.connect(lambda: self.save_max_projection("all"))
+        btn_max_projection_original = QAction(self.style().standardIcon(pixmapi_tools), "&Max Projection Only Cells", self)
+        btn_max_projection_original.setStatusTip("Save Max Projection only cells")
+        btn_max_projection_original.triggered.connect(lambda: self.save_max_projection("cells"))
+
+        util_menu = menu.addMenu("&Utilities")
+        util_menu.addAction(btn_max_projection_processed)
+        util_menu.addAction(btn_max_projection_original)
         
 
         # We'll load in a copy of the visualization of the cells we are monitoring
@@ -1243,7 +1254,22 @@ class ExplorationWidget(QWidget):
         self.switch_missed_cell_mode()
         self.clear_selected_pixels()
 
-        
+    def save_max_projection(self, format):
+        path = QFileDialog.getSaveFileName(self, "Save Max Projection", "", "PNG (*.png)")[0]
+        if path:
+            if format == "all":
+                max_projection = self.session.video_data["Y_fm_chk"].max(dim="frame").values
+            else:
+                max_projection = self.session.video_data["Y_fm_chk"].max(dim="frame")
+                footprints = self.session.data["A"].sum(dim="unit_id")
+                max_projection = (max_projection * footprints).values
+            im = Image.fromarray(max_projection)
+            if im.mode != 'RGB':
+                im = im.convert('RGB')
+            # Scale the image so the highest value is 255
+            im = ImageEnhance.Brightness(im).enhance(255 / max_projection.max())
+            im.save(path)
+            
 
     def generate_gen_stats(self):
         self.gen_stats_window = GeneralStatsWidget(self.session)
