@@ -1,9 +1,9 @@
 # import the necessary packages
 import torch
 # base path of the dataset
-DATASET_PATH = ["./data/ml_data1",]
+DATASET_PATH = ["./data/ml_data1",
                 #"./data/ml_data2",
-                #"./data/ml_data3"]
+                "./data/ml_data3"]
 # determine the device to be used for training and evaluation
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # determine if we will be pinning memory during data loading

@@ -13,7 +13,7 @@ import os
 from sklearn.metrics import f1_score, roc_auc_score, roc_curve, precision_score, recall_score, confusion_matrix, accuracy_score, ConfusionMatrixDisplay
 
 
-def train(train_size=None, test_size=None):
+def train(train_size=None, test_size=None, cross_session=False):
 	test_size = test_size if test_size is not None else config.TEST_SIZE 
 	# For saving purposes get the hour and minute and date of the run
 	t = time.localtime()
@@ -29,7 +29,7 @@ def train(train_size=None, test_size=None):
 	paths = config.DATASET_PATH
 
 	# create the train and test datasets
-	trainDS = GRUDataset(paths=paths, train_size=train_size, test_split=test_size,
+	trainDS = GRUDataset(paths=paths, train_size=train_size, test_split=test_size, cross_session=cross_session,
 					     val_split=config.VAL_SIZE, section_len=config.SECTION_LEN, stratification=config.STRATIFICATION)
 	valDS = ValDataset(data=trainDS.get_data())
 	testDS = TestDataset(data=trainDS.get_data())
@@ -48,7 +48,7 @@ def train(train_size=None, test_size=None):
 	gru = GRU_Hidden(hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS, inputs=config.INPUT).to(config.DEVICE)
 	# initialize loss function and optimizer
 
-	lossFunc = BCEWithLogitsLoss()#pos_weight=trainDS.weight.to(config.DEVICE))
+	lossFunc = BCEWithLogitsLoss()
 	opt = Adam(gru.parameters(), lr=config.INIT_LR)
 	# calculate steps per epoch for training and validation set
 	trainSteps = trainDS.get_training_steps() // config.BATCH_SIZE
