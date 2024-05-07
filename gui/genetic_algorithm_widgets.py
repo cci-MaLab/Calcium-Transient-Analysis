@@ -1,5 +1,5 @@
-from PyQt5.QtWidgets import (QVBoxLayout, QLabel, QHBoxLayout, QWidget, QComboBox, QTableWidget, 
-                             QTableWidgetItem, QMainWindow, QGridLayout, QPushButton,QMenu,QGroupBox,QCheckBox)
+from PyQt5.QtWidgets import (QVBoxLayout, QLabel, QHBoxLayout, QWidget, QComboBox, QTableWidget, QApplication,
+                             QTableWidgetItem, QMainWindow, QGridLayout, QPushButton,QGroupBox,QCheckBox,QMenu,QMenuBar)
 from PyQt5 import QtCore
 import pyqtgraph as pg
 from core.genetic_algorithm import Genetic_Algorithm  
@@ -214,9 +214,13 @@ class GADetailTableWindowWidget(QWidget):
         self.main_ref = main_ref
         self.ga = ga
         self.length = len(self.ga.examples)
-        self.resize(200,200)
+        self.resize(600,600)
         self.name = "Detail Table"
         self.setWindowTitle("Detail Table")
+        self.bar = QMenuBar()
+        tool = self.bar.addMenu("Tool")
+        self.cp = tool.addAction("Copy the data to the clipboard")
+        self.cp.triggered.connect(self.copy_data)
 
         # Dropdown for rank
         layout_dropdown = QHBoxLayout()
@@ -238,8 +242,6 @@ class GADetailTableWindowWidget(QWidget):
         # Table of result
         layout_res_table = QVBoxLayout()
         self.res_table = QTableWidget()
-        self.res_table.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-        self.res_table.customContextMenuRequested.connect(self.generateMenu)
         layout_res_table.addWidget(self.res_table)
 
         self.update()
@@ -249,10 +251,23 @@ class GADetailTableWindowWidget(QWidget):
         layout.addLayout(layout_dropdown)
         # layout.addLayout(layout_event_dropdown)
         layout.addLayout(layout_res_table)
+        layout.setMenuBar(self.bar)
         self.setLayout(layout)
 
-    def generateMenu(self):
-        menu = QMenu()
+    def copy_data(self):
+        clipboard = QApplication.clipboard()
+        text = ""
+        for i in range(len(self.res_df.columns)):
+            text+=str(self.res_df.columns[i])+','
+        text.strip(',')
+        text+='\n'
+        for i in range(len(self.res_df.index)):
+            for j in range(len(self.res_df.columns)):
+                text += str(self.res_df.iloc[i,j]) +','
+            text.strip(',')
+            text+='\n'
+        clipboard.setText(text)
+
 
     def update(self):
         index = self.rank_dropdown.currentIndex()

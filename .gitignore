@@ -5,3 +5,4 @@
 *.png
 data/*
 backup/*
+*log*.txt
