@@ -17,8 +17,9 @@ from core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget, M
 from core.pyqtgraph_override import ImageViewOverride
 from skimage.segmentation import flood_fill
 from skimage.feature import canny
+from skimage.measure import find_contours
 import os
-from PIL import Image, ImageEnhance
+import matplotlib.pyplot as plt
 
 
 try:
@@ -89,16 +90,12 @@ class ExplorationWidget(QWidget):
         btn_general_stats.triggered.connect(self.generate_gen_stats)
         stats_menu = menu.addMenu("&Statistics")
         stats_menu.addAction(btn_general_stats)
-        btn_max_projection_processed = QAction(self.style().standardIcon(pixmapi_tools), "&Max Projection All", self)
+        btn_max_projection_processed = QAction(self.style().standardIcon(pixmapi_tools), "&Max Projection", self)
         btn_max_projection_processed.setStatusTip("Save Max Projection")
-        btn_max_projection_processed.triggered.connect(lambda: self.save_max_projection("all"))
-        btn_max_projection_original = QAction(self.style().standardIcon(pixmapi_tools), "&Max Projection Only Cells", self)
-        btn_max_projection_original.setStatusTip("Save Max Projection only cells")
-        btn_max_projection_original.triggered.connect(lambda: self.save_max_projection("cells"))
+        btn_max_projection_processed.triggered.connect(self.save_max_projection)
 
         util_menu = menu.addMenu("&Utilities")
         util_menu.addAction(btn_max_projection_processed)
-        util_menu.addAction(btn_max_projection_original)
         
 
         # We'll load in a copy of the visualization of the cells we are monitoring
@@ -1254,21 +1251,49 @@ class ExplorationWidget(QWidget):
         self.switch_missed_cell_mode()
         self.clear_selected_pixels()
 
-    def save_max_projection(self, format):
-        path = QFileDialog.getSaveFileName(self, "Save Max Projection", "", "PNG (*.png)")[0]
+    def save_max_projection(self):
+        path, ext = QFileDialog.getSaveFileName(self, "Save Max Projection", "", "PDF (*.pdf);; SVG (*.svg)")
+        # Window prompt for paramter toggle
+        msg = QMessageBox()
+        msg.setText("Display cell ids on the max projection?")
+        msg.setWindowTitle("Display Cell IDs")
+        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg.setDefaultButton(QMessageBox.Yes)
+        ret = msg.exec_()
+        display_text = ret == QMessageBox.Yes
         if path:
-            if format == "all":
-                max_projection = self.session.video_data["Y_fm_chk"].max(dim="frame").values
-            else:
-                max_projection = self.session.video_data["Y_fm_chk"].max(dim="frame")
-                footprints = self.session.data["A"].sum(dim="unit_id")
-                max_projection = (max_projection * footprints).values
-            im = Image.fromarray(max_projection)
-            if im.mode != 'RGB':
-                im = im.convert('RGB')
-            # Scale the image so the highest value is 255
-            im = ImageEnhance.Brightness(im).enhance(255 / max_projection.max())
-            im.save(path)
+            max_proj = (self.session.video_data["Y_fm_chk"].max(dim="frame") * self.session.data["A"].sum("unit_id")).values
+
+            contours = []
+            indices = []
+            unit_ids = self.session.data["unit_ids"]
+            for unit_id in unit_ids:
+                footprint = (self.session.data["A"].sel(unit_id=unit_id).values)
+                thresholded_roi = 1 * footprint > (np.mean(footprint) + 5 * np.std(footprint))
+                contours.append(find_contours(thresholded_roi, 0)[0])
+                indices.append(np.argwhere(footprint > 0))
+
+            fig, ax = plt.subplots(figsize=(12.8, 9.6))
+            ax.imshow(max_proj * 0, cmap='gray')
+            for outline, indices, unit_id in zip(contours, indices, unit_ids):
+                ax.plot(outline[:, 1], outline[:, 0], color='xkcd:azure', alpha=0.5)
+                # Extract the values from max_proj to get the alpha values
+                alphas = max_proj[indices[:, 0], indices[:, 1]]
+                alphas /= np.max(alphas)
+                rgba_colors = np.ones((len(indices), 4))     
+                rgba_colors[:, 3] = alphas                  
+                ax.scatter(indices[:, 1], indices[:, 0], marker=',', color=rgba_colors)
+                if display_text:
+                    ax.text(np.mean(outline[:, 1]), np.mean(outline[:, 0]), unit_id, color='xkcd:azure',
+                        ha='center', va='center', fontsize=4)
+            ax.axis('off')
+            
+            # For some reason the extension is not added by default
+            ext = ".pdf" if "pdf" in ext else ".svg"
+            if not path.endswith(ext):
+                path += ext
+
+            fig.savefig(path)
             
 
     def generate_gen_stats(self):
