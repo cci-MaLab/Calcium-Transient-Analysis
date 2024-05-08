@@ -1282,7 +1282,7 @@ class ExplorationWidget(QWidget):
                 alphas /= np.max(alphas)
                 rgba_colors = np.ones((len(indices), 4))     
                 rgba_colors[:, 3] = alphas                  
-                ax.scatter(indices[:, 1], indices[:, 0], marker=',', color=rgba_colors)
+                ax.scatter(indices[:, 1], indices[:, 0], marker=',', color=rgba_colors, s=(92./fig.dpi)**2, lw=0)
                 if display_text:
                     ax.text(np.mean(outline[:, 1]), np.mean(outline[:, 0]), unit_id, color='xkcd:azure',
                         ha='center', va='center', fontsize=4)
