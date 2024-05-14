@@ -900,8 +900,9 @@ class DataInstance:
         """
         # First convert final peaks into a numpy array
         E = self.data['E']
+        dtype = E.dtype
         if isinstance(spikes, list):
-            new_e = np.zeros(E.shape[1])
+            new_e = np.zeros(E.shape[1], dtype=dtype)
             for spike in spikes:
                 new_e[spike[0]:spike[1]] = 1
         else:
