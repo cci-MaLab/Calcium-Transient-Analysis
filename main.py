@@ -1,10 +1,11 @@
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox, QAction,
                             QVBoxLayout, QHBoxLayout, QWidget, QTabWidget)
 from gui.main_widgets import (UpdateDialog, ParamDialog, VisualizeInstanceWidget, Viewer, ClusteringToolWidget,
-                            GAToolWidget, ExplorationToolWidget)
+                            GAToolWidget, ExplorationToolWidget, SDAToolWidget)
 
 from gui.genetic_algorithm_widgets import GAWindowWidget,GAGenerationScoreWindowWidget
 from gui.exploration_widgets import ExplorationWidget
+from gui.sda_widgets import SDAWindowWidget
 import sys
 import os
 import json
@@ -64,19 +65,22 @@ class MainWindow(QMainWindow):
         self.cl_tools = ClusteringToolWidget(self, self.event_defaults)
         self.ga_tools = GAToolWidget(self)
         self.e_tools = ExplorationToolWidget(self)
+        self.sda_tools = SDAToolWidget(self)
         self.cl_tools.setEnabled(False)
         self.e_tools.setEnabled(False)
         self.ga_tools.setEnabled(False)
+        self.sda_tools.setEnabled(False)
 
         # Layouts and tabs
         layout_central = QHBoxLayout()
         layout_cluster = QVBoxLayout()
         tabs = QTabWidget()
-        tabs.setFixedWidth(320)
+        tabs.setFixedWidth(400)
         self.instance_viz = VisualizeInstanceWidget(self)
 
         tabs.addTab(self.e_tools, "Exploration")
         tabs.addTab(self.cl_tools, "Clustering")
+        tabs.addTab(self.sda_tools, "Spatial Distribution Analysis")
         tabs.addTab(self.ga_tools, "Genetic Algorithm")
 
         layout_cluster.addWidget(self.instance_viz)
@@ -96,6 +100,7 @@ class MainWindow(QMainWindow):
             self.cl_tools.setEnabled(True)
             self.e_tools.setEnabled(True)
             self.ga_tools.setEnabled(True)
+            self.sda_tools.setEnabled(True)
             self.update_params()
         elif self.current_selection == viewer:
             if viewer.selected == True:
@@ -103,12 +108,14 @@ class MainWindow(QMainWindow):
                 self.cl_tools.setEnabled(False)
                 self.e_tools.setEnabled(False)
                 self.ga_tools.setEnabled(False)
+                self.sda_tools.setEnabled(False)
             else:
                 viewer.selected = True
                 viewer.change_to_red()
                 self.cl_tools.setEnabled(True)
                 self.e_tools.setEnabled(True)
                 self.ga_tools.setEnabled(True)
+                self.sda_tools.setEnabled(True)
                 self.update_params()
         else:
             self.current_selection.change_to_white()
@@ -118,6 +125,7 @@ class MainWindow(QMainWindow):
             self.cl_tools.setEnabled(True)
             self.e_tools.setEnabled(True)
             self.ga_tools.setEnabled(True)
+            self.sda_tools.setEnabled(True)
             self.update_params()
 
     def update_params(self):
@@ -154,6 +162,20 @@ class MainWindow(QMainWindow):
                 self.windows[name] = wid
                 # Create a backup of E data
                 instance.backup_E()
+                wid.show()
+
+    def start_sda(self, current_selection=None):
+        current_selection = self.current_selection if current_selection is None else current_selection
+        group, session, day, mouseID = current_selection.return_info()
+        instance = self.instances[group][mouseID][f"{session}:{day}"]
+
+        name = f"{instance.mouseID} {instance.day} {instance.session} Spatial Distribution Analysis"
+
+        if name not in self.windows:
+            wid = SDAWindowWidget(instance, name, self)
+            if wid is not None:
+                wid.setWindowTitle(name)
+                self.windows[name] = wid
                 wid.show()
 
     def start_ga(self, ga):
@@ -228,6 +250,7 @@ class MainWindow(QMainWindow):
         self.cl_tools.setEnabled(False)
         self.e_tools.setEnabled(False)
         self.ga_tools.setEnabled(False)
+        self.sda_tools.setEnabled(False)
         self.current_selection = None
 
 

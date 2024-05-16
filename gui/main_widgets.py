@@ -738,6 +738,31 @@ class ExplorationToolWidget(QWidget):
     def delete(self, event):
         self.main_ref.delete_selection()
 
+class SDAToolWidget(QWidget):
+    def __init__(self, main_ref, parent=None):
+        super().__init__(parent)
+        self.main_ref = main_ref
+
+        button_sda = QPushButton("Start Spatial Distribution Analysis")
+        button_sda.setStyleSheet("background-color : green")
+        button_sda.clicked.connect(self.sda)
+
+        button_delete = QPushButton("Delete Cluster")
+        button_delete.setStyleSheet("background-color : red")
+        button_delete.clicked.connect(self.delete)
+
+        layout = QVBoxLayout()
+        layout.addWidget(button_sda)
+        layout.addWidget(button_delete)
+        layout.addStretch()
+        self.setLayout(layout)
+
+    def sda(self, event):
+        self.main_ref.start_sda()
+
+    def delete(self, event):
+        self.main_ref.delete_selection()
+
 class ParamWidget(QWidget):
     def __init__(self, name, event_defaults, parent=None):
         super().__init__(parent)
