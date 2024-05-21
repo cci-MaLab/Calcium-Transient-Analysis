@@ -80,7 +80,7 @@ class MainWindow(QMainWindow):
 
         tabs.addTab(self.e_tools, "Exploration")
         tabs.addTab(self.cl_tools, "Clustering")
-        tabs.addTab(self.sda_tools, "Spatial Distribution Analysis")
+        tabs.addTab(self.sda_tools, "SDA")
         tabs.addTab(self.ga_tools, "Genetic Algorithm")
 
         layout_cluster.addWidget(self.instance_viz)
