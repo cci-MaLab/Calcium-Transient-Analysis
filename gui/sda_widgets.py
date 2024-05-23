@@ -4,7 +4,7 @@ from traits.api import HasTraits, Instance, on_trait_change
 from traitsui.api import View, Item
 from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
 from mayavi import mlab 
-from PyQt5.QtWidgets import  QWidget, QVBoxLayout
+from PyQt5.QtWidgets import  QWidget, QVBoxLayout, QPushButton
 import numpy as np
 
 class SDAWindowWidget(QWidget):
@@ -13,6 +13,7 @@ class SDAWindowWidget(QWidget):
         self.session = session
         self.name = name
         self.main_window_ref = main_window_ref
+        self.anim = None
 
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
@@ -33,13 +34,20 @@ class SDAWindowWidget(QWidget):
 
         Y = np.tensordot(C, A, axes=([0], [0]))
 
+        # Add a simple button to start the animation
+        self.button = QPushButton("Start Animation")
+        self.button.clicked.connect(self.start_animation)
+
                
 
 
         self.mayavi_widget = MayaviQWidget(Y)
-        self.mayavi_widget.setObjectName("XYZView")
+        self.mayavi_widget.setObjectName("3D Cell Overview")
         self.layout.addWidget(self.mayavi_widget)
+        self.layout.addWidget(self.button)
 
+    def start_animation(self):
+        self.anim = self.mayavi_widget.visualization.animation()
 
 class Visualization(HasTraits):
     scene = Instance(MlabSceneModel, ())
@@ -64,8 +72,8 @@ class Visualization(HasTraits):
                 )
     
 
-    @mlab.animate(delay=10)
-    def animation(self):
+    @mlab.animate(delay=10, ui=False)
+    def animation(self):        
         while 1:
             self.current_idx = (self.current_idx + 1) % self.length
             self.update_data(self.data[self.current_idx])
@@ -83,5 +91,3 @@ class MayaviQWidget(QWidget):
         self.ui = self.visualization.edit_traits(parent=self,
                                                   kind='subpanel').control
         layout.addWidget(self.ui)
-
-        self.visualization.animation()

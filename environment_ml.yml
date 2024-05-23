@@ -17,5 +17,6 @@ dependencies:
   - pytorch::pytorch
   - ipykernel
   - tqdm
+  - mayavi
   - pip:
     - local-attention
