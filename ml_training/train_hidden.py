@@ -13,7 +13,7 @@ import os
 from sklearn.metrics import f1_score, roc_auc_score, roc_curve, precision_score, recall_score, confusion_matrix, accuracy_score, ConfusionMatrixDisplay
 
 
-def train(train_size=None, test_size=None, cross_session=False):
+def train(paths=None, train_size=None, test_size=None, cross_session=False):
 	test_size = test_size if test_size is not None else config.TEST_SIZE 
 	# For saving purposes get the hour and minute and date of the run
 	t = time.localtime()
@@ -26,7 +26,7 @@ def train(train_size=None, test_size=None, cross_session=False):
 		os.makedirs(plot_path)
 	
 	# load the image and mask filepaths in a sorted manner
-	paths = config.DATASET_PATH
+	paths = config.DATASET_PATH if paths is None else paths
 
 	# create the train and test datasets
 	trainDS = GRUDataset(paths=paths, train_size=train_size, test_split=test_size, cross_session=cross_session,
@@ -233,5 +233,6 @@ def train(train_size=None, test_size=None, cross_session=False):
 
 	# Create dict that keeps all the outputs
 	outputs = {"accuracy": acc, "precision1": precision1, "recall1": recall1,
-			 "precision0": precision0, "recall0": recall0, "f1": f1, "auc": auc}
+			 "precision0": precision0, "recall0": recall0, "f1": f1, "auc": auc,
+			 "preds": preds, "gt": gt}
 	return outputs
