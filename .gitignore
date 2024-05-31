@@ -8,3 +8,4 @@ backup/*
 *log*.txt
 */test_results/*
 *.pkl
+*.csv
