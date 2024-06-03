@@ -533,6 +533,13 @@ class ExplorationWidget(QWidget):
         frame_ml_results.setLineWidth(3)
 
         layout_ml_results = QVBoxLayout(frame_ml_results)
+        # Extract the actual name from the window
+        self.actual_name = "_".join(self.name.split(" ")[0:3])
+        self.cmb_experiment = QComboBox(['cross_animal', 'cross_day_cross_session', 'cross_day_same_session', 'cross_session_same_day', 'within_session'])
+        self.cmb_testing_set = QComboBox(["PL010_D1S1", "AA058_D1S1", "AA036_D2S1", "AA034_D1S1"])
+        self.cmb_no_of_cells = QComboBox(["1", "2", "5", "10", "15", "20"])
+        self.btn_generate_ml_results = QPushButton("Generate ML Results")
+        self.btn_generate_ml_results.setEnabled(False)
 
 
         # Temp toggling/confirming layout
