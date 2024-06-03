@@ -526,6 +526,15 @@ class ExplorationWidget(QWidget):
         layout_ml.addLayout(layout_ml_threshold)
         layout_ml.addWidget(btn_run_model)
 
+        # Machine Learning Results
+        frame_ml_results = QFrame()
+        frame_ml_results.setFrameShape(QFrame.Box)
+        frame_ml_results.setFrameShadow(QFrame.Raised)
+        frame_ml_results.setLineWidth(3)
+
+        layout_ml_results = QVBoxLayout(frame_ml_results)
+
+
         # Temp toggling/confirming layout
         frame_temp_picks = QFrame()
         frame_temp_picks.setFrameShape(QFrame.Box)
@@ -549,6 +558,14 @@ class ExplorationWidget(QWidget):
         layout_auto_ml.addStretch()
         w_auto_ml = QWidget()
         w_auto_ml.setLayout(layout_auto_ml)
+
+
+        # Machine Learning Results
+        # This should be removed later down the line
+        layout_ml_results = QVBoxLayout()
+        layout_ml_results.addWidget(frame_ml_results)
+        w_ml_results = QWidget()
+        w_ml_results.setLayout(layout_ml_results)
 
 
         # Manual Event Generation
@@ -591,7 +608,8 @@ class ExplorationWidget(QWidget):
         # Event Generation Tab
         tab_transient_detection = QTabWidget()
         tab_transient_detection.addTab(w_auto_ml, "Automatic")
-        tab_transient_detection.addTab(w_force_manual, "Manual")       
+        tab_transient_detection.addTab(w_force_manual, "Manual")
+        tab_transient_detection.addTab(w_ml_results, "ML Results")
 
         # Statistics buttons
         frame_stats = QFrame()
