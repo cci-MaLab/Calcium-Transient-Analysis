@@ -535,15 +535,25 @@ class ExplorationWidget(QWidget):
 
         layout_ml_results = QVBoxLayout(frame_ml_results)
         # Extract the actual name from the window
-        self.actual_name = "_".join(self.name.split(" ")[0:3])
-        self.cmb_experiment = QComboBox(['cross_animal', 'cross_day_cross_session', 'cross_day_same_session', 'cross_session_same_day', 'within_session'])
-        self.cmb_experiment.currentIndexChanged.connect(self.enable_disable_ml_results)
-        self.cmb_testing_set = QComboBox(["PL010_D1S1", "AA058_D1S1", "AA036_D2S1", "AA034_D1S1"])
-        self.cmb_testing_set.currentIndexChanged.connect(self.enable_disable_ml_results)
-        self.cmb_no_of_cells = QComboBox(["1", "2", "5", "10", "15", "20"])
-        self.cmb_no_of_cells.currentIndexChanged.connect(self.enable_disable_ml_results)
-        self.cmb_which_run = QComboBox(["1", "2", "3", "4", "5"])
+        self.actual_name = "".join(self.name.split(" ")[0:3])
+        self.actual_name = self.actual_name[:5] + "_" + self.actual_name[5:]
+        self.cmb_experiment = QComboBox()
+        self.cmb_experiment.addItems(['cross_animal', 'cross_day_cross_session', 'cross_day_same_session', 'cross_session_same_day', 'within_session'])
+        self.cmb_experiment.currentIndexChanged.connect(self.check_if_results_exist)
+        self.cmb_testing_set = QComboBox()
+        self.cmb_testing_set.addItems(["PL010_D1S1", "AA058_D1S1", "AA036_D2S1", "AA034_D1S1"])
+        self.cmb_testing_set.currentIndexChanged.connect(self.check_if_results_exist)
+        label_no_of_cells = QLabel("No of Cells")
+        self.cmb_no_of_cells = QComboBox()
+        self.cmb_no_of_cells.addItems(["1", "2", "5", "10", "15", "20"])
+        self.cmb_no_of_cells.setEnabled(False)
+        self.cmb_no_of_cells.currentIndexChanged.connect(self.changed_no_cells)
+        label_which_run = QLabel("Which Run")
+        self.cmb_which_run = QComboBox()
+        self.cmb_which_run.addItems(["1", "2", "3", "4", "5"])
+        self.cmb_which_run.setEnabled(False)
         self.btn_generate_ml_results = QPushButton("Generate ML Results")
+        self.btn_generate_ml_results.clicked.connect(self.visualize_ml_test_results)
         self.btn_generate_ml_results.setEnabled(False)
 
 
@@ -574,10 +584,15 @@ class ExplorationWidget(QWidget):
 
         # Machine Learning Results
         # This should be removed later down the line
-        layout_ml_results = QVBoxLayout()
-        layout_ml_results.addWidget(frame_ml_results)
         w_ml_results = QWidget()
         w_ml_results.setLayout(layout_ml_results)
+        layout_ml_results.addWidget(self.cmb_experiment)
+        layout_ml_results.addWidget(self.cmb_testing_set)
+        layout_ml_results.addWidget(label_no_of_cells)
+        layout_ml_results.addWidget(self.cmb_no_of_cells)
+        layout_ml_results.addWidget(label_which_run)
+        layout_ml_results.addWidget(self.cmb_which_run)
+        layout_ml_results.addWidget(self.btn_generate_ml_results)
 
 
         # Manual Event Generation
@@ -627,6 +642,7 @@ class ExplorationWidget(QWidget):
             with open("test_results.pkl", "rb") as f:
                 self.test_results = pickle.load(f)
             tab_transient_detection.addTab(w_ml_results, "ML Results")
+            self.check_if_results_exist()
 
         # Statistics buttons
         frame_stats = QFrame()
@@ -792,7 +808,8 @@ class ExplorationWidget(QWidget):
 
         self.imv.scene.sigMouseMoved.connect(self.detect_cell_hover)
 
-    def enable_disable_ml_results(self):
+    def check_if_results_exist(self):
+        idx_to_cells = {"0":"1", "1":"2", "2":"5", "3":"10", "4":"15", "5":"20"}
         experiment = self.cmb_experiment.currentText()
         testing_set = self.cmb_testing_set.currentText()
 
@@ -803,12 +820,86 @@ class ExplorationWidget(QWidget):
             if isinstance(item, PlotItemEnhanced):
                 if item.cell_type == "Standard":
                     observed_signals.append(item.id)
-        
+
+            idx += 1        
 
         try:
             test_cells = self.test_cells_dict[experiment][testing_set][self.actual_name]
+
+            self.no_cells_to_runs  = {}
+
+            for i, test_cell in enumerate(test_cells):
+                for observed_signal in observed_signals:
+                    if observed_signal in test_cell:
+                        
+                        no_cells = i // 5
+                        which_run = i % 5
+
+                        if no_cells not in self.no_cells_to_runs:
+                            self.no_cells_to_runs[str(no_cells)] = []
+                        self.no_cells_to_runs[str(no_cells)].append(str(which_run))
+
+            self.cmb_no_of_cells.clear()
+            self.cmb_no_of_cells.addItems([idx_to_cells[key] for key in self.no_cells_to_runs.keys()])
+            selection = self.cmb_no_of_cells.currentText()
+            self.cmb_which_run.clear()
+            self.cmb_which_run.addItems(self.no_cells_to_runs[selection])
+            self.cmb_no_of_cells.setEnabled(True)
+            self.cmb_which_run.setEnabled(True)
+            self.btn_generate_ml_results.setEnabled(True)
+            
+
         except:
+            self.cmb_no_of_cells.clear()
+            self.cmb_no_of_cells.setEnabled(False)
+            self.cmb_which_run.clear()
+            self.cmb_which_run.setEnabled(False)
+            self.btn_generate_ml_results.setEnabled(False)
             return
+
+    def changed_no_cells(self):
+        cells_to_idx = {"1":"0", "2":"1", "5":"2", "10":"3", "15":"4", "20":"5"}
+        if self.no_cells_to_runs:
+            selection = self.cmb_no_of_cells.currentText()
+            self.cmb_which_run.clear()
+            self.cmb_which_run.addItems(self.no_cells_to_runs[cells_to_idx[selection]])
+
+    def visualize_ml_test_results(self):
+        cells_to_idx = {"1":0, "2":1, "5":2, "10":3, "15":4, "20":5}
+        experiment = self.cmb_experiment.currentText()
+        testing_set = self.cmb_testing_set.currentText()
+        no_cells = cells_to_idx[self.cmb_no_of_cells.currentText()]
+        which_run = int(self.cmb_which_run.currentText())
+
+        pos = no_cells * 5 + which_run
+        test_cells = self.test_cells_dict[experiment][testing_set][self.actual_name][pos]
+        test_result = self.test_results[experiment][testing_set]
+
+
+        observed_signals = []
+        idx = 0
+        while self.w_signals.getItem(idx,0) is not None:
+            item = self.w_signals.getItem(idx,0)
+            if isinstance(item, PlotItemEnhanced):
+                if item.cell_type == "Standard":
+                    observed_signals.append(item.id)
+
+            idx += 1  
+
+        sub_pos = {}
+
+        for id in observed_signals:
+            if id in test_cells:
+                sub_pos[id] = test_cells.index(id)
+
+        for id, pos in sub_pos.items():
+            preds = test_result[2*(no_cells*5+which_run)+1][26999*pos:26999*(pos+1)]
+            self.temp_picks[id] = preds
+
+
+        self.visualize_signals(reset_view=False)
+
+        
 
 
         
