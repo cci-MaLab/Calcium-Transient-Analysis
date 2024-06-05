@@ -20,6 +20,7 @@ from skimage.feature import canny
 from skimage.measure import find_contours
 import os
 import matplotlib.pyplot as plt
+import pickle
 
 
 try:
@@ -536,8 +537,12 @@ class ExplorationWidget(QWidget):
         # Extract the actual name from the window
         self.actual_name = "_".join(self.name.split(" ")[0:3])
         self.cmb_experiment = QComboBox(['cross_animal', 'cross_day_cross_session', 'cross_day_same_session', 'cross_session_same_day', 'within_session'])
+        self.cmb_experiment.currentIndexChanged.connect(self.enable_disable_ml_results)
         self.cmb_testing_set = QComboBox(["PL010_D1S1", "AA058_D1S1", "AA036_D2S1", "AA034_D1S1"])
+        self.cmb_testing_set.currentIndexChanged.connect(self.enable_disable_ml_results)
         self.cmb_no_of_cells = QComboBox(["1", "2", "5", "10", "15", "20"])
+        self.cmb_no_of_cells.currentIndexChanged.connect(self.enable_disable_ml_results)
+        self.cmb_which_run = QComboBox(["1", "2", "3", "4", "5"])
         self.btn_generate_ml_results = QPushButton("Generate ML Results")
         self.btn_generate_ml_results.setEnabled(False)
 
@@ -616,7 +621,12 @@ class ExplorationWidget(QWidget):
         tab_transient_detection = QTabWidget()
         tab_transient_detection.addTab(w_auto_ml, "Automatic")
         tab_transient_detection.addTab(w_force_manual, "Manual")
-        tab_transient_detection.addTab(w_ml_results, "ML Results")
+        if os.path.exists("test_cells_dict.pkl") and os.path.exists("test_results.pkl"):
+            with open("test_cells_dict.pkl", "rb") as f:
+                self.test_cells_dict = pickle.load(f)
+            with open("test_results.pkl", "rb") as f:
+                self.test_results = pickle.load(f)
+            tab_transient_detection.addTab(w_ml_results, "ML Results")
 
         # Statistics buttons
         frame_stats = QFrame()
@@ -781,6 +791,34 @@ class ExplorationWidget(QWidget):
         self.missed_cell_init()
 
         self.imv.scene.sigMouseMoved.connect(self.detect_cell_hover)
+
+    def enable_disable_ml_results(self):
+        experiment = self.cmb_experiment.currentText()
+        testing_set = self.cmb_testing_set.currentText()
+
+        observed_signals = []
+        idx = 0
+        while self.w_signals.getItem(idx,0) is not None:
+            item = self.w_signals.getItem(idx,0)
+            if isinstance(item, PlotItemEnhanced):
+                if item.cell_type == "Standard":
+                    observed_signals.append(item.id)
+        
+
+        try:
+            test_cells = self.test_cells_dict[experiment][testing_set][self.actual_name]
+        except:
+            return
+
+
+        
+
+        
+        
+        
+
+
+
 
     def run_model(self):
         from ml_training import config
