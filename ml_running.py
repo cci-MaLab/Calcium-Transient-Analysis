@@ -236,7 +236,42 @@ def cross_animal():
         results = np.array(results)
         np.savetxt(os.path.join(session_path, session_name + "_results.csv"), results, delimiter=",")
 
+def train_on_all():
+    all_paths = ["./data/PL010/PL010_D1S1", "./data/PL010/PL010_D1S4", "./data/PL010/PL010_D8S1", "./data/PL010/PL010_D8S4",
+                 "./data/AA058/AA058_D1S1", "./data/AA058/AA058_D1S4", "./data/AA058/AA058_D5S1", "./data/AA058/AA058_D5S4", 
+                 "./data/AA036/AA036_D2S1", "./data/AA036/AA036_D2S4", "./data/AA036/AA036_D6S1", "./data/AA036/AA036_D6S4",
+                 "./data/AA034/AA034_D1S1", "./data/AA034/AA034_D1S4", "./data/AA034/AA034_D7S1", "./data/AA034/AA034_D7S4"]
+    
+    save_path = "./ml_training/test_results/all/"
+    # Check if the save path exists
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+    
+    repeats = 5
+    outputs = {"all": {}}
+    for i in range(repeats):
+        output = train(paths=all_paths, test_size=0.1, cross_session=True)
+        outputs["all"][i] = output
+    
+    f1_scores = [outputs["all"][i]["f1"] for i in range(repeats)]
+    plt.clf()
+    sns.boxplot(data=f1_scores)
+    plt.ylabel("F1 Score")
+    plt.title("F1 Score by Train Size")
 
+    plt.savefig(os.path.join(save_path, "f1_scores.png"))
+
+    results = []
+    for i in range(repeats):
+        output = outputs["all"][i]
+        gt = output["gt"]
+        preds = output["preds"]
+        results.append(gt)
+        results.append(preds)
+
+    # Save to csv
+    results = np.array(results)
+    np.savetxt(os.path.join(save_path, "all_results.csv"), results, delimiter=",")
 
 if __name__ == "__main__": 
     cross_animal()

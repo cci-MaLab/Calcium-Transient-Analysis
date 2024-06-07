@@ -7,7 +7,7 @@ from math import ceil
 from ml_training import config
 
 class GRUDataset(Dataset):
-    def __init__(self, paths: list[str], train_size=None, test_split=0.1, val_split=0.1, section_len=200, stratification=False, cross_session=False):
+    def __init__(self, paths: list[str], train_size=None, test_split=0.1, val_split=0.1, section_len=200, stratification=False, experiment_type="cross_session"):
         '''
         We want to create a truncated version of the dataset for training purposes. For the time being, we will
         split the dataset into chunks of length of 200. We will slide the window by 200.
@@ -29,8 +29,6 @@ class GRUDataset(Dataset):
 
         self.intermediate_epoch = 0
         self.small_epoch = 0
-        if len(paths) < 2:
-            cross_session = False
 
         for i, path in enumerate(self.paths):
             data = open_minian(path)
@@ -40,12 +38,13 @@ class GRUDataset(Dataset):
             unit_ids = all_unit_ids[verified==1]
             if train_size is not None and test_split >= 1 and i == 0:
                 # randomly select unit_ids of size train_size+test_size
-                if not cross_session:
+                if experiment_type == "within_session":
                     unit_ids = np.random.choice(unit_ids, train_size+test_split, replace=False)
                 else:
                     unit_ids = np.random.choice(unit_ids, train_size, replace=False)
-            if train_size is not None and test_split >= 1 and i == 1 and cross_session:
+            if train_size is not None and test_split >= 1 and i == 1 and experiment_type == "cross_session":
                 unit_ids = np.random.choice(unit_ids, test_split, replace=False)
+
 
             # Loading into memory may take up some space but it is necessary for fast access during training
             E = data['E'].sel(unit_id=unit_ids)
@@ -89,7 +88,7 @@ class GRUDataset(Dataset):
                     test_unit_ids[i-1].append(index - cell_counts[i])
                     break
         
-        if cross_session:
+        if experiment_type == "cross_session":
             test_unit_ids = [[] for _ in range(len(self.data))]
             indices = np.arange(len(self.data[-1]))
             test_unit_ids[-1] = indices
