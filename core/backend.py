@@ -29,7 +29,7 @@ import configparser
 import time
 
 def open_minian(
-    dpath: str, post_process: Optional[Callable] = None, return_dict=False
+    dpath: str, post_process: Optional[Callable] = None, return_dict=True
 ) -> Union[dict, xr.Dataset]:
     """
     Load an existing minian dataset.
@@ -430,10 +430,10 @@ class DataInstance:
     def load_videos(self):
         # We're setting this up as a seperate function as is takes up a lot of space and we only want to load the video info when we need to
         data = open_minian(self.minian_path + "_intermediate")
-        video_types = ["Y_fm_chk", "varr", "Y_hw_chk", "behavior_cam"]
+        video_types = ["Y_fm_chk", "varr", "Y_hw_chk", "behavior_video"]
         video_data = {}
         for video_type in video_types:
-            exists, data_type = self.contains(video_type, data.keys())
+            exists, data_type = self.contains(video_type, list(data.keys()))
             if exists:
                 video_data[video_type] = data[data_type]
             else:
@@ -460,12 +460,10 @@ class DataInstance:
 
         data = open_minian(minian_path)
         data_types = ['A', 'C', 'S', 'E', 'b', 'f', 'DFF', 'YrA', 'M','timestamp(ms)']
-        self.dataset = data
         timestamp = behavior_data[["Time Stamp (ms)"]]
         timestamp.index.name = "frame"
         da_ts = timestamp["Time Stamp (ms)"].to_xarray()
-        self.dataset.coords['timestamp(ms)'] = da_ts # Has to be renamed to timestamp(ms) as xarray complains about the space in a coordinate name
-        data.coords['timestamp(ms)'] = da_ts
+        data['timestamp(ms)'] = da_ts
 
         for dt in data_types:            
             if dt in data:
@@ -1007,7 +1005,7 @@ class DataInstance:
                 name="E"
             )
             E = E.assign_coords(good_cells=("unit_id", np.ones(len(self.data['unit_ids']))), verified=("unit_id", np.zeros(len(self.data['unit_ids']))))
-            E.coords['timestamp(ms)'] = self.dataset.coords['timestamp(ms)']
+            E.coords['timestamp(ms)'] = self.data['timestamp(ms)']
             self.data['E'] = save_xarray(E, self.minian_path)
             
 

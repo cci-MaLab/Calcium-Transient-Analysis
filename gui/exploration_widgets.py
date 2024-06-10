@@ -50,7 +50,9 @@ class ExplorationWidget(QWidget):
         self.hovered_cells = {} # id, item
         self.temp_picks = {}
         self.show_temp_picks = True
-        self.behavioral_cam_displayed = False
+        self.behavior_video_displayed = False
+        self.pre_images = None
+        self.pre_bimages = None
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -70,14 +72,14 @@ class ExplorationWidget(QWidget):
         self.imv.setImage(self.current_video.sel(frame=self.current_frame).values)
 
         # Add Context Menu Action
-        self.video_to_title = {"varr": "Original", "Y_fm_chk": "Processed", "behavior_cam": "Behavioral Camera"}
+        self.video_to_title = {"varr": "Original", "Y_fm_chk": "Processed", "behavior_video": "Behavioral Camera"}
         self.submenu_videos = self.imv.getView().menu.addMenu('&Video Format')
         for type in self.session.video_data.keys():
             if type ==  "Y_hw_chk":
                 continue
             button_video_type = QAction(f"&{self.video_to_title[type]}", self.submenu_videos)
-            if type == "behavior_cam":
-                button_video_type.triggered.connect(toggle_behavioral_cam)
+            if type == "behavior_video":
+                button_video_type.triggered.connect(self.toggle_behavior_video)
             else:
                 button_video_type.triggered.connect(lambda state, x=type: self.change_video(x))
             button_video_type.setCheckable(True)
@@ -902,17 +904,6 @@ class ExplorationWidget(QWidget):
 
 
         self.visualize_signals(reset_view=False)
-
-        
-
-
-        
-
-        
-        
-        
-
-
 
 
     def run_model(self):
@@ -1778,8 +1769,42 @@ class ExplorationWidget(QWidget):
         image = self.generate_image()
         self.imv.setImage(image, autoRange=False, autoLevels=False)
 
+    def check_preload_image(self):
+        chunk_length = self.current_video.chunks[0][0] * 10
+        if self.pre_images is None:
+            # Check which chunk the current frame is in
+            chunk_idx = self.current_frame // chunk_length
+            self.pre_images = self.current_video.sel(frame=slice(chunk_idx*chunk_length, (chunk_idx+1)*chunk_length)).load()
+
+        else:
+            frames = self.pre_images.coords["frame"].values
+            if frames[0] <= self.current_frame <= frames[-1]:
+                return
+            else:
+                chunk_idx = self.current_frame // chunk_length
+                self.pre_images = self.current_video.sel(frame=slice(chunk_idx*chunk_length, (chunk_idx+1)*chunk_length)).load()
+
+    def check_preload_bimage(self, current_frame):
+        chunk_length = self.session.video_data["behavior_video"].chunks[0][0]
+        if self.pre_bimages is None:
+            # Check which chunk the current frame is in
+            chunk_idx = current_frame // chunk_length
+            self.pre_bimages = self.session.video_data["behavior_video"].sel(frame=slice(chunk_idx*chunk_length, (chunk_idx+1)*chunk_length)).load()
+        
+        else:
+            frames = self.pre_bimages.coords["frame"].values
+            if frames[0] <= current_frame <= frames[-1]:
+                return
+            else:
+                chunk_idx = current_frame // chunk_length
+                self.pre_bimages = self.session.video_data["behavior_video"].sel(frame=slice(chunk_idx*chunk_length, (chunk_idx+1)*chunk_length)).load()
+
+
+        
+
     def generate_image(self):
-        image = self.current_video.sel(frame=self.current_frame).values // self.mask
+        self.check_preload_image()
+        image = self.pre_images.sel(frame=self.current_frame).values // self.mask
         if self.video_cell_selection or self.missed_cells_selection or self.select_missed_mode:
             image = np.stack((image,)*3, axis=-1)
             if self.cmb_cell_highlight_mode.currentText() == "Color":
@@ -1795,11 +1820,12 @@ class ExplorationWidget(QWidget):
                     image[edges == 1] = np.array([255, 0, 255])
             if self.select_missed_mode:
                 image[:,:,1][self.video_missed_mask_candidate == 1] = 0
-        if self.behavioral_cam_displayed:
-            bframes, bheight, bwidth = self.session.video_data["behavioral_cam"].shape
+        if self.behavior_video_displayed:
+            _, bframes, bheight, bwidth = self.session.video_data["behavior_video"].shape
             vframes = self.current_video.shape[0]
             bcurrent_frame = int(self.current_frame * bframes / vframes)
-            bimage = self.session.video_data["behavioral_cam"].sel(frame=bcurrent_frame).values
+            self.check_preload_bimage(bcurrent_frame)
+            bimage = self.pre_bimages.sel(frame=bcurrent_frame).values
 
 
             vheight, vwidth = image.shape[0:2]
@@ -1813,12 +1839,12 @@ class ExplorationWidget(QWidget):
             
             if bimage.shape[0] < max_height:
                 pad = (max_height - bheight) // 2
-                fimage[pad:pad+bimage.shape[0], :bimage.shape[1]] = bimage
-                fimage[:, bimage.shape[1]:] = image
+                fimage[pad:pad+bimage.shape[1], :bimage.shape[2]] = bimage
+                fimage[:, bimage.shape[2]:] = image
             else:
                 pad = (max_height - vheight) // 2
-                fimage[:, :bimage.shape[1]] = bimage
-                fimage[pad:pad+image.shape[0], bimage.shape[1]:] = image
+                fimage[:, :bimage.shape[2]] = bimage
+                fimage[pad:pad+image.shape[1], bimage.shape[2]:] = image
 
             image = fimage
 
@@ -1868,11 +1894,14 @@ class ExplorationWidget(QWidget):
         self.video_timer.start()
         self.btn_play.setIcon(self.style().standardIcon(self.pixmapi_pause))
 
-    def toggle_behavioral_cam(self):
-        self.behavioral_cam_displayed = not self.behavioral_cam_displayed
+    def toggle_behavior_video(self):
+        self.behavior_video_displayed = not self.behavior_video_displayed
+        self.current_frame -= 1
+        self.next_frame()
 
     def change_video(self, type):
         self.current_video = self.session.video_data[type]
+        self.pre_images = None
         for action in self.submenu_videos.actions():
             if action.text() == f"&{self.video_to_title[type]}":
                 action.setChecked(True)
