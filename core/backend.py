@@ -425,7 +425,7 @@ class DataInstance:
     def load_videos(self):
         # We're setting this up as a seperate function as is takes up a lot of space and we only want to load the video info when we need to
         data = open_minian(self.minian_path + "_intermediate")
-        video_types = ["Y_fm_chk", "varr", "Y_hw_chk"]
+        video_types = ["Y_fm_chk", "varr", "Y_hw_chk", "behavior_cam"]
         video_data = {}
         for video_type in video_types:
             if video_type in data:
