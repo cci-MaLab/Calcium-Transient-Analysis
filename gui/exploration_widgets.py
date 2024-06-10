@@ -50,6 +50,7 @@ class ExplorationWidget(QWidget):
         self.hovered_cells = {} # id, item
         self.temp_picks = {}
         self.show_temp_picks = True
+        self.behavioral_cam_displayed = False
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -69,13 +70,16 @@ class ExplorationWidget(QWidget):
         self.imv.setImage(self.current_video.sel(frame=self.current_frame).values)
 
         # Add Context Menu Action
-        self.video_to_title = {"varr": "Original", "Y_fm_chk": "Processed"}
+        self.video_to_title = {"varr": "Original", "Y_fm_chk": "Processed", "behavior_cam": "Behavioral Camera"}
         self.submenu_videos = self.imv.getView().menu.addMenu('&Video Format')
         for type in self.session.video_data.keys():
             if type ==  "Y_hw_chk":
                 continue
             button_video_type = QAction(f"&{self.video_to_title[type]}", self.submenu_videos)
-            button_video_type.triggered.connect(lambda state, x=type: self.change_video(x))
+            if type == "behavior_cam":
+                button_video_type.triggered.connect(toggle_behavioral_cam)
+            else:
+                button_video_type.triggered.connect(lambda state, x=type: self.change_video(x))
             button_video_type.setCheckable(True)
             if type == "varr":
                 button_video_type.setChecked(True)
@@ -1790,7 +1794,34 @@ class ExplorationWidget(QWidget):
                     edges = canny(self.video_missed_mask, sigma=2)
                     image[edges == 1] = np.array([255, 0, 255])
             if self.select_missed_mode:
-                image[:,:,1][self.video_missed_mask_candidate == 1] = 0                
+                image[:,:,1][self.video_missed_mask_candidate == 1] = 0
+        if self.behavioral_cam_displayed:
+            bframes, bheight, bwidth = self.session.video_data["behavioral_cam"].shape
+            vframes = self.current_video.shape[0]
+            bcurrent_frame = int(self.current_frame * bframes / vframes)
+            bimage = self.session.video_data["behavioral_cam"].sel(frame=bcurrent_frame).values
+
+
+            vheight, vwidth = image.shape[0:2]
+            max_height = max(bheight, vheight)
+            max_width = bwidth + vwidth
+            if self.video_cell_selection or self.missed_cells_selection or self.select_missed_mode:
+                bimage = np.stack((bimage,)*3, axis=-1)
+                fimage = np.zeros((max_height, max_width, 3), dtype=np.uint8)
+            else:
+                fimage = np.zeros((max_height, max_width), dtype=np.uint8)
+            
+            if bimage.shape[0] < max_height:
+                pad = (max_height - bheight) // 2
+                fimage[pad:pad+bimage.shape[0], :bimage.shape[1]] = bimage
+                fimage[:, bimage.shape[1]:] = image
+            else:
+                pad = (max_height - vheight) // 2
+                fimage[:, :bimage.shape[1]] = bimage
+                fimage[pad:pad+image.shape[0], bimage.shape[1]:] = image
+
+            image = fimage
+
         return image
     
     def refresh_image(self):
@@ -1836,6 +1867,9 @@ class ExplorationWidget(QWidget):
     def start_video(self):
         self.video_timer.start()
         self.btn_play.setIcon(self.style().standardIcon(self.pixmapi_pause))
+
+    def toggle_behavioral_cam(self):
+        self.behavioral_cam_displayed = not self.behavioral_cam_displayed
 
     def change_video(self, type):
         self.current_video = self.session.video_data[type]
