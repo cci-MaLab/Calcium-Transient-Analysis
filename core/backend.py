@@ -421,6 +421,11 @@ class DataInstance:
         else:
             print("Error! Section name should be 'Session_Info'!")
 
+    def contains(self, video_type, data_keys):
+        for key in data_keys:
+            if video_type in key:
+                return True, key
+        return False, None
 
     def load_videos(self):
         # We're setting this up as a seperate function as is takes up a lot of space and we only want to load the video info when we need to
@@ -428,8 +433,9 @@ class DataInstance:
         video_types = ["Y_fm_chk", "varr", "Y_hw_chk", "behavior_cam"]
         video_data = {}
         for video_type in video_types:
-            if video_type in data:
-                video_data[video_type] = data[video_type]
+            exists, data_type = self.contains(video_type, data.keys())
+            if exists:
+                video_data[video_type] = data[data_type]
             else:
                 print("No %s data found in minian intermediate folder" % (video_type))
         
