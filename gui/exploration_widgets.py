@@ -369,7 +369,7 @@ class ExplorationWidget(QWidget):
 
         if "RNFS" in self.session.data:
             self.chkbox_plot_options_RNFS = QCheckBox("RNFS")
-            self.chkbox_plot_options_RNFS.setStyleSheet("background-color: rgb(30, 200, 20); border: 1px solid black; width: 15px; height: 15px;")
+            self.chkbox_plot_options_RNFS.setStyleSheet("background-color: rgb(250, 200, 20); border: 1px solid black; width: 15px; height: 15px;")
             self.chkbox_plot_options_RNFS.clicked.connect(lambda: self.visualize_signals(reset_view=False))
         if "ALP" in self.session.data:
             self.chkbox_plot_options_ALP = QCheckBox("ALP")
@@ -394,7 +394,7 @@ class ExplorationWidget(QWidget):
             "SavGol": (154,205,50), # Greenish/Yellow
             "noise": (0,191,255), # Deep Sky Blue
             "SNR": (255,105,180), # Hot Pink
-            "RNFS": (30, 200, 20),
+            "RNFS": (250, 200, 20),
             "ALP": (100, 50, 150),
             "IALP": (50, 150, 100),
             "ALP_Timeout": (60, 200, 250)
