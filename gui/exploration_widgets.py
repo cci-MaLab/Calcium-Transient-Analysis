@@ -53,6 +53,7 @@ class ExplorationWidget(QWidget):
         self.behavior_video_displayed = False
         self.pre_images = None
         self.pre_bimages = None
+        self.image_offset = (0, 0)
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -366,6 +367,24 @@ class ExplorationWidget(QWidget):
         self.chkbox_plot_options_C.clicked.connect(self.enable_disable_event_buttons)
         self.chkbox_plot_options_C.setChecked(True)
 
+        if "RNFS" in self.session.data:
+            self.chkbox_plot_options_RNFS = QCheckBox("RNFS")
+            self.chkbox_plot_options_RNFS.setStyleSheet("background-color: rgb(30, 200, 20); border: 1px solid black; width: 15px; height: 15px;")
+            self.chkbox_plot_options_RNFS.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        if "ALP" in self.session.data:
+            self.chkbox_plot_options_ALP = QCheckBox("ALP")
+            self.chkbox_plot_options_ALP.setStyleSheet("background-color: rgb(100, 50, 150); border: 1px solid black; width: 15px; height: 15px;")
+            self.chkbox_plot_options_ALP.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        if "IALP" in self.session.data:
+            self.chkbox_plot_options_IALP = QCheckBox("IALP")
+            self.chkbox_plot_options_IALP.setStyleSheet("background-color: rgb(50, 150, 100); border: 1px solid black; width: 15px; height: 15px;")
+            self.chkbox_plot_options_IALP.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        if "ALP_Timeout" in self.session.data:
+            self.chkbox_plot_options_ALP_Timeout = QCheckBox("ALP Timeout")
+            self.chkbox_plot_options_ALP_Timeout.setStyleSheet("background-color: rgb(60, 200, 250); border: 1px solid black; width: 15px; height: 15px;")
+            self.chkbox_plot_options_ALP_Timeout.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        
+
         # Plot Colors
         self.color_mapping = {
             "C": "w",
@@ -374,7 +393,11 @@ class ExplorationWidget(QWidget):
             "DFF": "y",
             "SavGol": (154,205,50), # Greenish/Yellow
             "noise": (0,191,255), # Deep Sky Blue
-            "SNR": (255,105,180) # Hot Pink
+            "SNR": (255,105,180), # Hot Pink
+            "RNFS": (30, 200, 20),
+            "ALP": (100, 50, 150),
+            "IALP": (50, 150, 100),
+            "ALP_Timeout": (60, 200, 250)
         }
 
         # Populate cell list
@@ -752,6 +775,14 @@ class ExplorationWidget(QWidget):
         layout_plot_options.addStretch()
         layout_plot_options.setDirection(3)
         layout_plot_options.addWidget(self.btn_reset_view)
+        if "RNFS" in self.session.data:
+            layout_plot_options.addWidget(self.chkbox_plot_options_RNFS)
+        if "ALP" in self.session.data:
+            layout_plot_options.addWidget(self.chkbox_plot_options_ALP)
+        if "IALP" in self.session.data:
+            layout_plot_options.addWidget(self.chkbox_plot_options_IALP)
+        if "ALP_Timeout" in self.session.data:
+            layout_plot_options.addWidget(self.chkbox_plot_options_ALP_Timeout)
         layout_plot_options.addWidget(self.chkbox_plot_options_snr)
         layout_plot_options.addWidget(self.chkbox_plot_options_noise)
         layout_plot_options.addWidget(self.chkbox_plot_options_C)
@@ -1134,8 +1165,13 @@ class ExplorationWidget(QWidget):
             i += 1
 
     def detect_cell_hover(self, event):
-        pos = self.imv.getImageItem().mapFromScene(event)
-        pos_rounded = (round(pos.y()-0.5), round(pos.x()-0.5))
+        point = self.imv.getImageItem().mapFromScene(event)
+        x, y = point.x(), point.y()
+        if self.behavior_video_displayed:
+            # Subtract the offset due to the transpose
+            x -= self.image_offset[1]
+            y -= self.image_offset[0]
+        pos_rounded = (round(y-0.5), round(x-0.5))
         if pos_rounded in self.A_pos_to_cell:
             potential_ids = set(self.A_pos_to_cell[pos_rounded])
             new_ids = potential_ids.difference(self.hovered_cells.keys())
@@ -1143,6 +1179,10 @@ class ExplorationWidget(QWidget):
 
             for id in new_ids:
                 y, x = self.session.centroids[id]
+                if self.behavior_video_displayed:
+                    # Re-add the offset
+                    x += self.image_offset[1]
+                    y += self.image_offset[0]
                 text = pg.TextItem(text=str(id), anchor=(0.4,0.4), color=(255, 0, 0, 255))
                 self.imv.addItem(text)
                 self.hovered_cells[id] = text
@@ -1510,7 +1550,12 @@ class ExplorationWidget(QWidget):
 
     def video_click(self, event):       
         point = self.imv.getImageItem().mapFromScene(event.pos())
-        converted_point = (round(point.y() - 0.5), round(point.x() - 0.5)) # Switch x and y due to transpose
+        x, y = point.x(), point.y()
+        if self.behavior_video_displayed:
+            # Subtract the offset due to the transpose
+            x -= self.image_offset[1]
+            y -= self.image_offset[0]
+        converted_point = (round(y - 0.5), round(x - 0.5)) # Switch x and y due to transpose
         if converted_point in self.A_pos_to_cell:
             temp_ids = set()
             for cell_id in self.A_pos_to_cell[converted_point]:
@@ -1588,6 +1633,24 @@ class ExplorationWidget(QWidget):
             selected_data_type.append('SNR')
 
         return selected_data_type
+    
+    def get_selected_events(self):
+        selected_events = []
+        if "RNFS" in self.session.data:
+            if self.chkbox_plot_options_RNFS.isChecked():
+                selected_events.append('RNFS')
+        if "ALP" in self.session.data:
+            if self.chkbox_plot_options_ALP.isChecked():
+                selected_events.append('ALP')
+        if "IALP" in self.session.data:
+            if self.chkbox_plot_options_IALP.isChecked():
+                selected_events.append('IALP')
+        if "ALP_Timeout" in self.session.data:
+            if self.chkbox_plot_options_ALP_Timeout.isChecked():
+                selected_events.append('ALP_Timeout')
+
+        return selected_events
+
 
 
     def visualize_signals(self, reset_view=False):
@@ -1656,8 +1719,19 @@ class ExplorationWidget(QWidget):
                                 indices_temp = np.split(indices_temp, np.where(np.diff(indices_temp) != 1)[0]+1)
                                 indices_temp = [(indices_group[0], indices_group[-1]+1) for indices_group in indices_temp]
                                 p.draw_temp_curves(indices_temp, indices)
+
+
+                    selected_events = self.get_selected_events()
+                    for event_type in selected_events:
+                        if event_type in self.session.data:
+                            events = self.session.data[event_type].values
+                            # Get indices where == 1
+                            indices = np.argwhere(events == 1)
+                            p.draw_behavior_events(indices, self.color_mapping[event_type])
+
                 if selected_types and id in views["Standard"]:
                     p.getViewBox().setRange(xRange=views["Standard"][id][0], yRange=views["Standard"][id][1], padding=0)
+
 
                 last_i += 1
 
@@ -1841,10 +1915,12 @@ class ExplorationWidget(QWidget):
                 pad = (max_height - bheight) // 2
                 fimage[pad:pad+bimage.shape[1], :bimage.shape[2]] = bimage
                 fimage[:, bimage.shape[2]:] = image
+                self.image_offset = (0, bimage.shape[2])
             else:
                 pad = (max_height - vheight) // 2
                 fimage[:, :bimage.shape[2]] = bimage
                 fimage[pad:pad+image.shape[1], bimage.shape[2]:] = image
+                self.image_offset = (pad, bimage.shape[2])
 
             image = fimage
 
@@ -1903,6 +1979,8 @@ class ExplorationWidget(QWidget):
         self.current_video = self.session.video_data[type]
         self.pre_images = None
         for action in self.submenu_videos.actions():
+            if action.text() == "&Behavior Video":
+                continue
             if action.text() == f"&{self.video_to_title[type]}":
                 action.setChecked(True)
             else:
@@ -2084,6 +2162,11 @@ class PlotItemEnhanced(PlotItem):
         for beg, end in spikes:
             event_curve = PlotCurveItemEnhanced(np.arange(beg, end), self.C_signal[beg:end], pen='r', is_event=True, main_plot=self)
             self.addItem(event_curve)
+    
+    def draw_behavior_events(self, indices, color):
+        for idx in indices:
+            # draw verical line
+            self.addItem(InfiniteLine(pos=idx, angle=90, pen=color))
 
     def draw_temp_curves(self, spikes, indices=None):
         if not indices:
