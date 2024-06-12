@@ -35,8 +35,8 @@ class SDAWindowWidget(QWidget):
         Y = np.tensordot(C, A, axes=([0], [0]))
 
         # Add a simple button to start the animation
-        self.button = QPushButton("Start Animation")
-        self.button.clicked.connect(self.start_animation)
+        self.button = QPushButton("Start/Stop Animation")
+        self.button.clicked.connect(self.start_stop_animation)
 
                
 
@@ -46,8 +46,14 @@ class SDAWindowWidget(QWidget):
         self.layout.addWidget(self.mayavi_widget)
         self.layout.addWidget(self.button)
 
-    def start_animation(self):
-        self.anim = self.mayavi_widget.visualization.animation()
+    def start_stop_animation(self):
+        if not self.anim:
+            self.anim = self.mayavi_widget.visualization.animation()
+        
+        if self.anim.timer.IsRunning():
+            self.anim._stop_fired()
+        else:
+            self.anim._start_fired()
 
 class Visualization(HasTraits):
     scene = Instance(MlabSceneModel, ())
