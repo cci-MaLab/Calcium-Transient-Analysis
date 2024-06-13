@@ -13,7 +13,6 @@ class SDAWindowWidget(QWidget):
         self.session = session
         self.name = name
         self.main_window_ref = main_window_ref
-        self.anim = None
 
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
@@ -34,42 +33,43 @@ class SDAWindowWidget(QWidget):
 
         Y = np.tensordot(C, A, axes=([0], [0]))
 
-        # Add a simple button to start the animation
-        self.button = QPushButton("Start/Stop Animation")
-        self.button.clicked.connect(self.start_stop_animation)
-
-               
-
-
         self.mayavi_widget = MayaviQWidget(Y)
         self.mayavi_widget.setObjectName("3D Cell Overview")
+
+        # Add a simple button to start the animation
+        self.button = QPushButton("Start/Stop Animation")
+        self.button.clicked.connect(self.mayavi_widget.start_stop_animation)
+
+        # Add a panel to the side for different options and utilities
+
         self.layout.addWidget(self.mayavi_widget)
         self.layout.addWidget(self.button)
 
-    def start_stop_animation(self):
-        if not self.anim:
-            self.anim = self.mayavi_widget.visualization.animation()
-        
-        if self.anim.timer.IsRunning():
-            self.anim._stop_fired()
-        else:
-            self.anim._start_fired()
-
 class Visualization(HasTraits):
+    # Signal to indicate scene has been activated
     scene = Instance(MlabSceneModel, ())
     def __init__(self, data):
         HasTraits.__init__(self)
         self.data = data
-        self.current_idx = 0
+        # Set it to where the highest intensity is
+        self.current_idx = np.argmax(np.max(data.reshape(data.shape[0], -1), axis=1))
         self.length = len(data)
-        
+
     def update_data(self, data):
         self.plot.mlab_source.scalars = data
+
+    def get_ranges(self):
+        return [0, self.data.shape[2], 0, self.data.shape[1], self.data.min(), self.data.max()]
         
     @on_trait_change('scene.activated')
     def initial_plot(self):
-        self.plot = mlab.surf(self.data[self.current_idx], colormap='viridis')
-        self.scene.background=(1,1,1)
+        self.plot = mlab.surf(self.data[self.current_idx], colormap='hot')
+        self.axes = mlab.axes(ranges=self.get_ranges(), xlabel='Height', ylabel='Width', zlabel='Spike Intensity')
+        self.scene.scene.background = (1, 1, 1)
+        self.scene.scene.foreground = (0, 0, 0)
+        self.current_idx = 0 # For whatever reason I unable to force the axes to what I want them to be
+        self.update_data(self.data[self.current_idx])
+        
 
     # the layout of the dialog screated
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene),
@@ -92,8 +92,17 @@ class MayaviQWidget(QWidget):
         super().__init__()
         scaling_factor = 10
         self.data = data * scaling_factor
+        self.anim = None
         self.visualization = Visualization(self.data)
         layout = QVBoxLayout(self)
         self.ui = self.visualization.edit_traits(parent=self,
                                                   kind='subpanel').control
         layout.addWidget(self.ui)
+
+    def start_stop_animation(self):  
+        if self.anim is None:
+            self.anim = self.visualization.animation()          
+        elif self.anim.timer.IsRunning():
+            self.anim._stop_fired()
+        else:
+            self.anim._start_fired()

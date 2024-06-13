@@ -838,7 +838,7 @@ class ExplorationWidget(QWidget):
         QApplication.setStyle(QStyleFactory.create('Cleanlooks'))
 
         self.video_timer = QTimer()
-        self.video_timer.setInterval(50)
+        self.video_timer.setInterval(1000/30)
         self.video_timer.timeout.connect(self.next_frame)
 
         self.missed_cell_init()
