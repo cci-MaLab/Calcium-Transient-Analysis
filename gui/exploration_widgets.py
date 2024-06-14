@@ -15,6 +15,7 @@ from pyqtgraph import InfiniteLine
 from scipy.signal import find_peaks
 from core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget, MetricsWidget)
 from core.pyqtgraph_override import ImageViewOverride
+from gui.sda_widgets import MayaviQWidget
 from skimage.segmentation import flood_fill
 from skimage.feature import canny
 from skimage.measure import find_contours
@@ -50,14 +51,18 @@ class ExplorationWidget(QWidget):
         self.hovered_cells = {} # id, item
         self.temp_picks = {}
         self.show_temp_picks = True
-        self.behavior_video_displayed = False
         self.pre_images = None
         self.pre_bimages = None
         self.image_offset = (0, 0)
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
-        self.imv = ImageViewOverride()
+        self.imv_cell = ImageViewOverride()
+        self.imv_behavior = ImageViewOverride()
+        self.imv_behavior.setVisible(False)
+        self.visualization_3D = MayaviQWidget()
+        self.visualization_3D.setVisible(False)
+
 
         self.session.load_videos()
         if not self.session.video_data:
@@ -70,19 +75,18 @@ class ExplorationWidget(QWidget):
         self.video_missed_mask = np.zeros(self.mask.shape)
         self.video_missed_mask_candidate = np.zeros(self.mask.shape)
         self.current_frame = 0
-        self.imv.setImage(self.current_video.sel(frame=self.current_frame).values)
+        self.imv_cell.setImage(self.current_video.sel(frame=self.current_frame).values)
+        if "behavior_video" in self.session.video_data:
+            self.imv_behavior.setImage(self.session.video_data["behavior_video"].sel(frame=self.current_frame).values[0])
 
         # Add Context Menu Action
-        self.video_to_title = {"varr": "Original", "Y_fm_chk": "Processed", "behavior_video": "Behavioral Camera"}
-        self.submenu_videos = self.imv.getView().menu.addMenu('&Video Format')
+        self.video_to_title = {"varr": "Original", "Y_fm_chk": "Processed"}
+        self.submenu_videos = self.imv_cell.getView().menu.addMenu('&Video Format')
         for type in self.session.video_data.keys():
-            if type ==  "Y_hw_chk":
+            if type ==  "Y_hw_chk" or type == "behavior_video":
                 continue
             button_video_type = QAction(f"&{self.video_to_title[type]}", self.submenu_videos)
-            if type == "behavior_video":
-                button_video_type.triggered.connect(self.toggle_behavior_video)
-            else:
-                button_video_type.triggered.connect(lambda state, x=type: self.change_video(x))
+            button_video_type.triggered.connect(lambda state, x=type: self.change_cell_video(x))
             button_video_type.setCheckable(True)
             if type == "varr":
                 button_video_type.setChecked(True)
@@ -96,14 +100,35 @@ class ExplorationWidget(QWidget):
         btn_general_stats = QAction(self.style().standardIcon(pixmapi_tools), "&General Statistics", self)
         btn_general_stats.setStatusTip("Produce General Statistics")
         btn_general_stats.triggered.connect(self.generate_gen_stats)
+
         stats_menu = menu.addMenu("&Statistics")
         stats_menu.addAction(btn_general_stats)
+
         btn_max_projection_processed = QAction(self.style().standardIcon(pixmapi_tools), "&Max Projection", self)
         btn_max_projection_processed.setStatusTip("Save Max Projection")
         btn_max_projection_processed.triggered.connect(self.save_max_projection)
 
+        self.chkbox_cell_video = QAction("Cell Video", self)
+        self.chkbox_cell_video.setCheckable(True)
+        self.chkbox_cell_video.setChecked(True)
+        self.chkbox_cell_video.triggered.connect(self.toggle_videos)
+        self.chkbox_behavior_video = QAction("Behavior Video", self)
+        self.chkbox_behavior_video.setCheckable(True)
+        self.chkbox_behavior_video.setChecked(False)
+        self.chkbox_behavior_video.triggered.connect(self.toggle_videos)
+        self.chkbox_3D = QAction("3D Visualization", self)
+        self.chkbox_3D.setCheckable(True)
+        self.chkbox_3D.setChecked(False)
+        self.chkbox_3D.triggered.connect(self.toggle_videos)
+
         util_menu = menu.addMenu("&Utilities")
         util_menu.addAction(btn_max_projection_processed)
+
+        video_menu = menu.addMenu("&Select Videos/Visualizations")
+        video_menu.addAction(self.chkbox_cell_video)
+        video_menu.addAction(self.chkbox_behavior_video)
+        video_menu.addAction(self.chkbox_3D)
+
         
 
         # We'll load in a copy of the visualization of the cells we are monitoring
@@ -432,7 +457,7 @@ class ExplorationWidget(QWidget):
         self.scroll_video.valueChanged.connect(self.update_plot_lines)
 
         # Video interaction elements
-        self.imv.scene.sigMouseClicked.connect(self.video_click)
+        self.imv_cell.scene.sigMouseClicked.connect(self.video_click)
         self.video_cell_selection = set()
         self.video_cell_mask = np.zeros((self.current_video.shape[1], self.current_video.shape[2]))
 
@@ -450,8 +475,18 @@ class ExplorationWidget(QWidget):
         layout_video_tools.addWidget(self.btn_forward)
         layout_video_tools.addWidget(self.scroll_video)
 
+        widget_video_subvideos = QSplitter(Qt.Orientation.Horizontal)
+        widget_video_subvideos.setFrameShape(QFrame.StyledPanel)
+        widget_video_subvideos.setStyleSheet(            
+            "QSplitter::handle{background-color: gray; width: 5px; border: 1px dotted gray}"
+        )
+
+        widget_video_subvideos.addWidget(self.imv_cell)
+        widget_video_subvideos.addWidget(self.imv_behavior)
+        widget_video_subvideos.addWidget(self.visualization_3D)
+
         layout_video = QVBoxLayout()
-        layout_video.addWidget(self.imv)
+        layout_video.addWidget(widget_video_subvideos)
         layout_video.addLayout(layout_video_tools)
 
         layout_highlight_mode = QHBoxLayout()
@@ -804,10 +839,10 @@ class ExplorationWidget(QWidget):
 
         layout_video_cells.addLayout(layout_video)
         layout_video_cells.addWidget(self.tabs_video)
-        widget_video_cells = QWidget()
-        widget_video_cells.setLayout(layout_video_cells)
+        self.widget_video_cells = QWidget()
+        self.widget_video_cells.setLayout(layout_video_cells)
 
-        layout_video_cells_visualize.addWidget(widget_video_cells)
+        layout_video_cells_visualize.addWidget(self.widget_video_cells)
 
         layout_plot_utility = QVBoxLayout()
         layout_plot_utility.addWidget(btn_clear_traces)
@@ -829,7 +864,7 @@ class ExplorationWidget(QWidget):
         main_widget.setStyleSheet(            
             "QSplitter::handle{background-color: gray; width: 5px; border: 1px dotted gray}"
         )
-        main_widget.addWidget(widget_video_cells)
+        main_widget.addWidget(self.widget_video_cells)
         main_widget.addWidget(widget_video_cells_visualize)
         layout.addWidget(main_widget)
         layout.setMenuBar(menu)
@@ -838,12 +873,12 @@ class ExplorationWidget(QWidget):
         QApplication.setStyle(QStyleFactory.create('Cleanlooks'))
 
         self.video_timer = QTimer()
-        self.video_timer.setInterval(1000/30)
+        self.video_timer.setInterval(int(1000/30))
         self.video_timer.timeout.connect(self.next_frame)
 
         self.missed_cell_init()
 
-        self.imv.scene.sigMouseMoved.connect(self.detect_cell_hover)
+        self.imv_cell.scene.sigMouseMoved.connect(self.detect_cell_hover)
 
     def check_if_results_exist(self):
         idx_to_cells = {"0":"1", "1":"2", "2":"5", "3":"10", "4":"15", "5":"20"}
@@ -1165,12 +1200,8 @@ class ExplorationWidget(QWidget):
             i += 1
 
     def detect_cell_hover(self, event):
-        point = self.imv.getImageItem().mapFromScene(event)
+        point = self.imv_cell.getImageItem().mapFromScene(event)
         x, y = point.x(), point.y()
-        if self.behavior_video_displayed:
-            # Subtract the offset due to the transpose
-            x -= self.image_offset[1]
-            y -= self.image_offset[0]
         pos_rounded = (round(y-0.5), round(x-0.5))
         if pos_rounded in self.A_pos_to_cell:
             potential_ids = set(self.A_pos_to_cell[pos_rounded])
@@ -1179,24 +1210,20 @@ class ExplorationWidget(QWidget):
 
             for id in new_ids:
                 y, x = self.session.centroids[id]
-                if self.behavior_video_displayed:
-                    # Re-add the offset
-                    x += self.image_offset[1]
-                    y += self.image_offset[0]
                 text = pg.TextItem(text=str(id), anchor=(0.4,0.4), color=(255, 0, 0, 255))
-                self.imv.addItem(text)
+                self.imv_cell.addItem(text)
                 self.hovered_cells[id] = text
                 text.setFont(QFont('Times', 7))
                 text.setPos(round(x), round(y))
             
             for id in delete:
-                self.imv.removeItem(self.hovered_cells[id])
+                self.imv_cell.removeItem(self.hovered_cells[id])
                 self.hovered_cells.pop(id)
 
         else:
             for id in list(self.hovered_cells.keys()):
                 text = self.hovered_cells[id]
-                self.imv.removeItem(text)
+                self.imv_cell.removeItem(text)
                 self.hovered_cells.pop(id)
 
                 
@@ -1245,8 +1272,8 @@ class ExplorationWidget(QWidget):
         if self.tabs_video.currentIndex() != 2:
             self.select_missed_mode = False
             self.btn_missed_select.setText("Enable Select Cell Mode")
-            self.imv.getView().setMenuEnabled(True)
-            self.imv.getView().setMouseEnabled(x=True, y=True)
+            self.imv_cell.getView().setMenuEnabled(True)
+            self.imv_cell.getView().setMouseEnabled(x=True, y=True)
             if self.prev_video_tab_idx == 2: # Switching between 0 and 1 should not reset the state
                 self.reset_state()
                 self.missed_cell_signals_disabled()
@@ -1342,8 +1369,8 @@ class ExplorationWidget(QWidget):
         if self.select_missed_mode:
             self.select_missed_mode = False
             self.btn_missed_select.setText("Enable Select Cell Mode")
-            self.imv.getView().setMenuEnabled(True)
-            self.imv.getView().setMouseEnabled(x=True, y=True)
+            self.imv_cell.getView().setMenuEnabled(True)
+            self.imv_cell.getView().setMouseEnabled(x=True, y=True)
             self.missed_cell_indices = set()
             self.video_missed_mask_candidate = np.zeros(self.mask.shape)
             self.current_frame -= 1
@@ -1353,23 +1380,23 @@ class ExplorationWidget(QWidget):
         else:
             self.select_missed_mode = True
             self.btn_missed_select.setText("Disable Missed Cell Mode")
-            self.imv.getView().setMenuEnabled(False)
-            self.imv.getView().setMouseEnabled(x=False, y=False)
+            self.imv_cell.getView().setMenuEnabled(False)
+            self.imv_cell.getView().setMouseEnabled(x=False, y=False)
             self.video_missed_mask_candidate = np.zeros(self.mask.shape)
             self.missed_cell_signals_enabled()
             self.w_missed_utility.show()
 
     def missed_cell_signals_enabled(self):
         self.missed_cell_signals_disabled()
-        self.imv.scene.sigMousePressMove.connect(self.draw_trace)
-        self.imv.scene.sigMousePressAltMove.connect(self.remove_trace)
-        self.imv.scene.sigMouseRelease.connect(self.finished_trace)
+        self.imv_cell.scene.sigMousePressMove.connect(self.draw_trace)
+        self.imv_cell.scene.sigMousePressAltMove.connect(self.remove_trace)
+        self.imv_cell.scene.sigMouseRelease.connect(self.finished_trace)
 
     def missed_cell_signals_disabled(self):
         try:
-            self.imv.scene.sigMousePressMove.disconnect(self.draw_trace)
-            self.imv.scene.sigMousePressAltMove.disconnect(self.remove_trace)
-            self.imv.scene.sigMouseRelease.disconnect(self.finished_trace)
+            self.imv_cell.scene.sigMousePressMove.disconnect(self.draw_trace)
+            self.imv_cell.scene.sigMousePressAltMove.disconnect(self.remove_trace)
+            self.imv_cell.scene.sigMouseRelease.disconnect(self.finished_trace)
         except:
             pass
 
@@ -1509,7 +1536,7 @@ class ExplorationWidget(QWidget):
             self.session.save_justifications(self.rejected_justification)
 
     def draw_trace(self, event):
-        point = self.imv.getImageItem().mapFromScene(event)
+        point = self.imv_cell.getImageItem().mapFromScene(event)
         pos_rounded = (round(point.y()-0.5), round(point.x()-0.5)) # Switch x and y due to transpose
 
         self.missed_cell_indices.add(pos_rounded)
@@ -1522,7 +1549,7 @@ class ExplorationWidget(QWidget):
             
 
     def remove_trace(self, event):
-        point = self.imv.getImageItem().mapFromScene(event)
+        point = self.imv_cell.getImageItem().mapFromScene(event)
         x, y = (round(point.y()-0.5), round(point.x()-0.5))
         if self.video_missed_mask_candidate[x, y] == 1:
             self.video_missed_mask_candidate[x, y] = 0
@@ -1549,12 +1576,8 @@ class ExplorationWidget(QWidget):
             self.next_frame()
 
     def video_click(self, event):       
-        point = self.imv.getImageItem().mapFromScene(event.pos())
+        point = self.imv_cell.getImageItem().mapFromScene(event.pos())
         x, y = point.x(), point.y()
-        if self.behavior_video_displayed:
-            # Subtract the offset due to the transpose
-            x -= self.image_offset[1]
-            y -= self.image_offset[0]
         converted_point = (round(y - 0.5), round(x - 0.5)) # Switch x and y due to transpose
         if converted_point in self.A_pos_to_cell:
             temp_ids = set()
@@ -1834,14 +1857,20 @@ class ExplorationWidget(QWidget):
     def next_frame(self):
         self.current_frame = (1 + self.current_frame) % self.video_length
         self.scroll_video.setValue(self.current_frame)
-        image = self.generate_image()
-        self.imv.setImage(image, autoRange=False, autoLevels=False)
+        image, bimage = self.generate_image()
+        if image is not None:
+            self.imv_cell.setImage(image, autoRange=False, autoLevels=False)
+        if bimage is not None:
+            self.imv_behavior.setImage(bimage, autoRange=False, autoLevels=False)
 
     def prev_frame(self):
         self.current_frame = (self.current_frame - 1) % self.video_length
         self.scroll_video.setValue(self.current_frame)
-        image = self.generate_image()
-        self.imv.setImage(image, autoRange=False, autoLevels=False)
+        image, bimage = self.generate_image()
+        if image is not None:
+            self.imv_cell.setImage(image, autoRange=False, autoLevels=False)
+        if bimage is not None:
+            self.imv_behavior.setImage(bimage, autoRange=False, autoLevels=False)
 
     def check_preload_image(self):
         chunk_length = self.current_video.chunks[0][0] * 10
@@ -1877,58 +1906,41 @@ class ExplorationWidget(QWidget):
         
 
     def generate_image(self):
-        self.check_preload_image()
-        image = self.pre_images.sel(frame=self.current_frame).values // self.mask
-        if self.video_cell_selection or self.missed_cells_selection or self.select_missed_mode:
-            image = np.stack((image,)*3, axis=-1)
-            if self.cmb_cell_highlight_mode.currentText() == "Color":
-                image[:,:,0][self.video_cell_mask == 1] = 0
-                image[:,:,1][self.video_missed_mask == 1] = 0
-            elif self.cmb_cell_highlight_mode.currentText() == "Outline":
-                # Use Canny filter to get the edges
-                if self.video_cell_mask.any():
-                    edges = canny(self.video_cell_mask, sigma=2)
-                    image[edges == 1] = np.array([0, 255, 255])
-                if self.video_missed_mask.any():
-                    edges = canny(self.video_missed_mask, sigma=2)
-                    image[edges == 1] = np.array([255, 0, 255])
-            if self.select_missed_mode:
-                image[:,:,1][self.video_missed_mask_candidate == 1] = 0
-        if self.behavior_video_displayed:
+        image = None
+        bimage = None
+        if self.chkbox_cell_video.isChecked():
+            self.check_preload_image()
+            image = self.pre_images.sel(frame=self.current_frame).values // self.mask
+            if self.video_cell_selection or self.missed_cells_selection or self.select_missed_mode:
+                image = np.stack((image,)*3, axis=-1)
+                if self.cmb_cell_highlight_mode.currentText() == "Color":
+                    image[:,:,0][self.video_cell_mask == 1] = 0
+                    image[:,:,1][self.video_missed_mask == 1] = 0
+                elif self.cmb_cell_highlight_mode.currentText() == "Outline":
+                    # Use Canny filter to get the edges
+                    if self.video_cell_mask.any():
+                        edges = canny(self.video_cell_mask, sigma=2)
+                        image[edges == 1] = np.array([0, 255, 255])
+                    if self.video_missed_mask.any():
+                        edges = canny(self.video_missed_mask, sigma=2)
+                        image[edges == 1] = np.array([255, 0, 255])
+                if self.select_missed_mode:
+                    image[:,:,1][self.video_missed_mask_candidate == 1] = 0
+        if self.chkbox_behavior_video.isChecked():
             _, bframes, bheight, bwidth = self.session.video_data["behavior_video"].shape
             vframes = self.current_video.shape[0]
             bcurrent_frame = int(self.current_frame * bframes / vframes)
             self.check_preload_bimage(bcurrent_frame)
-            bimage = self.pre_bimages.sel(frame=bcurrent_frame).values
+            bimage = self.pre_bimages.sel(frame=bcurrent_frame).values[0]
 
-
-            vheight, vwidth = image.shape[0:2]
-            max_height = max(bheight, vheight)
-            max_width = bwidth + vwidth
-            if self.video_cell_selection or self.missed_cells_selection or self.select_missed_mode:
-                bimage = np.stack((bimage,)*3, axis=-1)
-                fimage = np.zeros((max_height, max_width, 3), dtype=np.uint8)
-            else:
-                fimage = np.zeros((max_height, max_width), dtype=np.uint8)
-            
-            if bimage.shape[0] < max_height:
-                pad = (max_height - bheight) // 2
-                fimage[pad:pad+bimage.shape[1], :bimage.shape[2]] = bimage
-                fimage[:, bimage.shape[2]:] = image
-                self.image_offset = (0, bimage.shape[2])
-            else:
-                pad = (max_height - vheight) // 2
-                fimage[:, :bimage.shape[2]] = bimage
-                fimage[pad:pad+image.shape[1], bimage.shape[2]:] = image
-                self.image_offset = (pad, bimage.shape[2])
-
-            image = fimage
-
-        return image
+        return image, bimage
     
     def refresh_image(self):
-        image = self.generate_image()
-        self.imv.setImage(image, autoRange=False, autoLevels=False)
+        image, bimage = self.generate_image()
+        if image is not None:
+            self.imv_cell.setImage(image, autoRange=False, autoLevels=False)
+        if bimage is not None:
+            self.imv_behavior.setImage(bimage, autoRange=False, autoLevels=False)
 
     def refresh_cell_list(self):
         self.list_cell.clear()
@@ -1970,12 +1982,27 @@ class ExplorationWidget(QWidget):
         self.video_timer.start()
         self.btn_play.setIcon(self.style().standardIcon(self.pixmapi_pause))
 
-    def toggle_behavior_video(self):
-        self.behavior_video_displayed = not self.behavior_video_displayed
+    def toggle_videos(self):
+        if self.chkbox_cell_video.isChecked():
+            self.imv_cell.setVisible(True)
+        else:
+            self.imv_cell.setVisible(False)
+        if self.chkbox_behavior_video.isChecked():
+            self.imv_behavior.setVisible(True)
+        else:
+            self.imv_behavior.setVisible(False)
+        if self.chkbox_3D.isChecked():
+            self.visualization_3D.setVisible(True)
+        else:
+            self.visualization_3D.setVisible(False)
+        if not self.chkbox_cell_video.isChecked() and not self.chkbox_behavior_video.isChecked() and not self.chkbox_3D.isChecked():
+            self.widget_video_cells.setVisible(False)
+        else:
+            self.widget_video_cells.setVisible(True)
         self.current_frame -= 1
         self.next_frame()
 
-    def change_video(self, type):
+    def change_cell_video(self, type):
         self.current_video = self.session.video_data[type]
         self.pre_images = None
         for action in self.submenu_videos.actions():
@@ -1985,7 +2012,7 @@ class ExplorationWidget(QWidget):
                 action.setChecked(True)
             else:
                 action.setChecked(False)
-        self.imv.setImage(self.current_video.sel(frame=self.current_frame).values, autoRange=False)
+        self.imv_cell.setImage(self.current_video.sel(frame=self.current_frame).values, autoRange=False)
         self.current_frame -= 1
         self.next_frame()
 

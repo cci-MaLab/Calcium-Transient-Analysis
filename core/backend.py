@@ -84,7 +84,7 @@ def open_minian(
             arr_path = pjoin(dpath, d)
             if isdir(arr_path):
                 if not arr_path.endswith("backup"):
-                    arr = list(xr.open_zarr(arr_path).values())[0]
+                    arr = list(xr.open_zarr(arr_path, consolidated=False).values())[0]
                     arr.data = darr.from_zarr(
                         os.path.join(arr_path, arr.name), inline_array=True
                     )
@@ -121,7 +121,7 @@ def save_xarray(
     os.rename(fp_temp, fp_orig)
     
     if compute:
-        arr = xr.open_zarr(fp_orig)[var.name]
+        arr = xr.open_zarr(fp_orig, consolidated=False)[var.name]
         arr.data = darr.from_zarr(os.path.join(fp_orig, var.name), inline_array=True)
     return arr
 

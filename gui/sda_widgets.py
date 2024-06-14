@@ -88,7 +88,7 @@ class Visualization(HasTraits):
 
 
 class MayaviQWidget(QWidget):
-    def __init__(self, data):
+    def __init__(self, data=np.random.rand(1, 608, 608)):
         super().__init__()
         scaling_factor = 10
         self.data = data * scaling_factor
