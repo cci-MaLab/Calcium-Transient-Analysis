@@ -15,13 +15,14 @@ from pyqtgraph import InfiniteLine
 from scipy.signal import find_peaks
 from core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget, MetricsWidget)
 from core.pyqtgraph_override import ImageViewOverride
-from gui.sda_widgets import MayaviQWidget
+from gui.sda_widgets import (MayaviQWidget, CA_visualization, DFF_visualization)
 from skimage.segmentation import flood_fill
 from skimage.feature import canny
 from skimage.measure import find_contours
 import os
 import matplotlib.pyplot as plt
 import pickle
+from mayavi.core.lut_manager import lut_mode_list
 
 
 try:
@@ -55,12 +56,14 @@ class ExplorationWidget(QWidget):
         self.pre_bimages = None
         self.image_offset = (0, 0)
 
+
+
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
         self.imv_cell = ImageViewOverride()
         self.imv_behavior = ImageViewOverride()
         self.imv_behavior.setVisible(False)
-        self.visualization_3D = MayaviQWidget()
+        self.visualization_3D = MayaviQWidget(self.session)
         self.visualization_3D.setVisible(False)
 
 
@@ -167,6 +170,8 @@ class ExplorationWidget(QWidget):
         self.btn_cell_reject = QPushButton("Reject Cell(s)")
         self.btn_cell_reject.clicked.connect(self.reject_cells)
 
+        self.tabs_visualization = QTabWidget()
+        self.tabs_visualization.setFixedWidth(330)
         self.tabs_video = QTabWidget()
         self.tabs_video.setFixedWidth(330)
         tabs_signal = QTabWidget()
@@ -504,6 +509,38 @@ class ExplorationWidget(QWidget):
         w_cells = QWidget()
         w_cells.setLayout(layout_cells)
 
+        # 3D Visualization Tools
+        visualization_3D_layout = QVBoxLayout()
+        
+        # Pick Functions
+        self.names_to_functions = {
+            "Cell Activity (C)": CA_visualization,
+            "Cell Activity (DFF)": DFF_visualization,
+        }
+        label_3D_functions = QLabel("3D Visualization Functions")
+        self.dropdown_3D_functions = QComboBox()
+        self.dropdown_3D_functions.addItems(list(self.names_to_functions.keys()))
+        self.dropdown_3D_functions.currentIndexChanged.connect(self.change_function)
+
+        # Color Mapping
+        layout_colormap = QHBoxLayout()
+        layout_colormap.addWidget(QLabel("Colormap:"))
+        dropdown_3D_colormap = QComboBox()
+        dropdown_3D_colormap.addItems(lut_mode_list())
+        # Set index to whatever hot is
+        dropdown_3D_colormap.setCurrentIndex(lut_mode_list().index("hot"))
+        dropdown_3D_colormap.currentIndexChanged.connect(lambda: self.visualization_3D.change_colormap(dropdown_3D_colormap.currentText()))
+        layout_colormap.addWidget(dropdown_3D_colormap)
+
+
+        visualization_3D_layout.addLayout(layout_colormap)
+        visualization_3D_layout.addStretch()
+        visualization_3D_tools = QWidget()
+        visualization_3D_tools.setLayout(visualization_3D_layout)
+
+
+
+
 
         # Rejected
         layout_rejected_justification_utility = QHBoxLayout()
@@ -528,12 +565,15 @@ class ExplorationWidget(QWidget):
         layout_missed_cells.addWidget(btn_missed_reset_mask)
         layout_missed_cells.addWidget(self.btn_missed_remove)
         w_missed_cells = QWidget()
-        w_missed_cells.setLayout(layout_missed_cells)        
+        w_missed_cells.setLayout(layout_missed_cells)    
 
         self.tabs_video.addTab(w_cells, "Approved Cells")
         self.tabs_video.addTab(w_rejected_cells, "Rejected Cells")
         self.tabs_video.addTab(w_missed_cells, "Missed Cells")
         self.tabs_video.currentChanged.connect(self.switched_tabs)
+
+        self.tabs_visualization.addTab(self.tabs_video, "Cell Video")
+        self.tabs_visualization.addTab(visualization_3D_tools, "3D Visualization")
 
 
         # General plot utility
@@ -838,7 +878,7 @@ class ExplorationWidget(QWidget):
         tabs_signal.addTab(frame_stats, "Local Stats")
 
         layout_video_cells.addLayout(layout_video)
-        layout_video_cells.addWidget(self.tabs_video)
+        layout_video_cells.addWidget(self.tabs_visualization)
         self.widget_video_cells = QWidget()
         self.widget_video_cells.setLayout(layout_video_cells)
 
@@ -879,6 +919,10 @@ class ExplorationWidget(QWidget):
         self.missed_cell_init()
 
         self.imv_cell.scene.sigMouseMoved.connect(self.detect_cell_hover)
+
+    def change_function(self):
+        func = self.names_to_functions[self.dropdown_3D_functions.currentText()]
+        self.visualization_3D.change_function(func)
 
     def check_if_results_exist(self):
         idx_to_cells = {"0":"1", "1":"2", "2":"5", "3":"10", "4":"15", "5":"20"}
@@ -1932,6 +1976,8 @@ class ExplorationWidget(QWidget):
             bcurrent_frame = int(self.current_frame * bframes / vframes)
             self.check_preload_bimage(bcurrent_frame)
             bimage = self.pre_bimages.sel(frame=bcurrent_frame).values[0]
+        if self.chkbox_3D.isChecked():
+            self.visualization_3D.set_frame(self.current_frame)
 
         return image, bimage
     
@@ -1992,6 +2038,7 @@ class ExplorationWidget(QWidget):
         else:
             self.imv_behavior.setVisible(False)
         if self.chkbox_3D.isChecked():
+            self.visualization_3D.set_frame(self.current_frame)
             self.visualization_3D.setVisible(True)
         else:
             self.visualization_3D.setVisible(False)
