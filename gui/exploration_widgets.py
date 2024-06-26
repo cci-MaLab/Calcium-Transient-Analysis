@@ -15,7 +15,7 @@ from pyqtgraph import InfiniteLine
 from scipy.signal import find_peaks
 from core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget, MetricsWidget)
 from core.pyqtgraph_override import ImageViewOverride
-from gui.sda_widgets import (MayaviQWidget, CA_visualization, DFF_visualization)
+from gui.sda_widgets import (MayaviQWidget, base_visualization)
 from skimage.segmentation import flood_fill
 from skimage.feature import canny
 from skimage.measure import find_contours
@@ -512,15 +512,16 @@ class ExplorationWidget(QWidget):
         # 3D Visualization Tools
         visualization_3D_layout = QVBoxLayout()
         
-        # Pick Functions
-        self.names_to_functions = {
-            "Cell Activity (C)": CA_visualization,
-            "Cell Activity (DFF)": DFF_visualization,
-        }
         label_3D_functions = QLabel("3D Visualization Functions")
         self.dropdown_3D_functions = QComboBox()
-        self.dropdown_3D_functions.addItems(list(self.names_to_functions.keys()))
-        self.dropdown_3D_functions.currentIndexChanged.connect(self.change_function)
+        self.dropdown_3D_functions.addItems(["Base Visualization", "Normalized Visualization"])
+        self.dropdown_3D_functions.currentIndexChanged.connect(self.changed_3D_function)
+        self.dropdown_3D_data_types = QComboBox()
+        self.dropdown_3D_data_types.addItems(["C", "DFF"])
+        self.chkbox_3D_cumulative = QCheckBox("Cumulative")
+        self.chkbox_3D_cumulative.hide()
+        self.btn_3D_visualize = QPushButton("Visualize")
+        self.btn_3D_visualize.clicked.connect(self.visualize_3D)
 
         # Color Mapping
         layout_colormap = QHBoxLayout()
@@ -532,7 +533,11 @@ class ExplorationWidget(QWidget):
         dropdown_3D_colormap.currentIndexChanged.connect(lambda: self.visualization_3D.change_colormap(dropdown_3D_colormap.currentText()))
         layout_colormap.addWidget(dropdown_3D_colormap)
 
-
+        visualization_3D_layout.addWidget(label_3D_functions)
+        visualization_3D_layout.addWidget(self.dropdown_3D_functions)
+        visualization_3D_layout.addWidget(self.dropdown_3D_data_types)
+        visualization_3D_layout.addWidget(self.chkbox_3D_cumulative)
+        visualization_3D_layout.addWidget(self.btn_3D_visualize)
         visualization_3D_layout.addLayout(layout_colormap)
         visualization_3D_layout.addStretch()
         visualization_3D_tools = QWidget()
@@ -920,9 +925,23 @@ class ExplorationWidget(QWidget):
 
         self.imv_cell.scene.sigMouseMoved.connect(self.detect_cell_hover)
 
-    def change_function(self):
-        func = self.names_to_functions[self.dropdown_3D_functions.currentText()]
-        self.visualization_3D.change_function(func)
+    def changed_3D_function(self):
+        if self.dropdown_3D_functions.currentText() == "Base Visualization":
+            self.chkbox_3D_cumulative.hide()
+        else:
+            self.chkbox_3D_cumulative.show()
+
+    def visualize_3D(self):
+        visualization_type = self.dropdown_3D_functions.currentText()
+
+        if visualization_type == "Normalized Visualization" and self.chkbox_3D_cumulative.isChecked():
+            visualization_type = self.dropdown_3D_data_types.currentText() + "_cumulative"
+        elif visualization_type == "Normalized Visualization":
+            visualization_type = self.dropdown_3D_data_types.currentText() + "_base"
+        else:
+            visualization_type = self.dropdown_3D_data_types.currentText()
+            
+        self.visualization_3D.change_func(base_visualization, data_type=visualization_type)
 
     def check_if_results_exist(self):
         idx_to_cells = {"0":"1", "1":"2", "2":"5", "3":"10", "4":"15", "5":"20"}

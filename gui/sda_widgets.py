@@ -58,11 +58,11 @@ class Visualization(HasTraits):
     def update_frame(self, data):
         self.plot.mlab_source.set(scalars=data)
     
-    def reset_frame(self, frame=0):
+    def reset_frame(self, frame_no=0):
         frame = self.visualization_data.data[0]
         x = np.linspace(0, frame.shape[0], frame.shape[0])
         y = np.linspace(0, frame.shape[1], frame.shape[1])
-        self.plot.mlab_source.reset(x=x, y=y, scalars=self.visualization_data.data[frame])
+        self.plot.mlab_source.reset(x=x, y=y, scalars=self.visualization_data.data[frame_no])
 
     def update_data(self, visualization_data, frame=0):
         self.visualization_data = visualization_data
@@ -119,8 +119,11 @@ class CurrentVisualizationData():
 
     __rmul__ = __mul__
 
-def base_visualization(session, data_type="C", start_frame=0, end_frame=200, **kwargs):
-    signal = session.data[data_type].sel(frame=slice(start_frame, end_frame-1)).values # -1 since it is inclusive
+def base_visualization(session, precalculated_values=None, data_type="C", start_frame=0, end_frame=200, **kwargs):
+    if data_type in session.data:
+        signal = session.data[data_type].sel(frame=slice(start_frame, end_frame-1)).values # -1 since it is inclusive
+    else:
+        signal = precalculated_values[data_type].sel(frame=slice(start_frame, end_frame-1)).values # -1 since it is inclusive
     A = session.data["A"].values
     A_flat = A.sum(axis=0)
 
@@ -133,28 +136,6 @@ def base_visualization(session, data_type="C", start_frame=0, end_frame=200, **k
     x_start, x_end = x_axis_indices[0], x_axis_indices[-1]
     y_start, y_end = y_axis_indices[0], y_axis_indices[-1]
     A = A[:, y_start:y_end, x_start:x_end]
-
-    Y = np.flip(np.tensordot(signal, A, axes=([0], [0])).swapaxes(1, 2), 2) # In order to maintain parity with the 2D visualization
-
-    return CurrentVisualizationData(Y, start_frame, end_frame, x_start, x_end, y_start, y_end)
-
-def normalized_events_visualization(session, data_type="C", start_frame=0, end_frame=200, **kwargs):
-    signal = session.data[data_type].sel(frame=slice(start_frame, end_frame-1)).values # -1 since it is inclusive
-    E = session.data["E"].values
-    A = session.data["A"].values
-    A_flat = A.sum(axis=0)
-
-    # Only use subset of A where values are positive, trim out 0 areas around the edges
-    x_axis_sum = np.sum(A_flat, axis=0)
-    y_axis_sum = np.sum(A_flat, axis=1)
-    # Find first and last non-zero index
-    x_axis_indices = np.where(x_axis_sum > 0)[0]
-    y_axis_indices = np.where(y_axis_sum > 0)[0]
-    x_start, x_end = x_axis_indices[0], x_axis_indices[-1]
-    y_start, y_end = y_axis_indices[0], y_axis_indices[-1]
-    A = A[:, y_start:y_end, x_start:x_end]
-
-    # Look at the E matrix and extrapolate the start and end
 
     Y = np.flip(np.tensordot(signal, A, axes=([0], [0])).swapaxes(1, 2), 2) # In order to maintain parity with the 2D visualization
 
@@ -180,7 +161,7 @@ class MayaviQWidget(QWidget):
         self.kwargs = {}
 
         # We need to precalculate some data related to E to not cause slow down during visualization
-        self.precalculate_values = self._precalculate(session)
+        self.precalculated_values = self._precalculate(session)
 
     def _precalculate(self, session):
         precalculated_values = {}
@@ -199,7 +180,7 @@ class MayaviQWidget(QWidget):
             indices = events.nonzero()
             if indices[0].any():
                 # Split up the indices into groups
-                split_indices = np.split(indices, np.where(np.diff(indices) != 1)[0]+1)
+                split_indices = np.split(indices[0], np.where(np.diff(indices[0]) != 1)[0]+1)
                 # Now Split the indices into pairs of first and last indices
                 split_indices = [(indices_group[0], indices_group[-1]+1) for indices_group in split_indices]
 
@@ -222,37 +203,56 @@ class MayaviQWidget(QWidget):
                 C_based_events[i] /= C_based_total
                 DFF_based_events[i] /= DFF_based_total
                 C_cumulative_events[i] /= C_based_total
+                C_cumulative_events[i][0] = 0.00001 # So we don't have interpolation issues
+                C_cumulative_events[i][-1] = 1
                 DFF_cumulative_events[i] /= DFF_based_total
+                DFF_cumulative_events[i][0] = 0.00001
+                DFF_cumulative_events[i][-1] = 1
 
                 # Interpolate the values to fill in the gaps for cumulative events
-                C_cumulative_events[i] = interp1d(np.arange(C_cumulative_events.shape[1])[indices], C_cumulative_events[i][indices])
-                DFF_cumulative_events[i] = interp1d(np.arange(DFF_cumulative_events.shape[1])[indices], DFF_cumulative_events[i][indices])
+                C_cumulative_events[i] = self._interpolate(C_cumulative_events[i])
+                DFF_cumulative_events[i] = self._interpolate(DFF_cumulative_events[i])
 
                 # We'll simulate decay for the base events by taking the last value and multiplying it by 0.95
-                for start, end in split_indices:
-                    last_val_C = C_based_events[i, end-1] * 0.95
-                    last_val_DFF = DFF_based_events[i, end-1] * 0.95
+                for i, (_, end) in enumerate(split_indices):
+                    last_val_C = C_based_events[i, end-1]
+                    last_val_DFF = DFF_based_events[i, end-1]
 
-                    i = end
-                    while last_val_C > 1 and C_based_events[i] == 0 and i < C_based_events.shape[1]:
-                        C_based_events[i] = last_val_C
-                        last_val_C *= 0.95
-                        i += 1
-                    
-                    i = end
-                    while last_val_DFF > 1 and DFF_based_events[i] == 0 and i < DFF_based_events.shape[1]:
-                        DFF_based_events[i] = last_val_DFF
-                        last_val_DFF *= 0.95
-                        i += 1
+                    # Be wary of when the next event starts to not overwrite the values
+                    next_start = split_indices[i+1][0] if i+1 < len(split_indices) else C_based_events.shape[1]
+
+                    # We need to calculate how many frames we need for the decay to be less than 1. 
+                    C_no_of_frames = int(min(max(np.ceil(np.emath.logn(0.95, 0.01/last_val_C)), 0), next_start-end))
+                    DFF_no_of_frames = int(min(max(np.ceil(np.emath.logn(0.95, 0.01/last_val_DFF)), 0), next_start-end))
+
+
+                    # Now we need to calculate the decay values, by exponentiation
+                    if C_no_of_frames > 0:
+                        C_decay_powers = np.arange(C_no_of_frames) + 1
+                        C_decay_values = last_val_C * 0.95**C_decay_powers
+                        C_based_events[i, end:end+C_no_of_frames] = C_decay_values
+
+                    if DFF_no_of_frames > 0:
+                        DFF_decay_powers = np.arange(DFF_no_of_frames) + 1
+                        DFF_decay_values = last_val_DFF * 0.95**DFF_decay_powers
+                        DFF_based_events[i, end:end+DFF_no_of_frames] = DFF_decay_values
+
+
         
-        precalculated_values['C_based_events'] = C_based_events
-        precalculated_values['C_cumulative_events'] = C_cumulative_events
-        precalculated_values['DFF_based_events'] = DFF_based_events
-        precalculated_values['DFF_cumulative_events'] = DFF_cumulative_events
+        precalculated_values['C_base'] = C_based_events
+        precalculated_values['C_cumulative'] = C_cumulative_events
+        precalculated_values['DFF_base'] = DFF_based_events
+        precalculated_values['DFF_cumulative'] = DFF_cumulative_events
         
         return precalculated_values
                     
+    def _interpolate(self, y):
+        x = np.arange(len(y))
+        idx = np.nonzero(y)
+        interp = interp1d(x[idx],y[idx])
 
+        return interp(x)
+        
 
     def set_data(self, visualization_data):
         self.visualization_data = visualization_data * self.scaling_factor
@@ -262,25 +262,20 @@ class MayaviQWidget(QWidget):
         if not self.visualization_data.in_range(frame):
             # We are out of range and we need to update the data, first we need to find the nearest chunk, which is a multiple of chunk_length
             chunk_start = frame - frame % self.chunk_length
-            self.set_data(self.visualization_generator(self.session, start_frame=chunk_start, end_frame=chunk_start+self.window_size, **self.kwargs))
+            self.set_data(self.visualization_generator(self.session, precalculated_values=self.precalculated_values, start_frame=chunk_start, end_frame=chunk_start+self.window_size, **self.kwargs))
         self.visualization.set_frame(frame)
         self.current_frame = frame
 
 
 
     def change_colormap(self, colormap):
-        try:
-            self.visualization.plot.module_manager.scalar_lut_manager.lut_mode = colormap
-        except:
-            # Capitalize the first letter
-            colormap = colormap.capitalize()
-            self.visualization.plot.module_manager.scalar_lut_manager.lut_mode = colormap
+        self.visualization.plot.module_manager.scalar_lut_manager.lut_mode = colormap
 
     def change_func(self, func, **kwargs):
         self.visualization_generator = func
         self.kwargs = kwargs
         chunk_start = self.current_frame - self.current_frame % self.chunk_length
-        self.set_data(self.visualization_generator(self.session, start_frame=chunk_start, end_frame=chunk_start+self.window_size))
+        self.set_data(self.visualization_generator(self.session, precalculated_values=self.precalculated_values,  start_frame=chunk_start, end_frame=chunk_start+self.window_size, **kwargs))
         self.set_frame(self.current_frame)
 
 
