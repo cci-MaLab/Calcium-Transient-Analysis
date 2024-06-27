@@ -520,6 +520,16 @@ class ExplorationWidget(QWidget):
         self.dropdown_3D_data_types.addItems(["C", "DFF"])
         self.chkbox_3D_cumulative = QCheckBox("Cumulative")
         self.chkbox_3D_cumulative.hide()
+        label_3D_slider = QLabel("Scaling")
+        self.slider_value = QLabel("1")
+        self.slider_value.setFixedWidth(30)
+        self.slider_3D_scaling = QSlider(Qt.Orientation.Horizontal)
+        self.slider_3D_scaling.setRange(1, 1000)
+        self.slider_3D_scaling.setValue(1)
+        self.slider_3D_scaling.valueChanged.connect(lambda: self.slider_value.setText(str(self.slider_3D_scaling.value())))
+        layout_3D_slider = QHBoxLayout()
+        layout_3D_slider.addWidget(self.slider_3D_scaling)
+        layout_3D_slider.addWidget(self.slider_value)
         self.btn_3D_visualize = QPushButton("Visualize")
         self.btn_3D_visualize.clicked.connect(self.visualize_3D)
 
@@ -537,6 +547,8 @@ class ExplorationWidget(QWidget):
         visualization_3D_layout.addWidget(self.dropdown_3D_functions)
         visualization_3D_layout.addWidget(self.dropdown_3D_data_types)
         visualization_3D_layout.addWidget(self.chkbox_3D_cumulative)
+        visualization_3D_layout.addWidget(label_3D_slider)
+        visualization_3D_layout.addLayout(layout_3D_slider)
         visualization_3D_layout.addWidget(self.btn_3D_visualize)
         visualization_3D_layout.addLayout(layout_colormap)
         visualization_3D_layout.addStretch()
@@ -933,6 +945,7 @@ class ExplorationWidget(QWidget):
 
     def visualize_3D(self):
         visualization_type = self.dropdown_3D_functions.currentText()
+        scaling = self.slider_3D_scaling.value()
 
         if visualization_type == "Normalized Visualization" and self.chkbox_3D_cumulative.isChecked():
             visualization_type = self.dropdown_3D_data_types.currentText() + "_cumulative"
@@ -941,7 +954,7 @@ class ExplorationWidget(QWidget):
         else:
             visualization_type = self.dropdown_3D_data_types.currentText()
             
-        self.visualization_3D.change_func(base_visualization, data_type=visualization_type)
+        self.visualization_3D.change_func(base_visualization, data_type=visualization_type, scaling=scaling)
 
     def check_if_results_exist(self):
         idx_to_cells = {"0":"1", "1":"2", "2":"5", "3":"10", "4":"15", "5":"20"}

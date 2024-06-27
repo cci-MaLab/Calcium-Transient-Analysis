@@ -163,6 +163,10 @@ class MayaviQWidget(QWidget):
         # We need to precalculate some data related to E to not cause slow down during visualization
         self.precalculated_values = self._precalculate(session)
 
+        # Convert the numpy arrays to xarray DataArrays, copy over coords and dims from C
+        for key, value in self.precalculated_values.items():
+            self.precalculated_values[key] = session.data['C'].copy(data=value)
+
     def _precalculate(self, session):
         precalculated_values = {}
         E = self.session.data['E'].values
@@ -186,9 +190,14 @@ class MayaviQWidget(QWidget):
 
                 C_based_total = 0
                 DFF_based_total = 0
-                for start, end in split_indices:
+                indices_to_remove = []
+                for j, (start, end) in enumerate(split_indices):
                     C_based_val = abs(C[i, start:end].max() - C[i, start:end].min())
                     DFF_based_val = abs(DFF[i, start:end].max() - DFF[i, start:end].min())
+
+                    if C_based_val == 0 or DFF_based_val == 0:
+                        indices_to_remove.append(j)
+                        continue # Can occur due to erroneous data, skip these
 
                     C_based_events[i, start:end] = C_based_val
                     DFF_based_events[i, start:end] = DFF_based_val
@@ -199,14 +208,17 @@ class MayaviQWidget(QWidget):
                     C_cumulative_events[i, start:end] = C_based_total
                     DFF_cumulative_events[i, start:end] = DFF_based_total
                 
+                # Remove the erroneous indices
+                split_indices = [split_indices[j] for j in range(len(split_indices)) if j not in indices_to_remove]
+                
                 # Normalize the values by the total in both cases
                 C_based_events[i] /= C_based_total
                 DFF_based_events[i] /= DFF_based_total
                 C_cumulative_events[i] /= C_based_total
-                C_cumulative_events[i][0] = 0.00001 # So we don't have interpolation issues
+                C_cumulative_events[i][0] = 0.000001 # So we don't have interpolation issues
                 C_cumulative_events[i][-1] = 1
                 DFF_cumulative_events[i] /= DFF_based_total
-                DFF_cumulative_events[i][0] = 0.00001
+                DFF_cumulative_events[i][0] = 0.000001
                 DFF_cumulative_events[i][-1] = 1
 
                 # Interpolate the values to fill in the gaps for cumulative events
@@ -214,12 +226,12 @@ class MayaviQWidget(QWidget):
                 DFF_cumulative_events[i] = self._interpolate(DFF_cumulative_events[i])
 
                 # We'll simulate decay for the base events by taking the last value and multiplying it by 0.95
-                for i, (_, end) in enumerate(split_indices):
+                for j, (_, end) in enumerate(split_indices):
                     last_val_C = C_based_events[i, end-1]
                     last_val_DFF = DFF_based_events[i, end-1]
 
                     # Be wary of when the next event starts to not overwrite the values
-                    next_start = split_indices[i+1][0] if i+1 < len(split_indices) else C_based_events.shape[1]
+                    next_start = split_indices[j+1][0] if j+1 < len(split_indices) else C_based_events.shape[1]
 
                     # We need to calculate how many frames we need for the decay to be less than 1. 
                     C_no_of_frames = int(min(max(np.ceil(np.emath.logn(0.95, 0.01/last_val_C)), 0), next_start-end))
@@ -272,6 +284,8 @@ class MayaviQWidget(QWidget):
         self.visualization.plot.module_manager.scalar_lut_manager.lut_mode = colormap
 
     def change_func(self, func, **kwargs):
+        if "scaling" in kwargs:
+            self.scaling_factor = kwargs["scaling"]
         self.visualization_generator = func
         self.kwargs = kwargs
         chunk_start = self.current_frame - self.current_frame % self.chunk_length
