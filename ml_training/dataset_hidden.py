@@ -5,9 +5,10 @@ from core.backend import open_minian
 import numpy as np
 from math import ceil
 from ml_training import config
+from torch.nn import ConstantPad2d
 
-class GRUDataset(Dataset):
-    def __init__(self, paths: list[str], train_size=None, test_split=0.1, val_split=0.1, section_len=200, stratification=False, experiment_type="cross_session"):
+class TrainDataset(Dataset):
+    def __init__(self, paths: list[str], train_size=None, test_split=0.1, val_split=0.1, section_len=200, stratification=False, experiment_type="cross_session", model_type="gru"):
         '''
         We want to create a truncated version of the dataset for training purposes. For the time being, we will
         split the dataset into chunks of length of 200. We will slide the window by 200.
@@ -95,9 +96,10 @@ class GRUDataset(Dataset):
 
         total_0 = 0
         total_1 = 0
+        slack = config.SLACK if model_type != "gru" else 0
         for i, mouse_data in enumerate(self.data):
             mouse_data.create_test_ids(test_unit_ids[i])
-            mouse_data.create_samples(val_split, section_len, stratification=stratification)
+            mouse_data.create_samples(val_split, section_len, slack=slack, stratification=stratification)
 
             sub_total_0, sub_total_1 = mouse_data.get_counts()
             total_0 += sub_total_0
@@ -124,16 +126,18 @@ class GRUDataset(Dataset):
         # Therefore we need to pick the last output of the forward and backward passes, whilst accounting
         # for the fact that we may have 0 inputs.
         hidden = []
-        for i in range(len(self.hidden_states)):
-            if start == 0:
-                forward_hidden = self.hidden_zeros
-            else:
-                forward_hidden = self.hidden_states[i][start-1, 0, :]
-            if end == mouse.E.shape[1]:
-                backward_hidden = self.hidden_zeros
-            else:
-                backward_hidden = self.hidden_states[i][end+1, 1, :]
-            hidden.append(torch.stack([forward_hidden, backward_hidden]))
+        # With non-GRUs we don't need to keep track of hidden states
+        if self.hidden_states is not None:
+            for i in range(len(self.hidden_states)):
+                if start == 0:
+                    forward_hidden = self.hidden_zeros
+                else:
+                    forward_hidden = self.hidden_states[i][start-1, 0, :]
+                if end == mouse.E.shape[1]:
+                    backward_hidden = self.hidden_zeros
+                else:
+                    backward_hidden = self.hidden_states[i][end+1, 1, :]
+                hidden.append(torch.stack([forward_hidden, backward_hidden]))
 
         return sample, hidden, target
 
@@ -165,7 +169,7 @@ class GRUDataset(Dataset):
 
     
 class TestDataset(Dataset):
-    def __init__(self, data):
+    def __init__(self, data, model_type="gru"):
         '''
         This dataset will be provided by unit_ids through random sub-selection from GRUDataset
         '''
@@ -193,12 +197,21 @@ class TestDataset(Dataset):
         target = self.targets[idx]
         return sample, target
     
+    def get_test_indices(self):
+        indices = {}
+        for mouse in self.data:
+            if len(mouse.test_unit_ids) > 0:
+                indices[mouse.path] = mouse.test_unit_ids
+        
+        return indices
+    
 class ValDataset(Dataset):
     def __init__(self, data):
         '''
         This dataset will be provided through random sub-selection from GRUDataset
         '''
         self.data= data
+        self.hidden_states = None
 
         self.small_epoch = 0
         self.intermediate_epoch = 0
@@ -218,16 +231,17 @@ class ValDataset(Dataset):
         sample, target = mouse.get_sample(unit_id, start, end)
 
         hidden = []
-        for i in range(len(self.hidden_states)):
-            if start == 0:
-                forward_hidden = self.hidden_zeros
-            else:
-                forward_hidden = self.hidden_states[i][start-1, 0, :]
-            if end == mouse.E.shape[1]:
-                backward_hidden = self.hidden_zeros
-            else:
-                backward_hidden = self.hidden_states[i][end+1, 1, :]
-            hidden.append(torch.stack([forward_hidden, backward_hidden]))
+        if self.hidden_states is not None:
+            for i in range(len(self.hidden_states)):
+                if start == 0:
+                    forward_hidden = self.hidden_zeros
+                else:
+                    forward_hidden = self.hidden_states[i][start-1, 0, :]
+                if end == mouse.E.shape[1]:
+                    backward_hidden = self.hidden_zeros
+                else:
+                    backward_hidden = self.hidden_states[i][end+1, 1, :]
+                hidden.append(torch.stack([forward_hidden, backward_hidden]))
 
         return sample, hidden, target
 
@@ -281,29 +295,36 @@ class MouseData:
         self.test_unit_ids = self.unit_ids[indices]
         self.unit_ids = np.setdiff1d(self.unit_ids, self.test_unit_ids)
 
-    def create_samples(self, val_split, section_len, stratification=False):
+    def create_samples(self, val_split, section_len, slack=0, stratification=False):
+        length = self.E.shape[1]
+        self.slack = slack
         for unit_id in self.unit_ids:
             self.samples[unit_id] = []
             self.val_samples[unit_id] = []
             all_samples = []
             for i in range(ceil(self.E.shape[1] / section_len)):
                 start, end = i * section_len, (i + 1) * section_len
+
                 if stratification:
                     E = self.E[self.unit_to_index[unit_id], start:end]
                     C = self.C[self.unit_to_index[unit_id], start:end]
                     EC = E + C
                     if torch.sum(EC) == 0:
                         continue
+                if start-slack < 0 or end+slack > length:
+                    continue
                 all_samples.append((start, end))
 
             # Pick val_split indices to be used for validation
             val_indices = np.random.choice(np.arange(len(all_samples)), int(val_split * len(all_samples)), replace=False)
             val_indices.sort()
             indices = np.setdiff1d(np.arange(len(all_samples)), val_indices)
-            for start in indices:
-                self.samples[unit_id].append((start * section_len, (start + 1) * section_len))
-            for start in val_indices:
-                self.val_samples[unit_id].append((start * section_len, (start + 1) * section_len))
+            train_samples = [all_samples[i] for i in indices]
+            val_samples = [all_samples[i] for i in val_indices]
+            for start, end in train_samples:
+                self.samples[unit_id].append((start, end))
+            for start, end in val_samples:
+                self.val_samples[unit_id].append((start, end))
 
     def get_counts(self):
         total_0 = 0
@@ -319,14 +340,15 @@ class MouseData:
     def get_sample(self, unit_id, start, end):
         idx = self.unit_to_index[unit_id]
         list_of_samples = []
+        slack = self.slack if (start != 0 and end != -1) else 0
         if self.YrA is not None:
-            Yra_sample = self.YrA[idx, start:end]
+            Yra_sample = self.YrA[idx, start-slack:end+slack]
             list_of_samples.append(Yra_sample)
         if self.C is not None:
-            C_sample = self.C[idx, start:end]
+            C_sample = self.C[idx, start-slack:end+slack]
             list_of_samples.append(C_sample)
         if self.DFF is not None:
-            DFF_sample = self.DFF[idx, start:end]
+            DFF_sample = self.DFF[idx, start-slack:end+slack]
             list_of_samples.append(DFF_sample)
         target = self.E[idx, start:end].unsqueeze(-1)
 
@@ -378,3 +400,36 @@ def train_val_test_split(paths, val_split=0.1, test_split=0.1) -> tuple[dict[str
         boost += len(unit_ids)
 
     return train_unit_ids, val_unit_ids, test_unit_ids
+
+
+def extract_data(minian_data, unit_id, slack=50):
+    padding = ConstantPad2d((0, 0, slack, slack), 0)
+    E = minian_data['E'].sel(unit_id=unit_id)
+    
+    training_types = config.INPUT
+    YrA = None
+    C = None
+    DFF = None
+    input_data = []
+    for training_type in training_types:
+        if training_type == "YrA":
+            YrA = minian_data['YrA'].sel(unit_id=unit_id)
+            YrA = YrA / YrA.max(dim='frame')
+            YrA = torch.tensor(YrA.values.astype(np.float32)).to(config.DEVICE)
+            input_data.append(YrA)
+        elif training_type == "C":
+            C = minian_data['C'].sel(unit_id=unit_id)
+            C = C / C.max(dim='frame')
+            C = torch.tensor(C.values.astype(np.float32)).to(config.DEVICE)
+            input_data.append(C)
+        elif training_type == "DFF":
+            DFF = minian_data['DFF'].sel(unit_id=unit_id)
+            DFF = DFF / DFF.max(dim='frame')
+            DFF = torch.tensor(DFF.values.astype(np.float32)).to(config.DEVICE)
+            input_data.append(DFF)
+
+    input_data = torch.stack(input_data).T
+    input_data = padding(input_data)
+    output = torch.tensor(E.values.astype(np.float32)).to(config.DEVICE)
+
+    return input_data, output

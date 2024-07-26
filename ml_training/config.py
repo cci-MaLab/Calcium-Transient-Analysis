@@ -14,7 +14,7 @@ STRATIFICATION = True
 # batch size
 INPUT = ["C", "DFF"]
 INIT_LR = 0.001
-NUM_EPOCHS = 20
+NUM_EPOCHS = 10
 BATCH_SIZE = 1
 # define threshold to filter weak predictions
 THRESHOLD = 0.5

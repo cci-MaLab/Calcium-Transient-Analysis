@@ -1,10 +1,12 @@
-from ml_training.dataset_hidden import (GRUDataset, TestDataset, ValDataset)
-from ml_training.model import GRU_Hidden
+from ml_training.dataset_hidden import (TrainDataset, TestDataset, ValDataset, extract_data)
+from ml_training.model import GRU_Hidden, LSTM, BasicTransformer
 from ml_training import config
 from torch.nn import BCEWithLogitsLoss
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from core.backend import open_minian
+from ml_training.ml_util import sequence_to_predictions
 import matplotlib.pyplot as plt
 import torch
 import time
@@ -13,7 +15,7 @@ import os
 from sklearn.metrics import f1_score, roc_auc_score, roc_curve, precision_score, recall_score, confusion_matrix, accuracy_score, ConfusionMatrixDisplay
 
 
-def train(paths=None, train_size=None, test_size=None, cross_session=False):
+def train(paths=None, train_size=None, test_size=None, experiment_type="within_session", model_type="gru"):
 	test_size = test_size if test_size is not None else config.TEST_SIZE 
 	# For saving purposes get the hour and minute and date of the run
 	t = time.localtime()
@@ -29,7 +31,7 @@ def train(paths=None, train_size=None, test_size=None, cross_session=False):
 	paths = config.DATASET_PATH if paths is None else paths
 
 	# create the train and test datasets
-	trainDS = GRUDataset(paths=paths, train_size=train_size, test_split=test_size, cross_session=cross_session,
+	trainDS = TrainDataset(paths=paths, train_size=train_size, test_split=test_size, experiment_type=experiment_type, model_type=model_type,
 					     val_split=config.VAL_SIZE, section_len=config.SECTION_LEN, stratification=config.STRATIFICATION)
 	valDS = ValDataset(data=trainDS.get_data())
 	testDS = TestDataset(data=trainDS.get_data())
@@ -44,12 +46,17 @@ def train(paths=None, train_size=None, test_size=None, cross_session=False):
 		batch_size=config.BATCH_SIZE, pin_memory=config.PIN_MEMORY,
 		num_workers=0)
 
-	# initialize our CNN model
-	gru = GRU_Hidden(hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS, inputs=config.INPUT).to(config.DEVICE)
+	# initialize our model
+	if model_type == "lstm":
+		model = LSTM(hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS, inputs=config.INPUT).to(config.DEVICE)
+	elif model_type == "transformer":
+		model = BasicTransformer(sequence_len=config.SECTION_LEN, slack=config.SLACK, inputs=config.INPUT, hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS, num_heads=config.HEADS, classes=1).to(config.DEVICE)
+	else:
+		model = GRU_Hidden(hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS, inputs=config.INPUT).to(config.DEVICE)
 	# initialize loss function and optimizer
 
 	lossFunc = BCEWithLogitsLoss()
-	opt = Adam(gru.parameters(), lr=config.INIT_LR)
+	opt = Adam(model.parameters(), lr=config.INIT_LR)
 	# calculate steps per epoch for training and validation set
 	trainSteps = trainDS.get_training_steps() // config.BATCH_SIZE
 	valSteps = np.max([valDS.get_val_steps() // config.BATCH_SIZE, 1])
@@ -73,21 +80,25 @@ def train(paths=None, train_size=None, test_size=None, cross_session=False):
 			for u in tqdm(range(trainDS.get_mouse_cell_count()), leave=False):
 				trainDS.small_epoch = u
 				# We need to get the local hidden states for the current unit
-				with torch.no_grad():
-					gru.eval()
-					sample = trainDS.get_current_sample()
-					trainDS.hidden_states = gru.forward_hidden(sample.to(config.DEVICE))
+				if model_type == "gru":
+					with torch.no_grad():
+						model.eval()
+						sample = trainDS.get_current_sample()
+						trainDS.hidden_states = model.forward_hidden(sample.to(config.DEVICE))
 
 				# set the model in training mode
-				gru.train()
+				model.train()
 				# loop over the training set
 				for (i, (inputs, hidden, target)) in enumerate(tqdm(trainLoader, leave=False)):
 					# unpack the data and make sure they are on the same device
 					x, h0, y = inputs.to(config.DEVICE), hidden, target.to(config.DEVICE)
 					# Batch dimension has to be second for hidden
-					h0 = [h.to(config.DEVICE).swapaxes(0, 1) for h in h0]
-					# perform a forward pass and calculate the training loss
-					pred = gru(x, h0)
+					if h0:
+						h0 = [h.to(config.DEVICE).swapaxes(0, 1) for h in h0]
+						# perform a forward pass and calculate the training loss
+						pred = model(x, h0)
+					else:
+						pred = model(x)
 					loss = lossFunc(pred, y)
 					# first, zero out any previously accumulated gradients, then
 					# perform backpropagation, and then update model parameters
@@ -100,21 +111,25 @@ def train(paths=None, train_size=None, test_size=None, cross_session=False):
 		# switch off autograd
 		with torch.no_grad():
 			# set the model in evaluation mode
-			gru.eval()
+			model.eval()
 			for m in tqdm(range(len(valDS.data)), leave=False):
 				valDS.moderate_epoch = m
 				for u in tqdm(range(valDS.get_mouse_cell_count()), leave=False):
 					valDS.small_epoch = u
 					sample = valDS.get_current_sample()
-					valLoader.dataset.update_hidden_states(gru.forward_hidden(sample))
+					if model_type == "gru":
+						valLoader.dataset.update_hidden_states(model.forward_hidden(sample))
 					# loop over the validation set
 					for (i, (inputs, hidden, target)) in enumerate(tqdm(valLoader, leave=False)):
 						# unpack the data and make sure they are on the same device
 						x, h0, y = inputs.to(config.DEVICE), hidden, target.to(config.DEVICE)
 						# Batch dimension has to be second for hidden
-						h0 = [h.to(config.DEVICE).swapaxes(0, 1) for h in h0]
-						# perform a forward pass and calculate the training loss
-						pred = gru(x, h0)
+						if h0:
+							h0 = [h.to(config.DEVICE).swapaxes(0, 1) for h in h0]
+							# perform a forward pass and calculate the training loss
+							pred = model(x, h0)
+						else:
+							pred = model(x)
 						totalValLoss += lossFunc(pred, y)
 		# calculate the average training and validation loss
 		avgTrainLoss = totalTrainLoss / trainSteps
@@ -130,9 +145,9 @@ def train(paths=None, train_size=None, test_size=None, cross_session=False):
 		# save the model if the validation loss has decreased
 		if avgValLoss < lowest_loss:
 			print("[INFO] saving the model...")
-			name ="gru_hidden_model_val_" + current_time + ".pth"
+			name ="model_val_" + current_time + ".pth"
 			model_val_path = os.path.sep.join([output_path, name])
-			torch.save(gru, model_val_path)
+			torch.save(model, model_val_path)
 			lowest_loss = avgValLoss
 		
 		
@@ -154,29 +169,37 @@ def train(paths=None, train_size=None, test_size=None, cross_session=False):
 	loss_path = os.path.sep.join([plot_path, "loss.png"])
 	plt.savefig(loss_path)
 	# Load the best model
-	gru = torch.load(model_val_path)
+	model = torch.load(model_val_path)
 
 	# Start testing
-	gru.eval()
+	model.eval()
 	# initialize lists to store predictions and ground-truth
 	preds = []
 	gt = []
 	# switch off autograd
+	if model_type in ["transformer_local", "transformer"]:
+		for path, unit_ids in testDS.get_test_indices().items():
+			minian_data = open_minian(path)
+			for unit_id in unit_ids:
+				input_data, output = extract_data(minian_data, unit_id, config.SLACK)
+				pred = sequence_to_predictions(model, input_data, config.ROLLING, voting="average")
+				preds.append(pred)
+				gt.append(output.cpu().detach().numpy())
 	with torch.no_grad():
 		# loop over the test set
 		for (i, (inputs, target)) in enumerate(tqdm(testLoader, leave=True)):
 			# unpack the data and make sure they are on the same device
 			x, y = inputs.to(config.DEVICE), target.to(config.DEVICE)
 			# perform a forward pass and calculate the training loss
-			pred = gru(x)
+			pred = model(x)
 			pred = torch.sigmoid(pred)
 			pred = pred.cpu().detach().numpy()
 			preds.extend(pred)
 			# add the ground-truth to the list
 			gt.extend(y.cpu().detach().numpy())
 
-	preds = np.array(preds).flatten()
-	gt = np.array(gt).flatten()
+	preds = np.concatenate(preds).flatten()
+	gt = np.concatenate(gt).flatten()
 	# calculate the accuracy
 	acc = accuracy_score(gt, preds.round())
 	print("[INFO] Accuracy: {:.4f}".format(acc))
@@ -235,4 +258,8 @@ def train(paths=None, train_size=None, test_size=None, cross_session=False):
 	outputs = {"accuracy": acc, "precision1": precision1, "recall1": recall1,
 			 "precision0": precision0, "recall0": recall0, "f1": f1, "auc": auc,
 			 "preds": preds, "gt": gt}
+	
+	# Extract the indices from the test set
+	outputs["test_indices"] = testDS.get_test_indices()
+
 	return outputs

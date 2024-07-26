@@ -16,7 +16,7 @@ def sequence_to_predictions(model, signal, rolling=50, voting="average", thresho
             sample = signal[i:i+sequence_len+2*slack].unsqueeze(0)
             pred = model(sample)
             pred = torch.sigmoid(pred)
-            pred = pred.cpu().detach().numpy()
+            pred = pred.cpu().detach().numpy().flatten()
             preds[row%max_value_repeats, i:sequence_len+i] = pred
     
     if voting == "average":

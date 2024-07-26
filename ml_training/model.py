@@ -16,6 +16,7 @@ class GRU(Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.slack = slack
+        input_size = len(inputs)
 
         '''
         We cannot use the num_layers because Pytorch only provides the output for the last layer. The reason why we need
@@ -42,22 +43,24 @@ class LSTM(Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.slack = slack
+        input_size = len(inputs)
 
         '''
         We cannot use the num_layers because Pytorch only provides the output for the last layer. The reason why we need
         to the intermediary layer is because of the mini-epoch approach that requires us to preserve those hidden states
         in each layer. We will have to manually create into a list the GRU layers.
         '''
-        self.gru = nn.LSTM(input_size=input_size, hidden_size=self.hidden_size, bidirectional=True, batch_first=True, num_layers=num_layers)
+        self.lstm = nn.LSTM(input_size=input_size, hidden_size=self.hidden_size, bidirectional=True, batch_first=True, num_layers=num_layers)
 
         self.fc = nn.Linear(hidden_size*2, classes)
 
         
     def forward(self, x):
-        x, _ = self.gru(x)
+        x, _ = self.lstm(x)
 
         x = self.fc(x)
-        return torch.squeeze(x[:,self.slack:-self.slack,:], dim=-1)
+        return x
+        #return torch.squeeze(x[:,self.slack:-self.slack,:], dim=-1)
 
 class LocalTransformer(nn.Module):
     """ 
@@ -161,7 +164,7 @@ class BasicTransformer(Module):
         x = self.transformer(x)
 
         x = self.fc(x)
-        return torch.squeeze(x[:,self.slack:-self.slack,:], dim=-1)
+        return x[:,self.slack:-self.slack,:]
     
 
 def pos_enc(length, dim):
