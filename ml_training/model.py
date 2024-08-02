@@ -59,8 +59,7 @@ class LSTM(Module):
         x, _ = self.lstm(x)
 
         x = self.fc(x)
-        return x
-        #return torch.squeeze(x[:,self.slack:-self.slack,:], dim=-1)
+        return torch.squeeze(x[:,self.slack:-self.slack,:], dim=-1)
 
 class LocalTransformer(nn.Module):
     """ 
@@ -85,14 +84,17 @@ class LocalTransformer(nn.Module):
         use_dynamic_pos_bias = False,
         slack = 50,
         sequence_len = 200,
+        linear_expansion_dim = 32,
         **kwargs
     ):
         super().__init__()
         self.inputs = inputs
         dim = len(inputs)
-        self.pos_emb = nn.Embedding(max_seq_len, dim)
+        self.linear_expansion = nn.Linear(dim, linear_expansion_dim)
+        self.pos_emb = nn.Embedding(max_seq_len, linear_expansion_dim)
         self.slack = slack
         self.sequence_len = sequence_len
+        
 
         self.max_seq_len = max_seq_len
         self.layers = nn.ModuleList([])
@@ -100,23 +102,26 @@ class LocalTransformer(nn.Module):
         self.local_attn_window_size = local_attn_window_size
         self.dynamic_pos_bias = None
         if use_dynamic_pos_bias:
-            self.dynamic_pos_bias = DynamicPositionBias(dim = dim // 2, heads = heads)
+            self.dynamic_pos_bias = DynamicPositionBias(dim = linear_expansion_dim // 2, heads = heads)
 
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                LocalMHA(dim = dim, dim_head = dim_head, heads = heads, dropout = attn_dropout, causal = causal, window_size = local_attn_window_size, use_xpos = use_xpos, xpos_scale_base = xpos_scale_base, use_rotary_pos_emb = not use_dynamic_pos_bias, prenorm = True, **kwargs),
-                FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout)
+                LocalMHA(dim = linear_expansion_dim, dim_head = dim_head, heads = heads, dropout = attn_dropout, causal = causal,
+                          window_size = local_attn_window_size, use_xpos = use_xpos, xpos_scale_base = xpos_scale_base,
+                            use_rotary_pos_emb = not use_dynamic_pos_bias, prenorm = True, **kwargs),
+                FeedForward(dim = linear_expansion_dim, mult = ff_mult, dropout = ff_dropout)
             ]))
 
         self.to_logits = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, 1, bias = False)
+            nn.LayerNorm(linear_expansion_dim),
+            nn.Linear(linear_expansion_dim, 1, bias = False)
         )
 
     def forward(self, x, mask = None):
         n, device = x.shape[1], x.device
 
         assert n <= self.max_seq_len
+        x = self.linear_expansion(x)
         x = x + self.pos_emb(torch.arange(n, device = device))
 
         # dynamic pos bias
@@ -164,7 +169,7 @@ class BasicTransformer(Module):
         x = self.transformer(x)
 
         x = self.fc(x)
-        return x[:,self.slack:-self.slack,:]
+        return torch.squeeze(x[:,self.slack:-self.slack,:], -1)
     
 
 def pos_enc(length, dim):

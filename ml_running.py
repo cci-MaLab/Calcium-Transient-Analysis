@@ -1,4 +1,4 @@
-from ml_training.train_hidden import train
+from ml_training.train import train
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
@@ -250,10 +250,10 @@ def train_on_all_GRU():
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     
-    repeats = 5
+    repeats = 10
     outputs = {"all": {}}
     for i in range(repeats):
-        output = train(paths=all_paths, test_size=0.1, experiment_type="all", model_type="gru")
+        output = train(**{"PATHS": all_paths, "MODEL_TYPE": "GRU", "HIDDEN_SIZE": 30})
         outputs["all"][i] = output
     
     f1_scores = [outputs["all"][i]["f1"] for i in range(repeats)]
@@ -293,10 +293,10 @@ def train_on_all_LSTM():
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     
-    repeats = 5
+    repeats = 10
     outputs = {"all": {}}
     for i in range(repeats):
-        output = train(paths=all_paths, test_size=0.1, experiment_type="all", model_type="lstm")
+        output = train(**{"PATHS": all_paths, "MODEL_TYPE": "LSTM"})
         outputs["all"][i] = output
     
     f1_scores = [outputs["all"][i]["f1"] for i in range(repeats)]
@@ -322,7 +322,7 @@ def train_on_all_LSTM():
 
     # Pickle Save the output["test_indices"]
     test_indices = {"all": {"LSTM": output["test_indices"]}}
-    with open(os.path.join(save_path, "gru_all_test_indices.pkl"), "wb") as f:
+    with open(os.path.join(save_path, "lstm_all_test_indices.pkl"), "wb") as f:
         pickle.dump(test_indices, f)
 
 
@@ -337,10 +337,11 @@ def train_on_all_Transformer():
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     
-    repeats = 5
+    repeats = 10
     outputs = {"all": {}}
     for i in range(repeats):
-        output = train(paths=all_paths, test_size=0.1, experiment_type="all", model_type="transformer")
+        output = train(**{"PATHS": all_paths, "MODEL_TYPE": "BasicTransformer", "NUM_EPOCHS": 10,
+                          "HIDDEN_SIZE": 42, "NUM_LAYERS": 3, "HEADS": 2})
         outputs["all"][i] = output
     
     f1_scores = [outputs["all"][i]["f1"] for i in range(repeats)]
@@ -366,8 +367,112 @@ def train_on_all_Transformer():
 
     # Pickle Save the output["test_indices"]
     test_indices = {"all": {"Transformer": output["test_indices"]}}
-    with open(os.path.join(save_path, "gru_all_test_indices.pkl"), "wb") as f:
+    with open(os.path.join(save_path, "transformer_all_test_indices.pkl"), "wb") as f:
+        pickle.dump(test_indices, f)
+
+def cross_animal_comprehensive():
+    all_paths = {"PL010-AA058": [["./data/PL010/PL010_D1S1", "./data/PL010/PL010_D1S4", "./data/PL010/PL010_D8S1", "./data/PL010/PL010_D8S4"],["./data/AA058/AA058_D1S1", "./data/AA058/AA058_D1S4", "./data/AA058/AA058_D5S1", "./data/AA058/AA058_D5S4"]],
+                 "PL010-AA036": [["./data/PL010/PL010_D1S1", "./data/PL010/PL010_D1S4", "./data/PL010/PL010_D8S1", "./data/PL010/PL010_D8S4"],["./data/AA036/AA036_D2S1", "./data/AA036/AA036_D2S4", "./data/AA036/AA036_D6S1", "./data/AA036/AA036_D6S4"]],
+                 "PL010-AA034": [["./data/PL010/PL010_D1S1", "./data/PL010/PL010_D1S4", "./data/PL010/PL010_D8S1", "./data/PL010/PL010_D8S4"],["./data/AA034/AA034_D1S1", "./data/AA034/AA034_D1S4", "./data/AA034/AA034_D7S1", "./data/AA034/AA034_D7S4"]],
+                 "AA058-AA036": [["./data/AA058/AA058_D1S1", "./data/AA058/AA058_D1S4", "./data/AA058/AA058_D5S1", "./data/AA058/AA058_D5S4"],["./data/AA036/AA036_D2S1", "./data/AA036/AA036_D2S4", "./data/AA036/AA036_D6S1", "./data/AA036/AA036_D6S4"]],
+                 "AA058-AA034": [["./data/AA058/AA058_D1S1", "./data/AA058/AA058_D1S4", "./data/AA058/AA058_D5S1", "./data/AA058/AA058_D5S4"],["./data/AA034/AA034_D1S1", "./data/AA034/AA034_D1S4", "./data/AA034/AA034_D7S1", "./data/AA034/AA034_D7S4"]],
+                 "AA058-PL010": [["./data/AA058/AA058_D1S1", "./data/AA058/AA058_D1S4", "./data/AA058/AA058_D5S1", "./data/AA058/AA058_D5S4"],["./data/PL010/PL010_D1S1", "./data/PL010/PL010_D1S4", "./data/PL010/PL010_D8S1", "./data/PL010/PL010_D8S4"]],
+                 "AA036-AA034": [["./data/AA036/AA036_D2S1", "./data/AA036/AA036_D2S4", "./data/AA036/AA036_D6S1", "./data/AA036/AA036_D6S4"],["./data/AA034/AA034_D1S1", "./data/AA034/AA034_D1S4", "./data/AA034/AA034_D7S1", "./data/AA034/AA034_D7S4"]],
+                 "AA036-PL010": [["./data/AA036/AA036_D2S1", "./data/AA036/AA036_D2S4", "./data/AA036/AA036_D6S1", "./data/AA036/AA036_D6S4"],["./data/PL010/PL010_D1S1", "./data/PL010/PL010_D1S4", "./data/PL010/PL010_D8S1", "./data/PL010/PL010_D8S4"]],
+                 "AA036-AA058": [["./data/AA036/AA036_D2S1", "./data/AA036/AA036_D2S4", "./data/AA036/AA036_D6S1", "./data/AA036/AA036_D6S4"],["./data/AA058/AA058_D1S1", "./data/AA058/AA058_D1S4", "./data/AA058/AA058_D5S1", "./data/AA058/AA058_D5S4"]],
+                 "AA034-PL010": [["./data/AA034/AA034_D1S1", "./data/AA034/AA034_D1S4", "./data/AA034/AA034_D7S1", "./data/AA034/AA034_D7S4"],["./data/PL010/PL010_D1S1", "./data/PL010/PL010_D1S4", "./data/PL010/PL010_D8S1", "./data/PL010/PL010_D8S4"]],
+                 "AA034-AA058": [["./data/AA034/AA034_D1S1", "./data/AA034/AA034_D1S4", "./data/AA034/AA034_D7S1", "./data/AA034/AA034_D7S4"],["./data/AA058/AA058_D1S1", "./data/AA058/AA058_D1S4", "./data/AA058/AA058_D5S1", "./data/AA058/AA058_D5S4"]],
+                 "AA034-AA036": [["./data/AA034/AA034_D1S1", "./data/AA034/AA034_D1S4", "./data/AA034/AA034_D7S1", "./data/AA034/AA034_D7S4"],["./data/AA036/AA036_D2S1", "./data/AA036/AA036_D2S4", "./data/AA036/AA036_D6S1", "./data/AA036/AA036_D6S4"]]}
+    
+    for name, paths in all_paths.items():
+        save_path = "./ml_training/test_results/cross_animal_comprehensive/" + name + "/"
+        # Check if the save path exists
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        train_sizes = [1,2,5,10,15,20]
+        repeats = 10
+        outputs = {}
+        for train_size in train_sizes:
+            outputs[train_size] = {}
+            for i in range(repeats):
+                output = train(**{"DATASET_PATH": paths, "MODEL_TYPE": "GRU", "HIDDEN_SIZE": 30,
+                                   "TEST_SIZE": 5, "TRAIN_SIZE": train_size, "CUSTOM_TEST": True})
+                outputs[train_size][i] = output
+        
+        f1_scores = {train_size: [outputs[train_size][i]["f1"] for i in range(repeats)] for train_size in train_sizes}
+        plt.clf()
+        sns.boxplot(data=f1_scores)
+        plt.xlabel("Train Size (No. of Cells)")
+        plt.ylabel("F1 Score")
+        plt.title("F1 Score by Train Size")
+
+        plt.savefig(os.path.join(save_path, "f1_scores.png"))
+
+        results = []
+        for train_size in train_sizes:
+            for i in range(repeats):
+                output = outputs[train_size][i]
+                gt = output["gt"]
+                preds = output["preds"]
+                results.append(gt)
+                results.append(preds)
+        
+        # Save to csv
+        results = np.array(results)
+        np.savetxt(os.path.join(save_path, name + "_results.csv"), results, delimiter=",")
+
+        test_indices = {"all": {"GRU": output["test_indices"]}}
+        with open(os.path.join(save_path, "gru_all_test_indices.pkl"), "wb") as f:
+            pickle.dump(test_indices, f)
+        
+        train_indices = {"all": {"GRU": output["train_indices"]}}
+        with open(os.path.join(save_path, "gru_all_train_indices.pkl"), "wb") as f:
+            pickle.dump(train_indices, f)
+
+
+def train_on_all_LocalTransformer():
+    all_paths = ["./data/PL010/PL010_D1S1", "./data/PL010/PL010_D1S4", "./data/PL010/PL010_D8S1", "./data/PL010/PL010_D8S4",
+                 "./data/AA058/AA058_D1S1", "./data/AA058/AA058_D1S4", "./data/AA058/AA058_D5S1", "./data/AA058/AA058_D5S4", 
+                 "./data/AA036/AA036_D2S1", "./data/AA036/AA036_D2S4", "./data/AA036/AA036_D6S1", "./data/AA036/AA036_D6S4",
+                 "./data/AA034/AA034_D1S1", "./data/AA034/AA034_D1S4", "./data/AA034/AA034_D7S1", "./data/AA034/AA034_D7S4"]
+    
+    save_path = "./ml_training/test_results/all/LocalTransformer/"
+    # Check if the save path exists
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+    
+    repeats = 10
+    outputs = {"all": {}}
+    for i in range(repeats):
+        output = train(**{"PATHS": all_paths, "MODEL_TYPE": "LocalTransformer", "NUM_EPOCHS": 10,
+                          "HIDDEN_SIZE": 30, "NUM_LAYERS": 3, "HEADS": 2})
+        outputs["all"][i] = output
+    
+    f1_scores = [outputs["all"][i]["f1"] for i in range(repeats)]
+    plt.clf()
+    sns.boxplot(data=f1_scores) 
+    plt.ylabel("F1 Score")
+    plt.title("F1 Score by Train Size")
+
+    plt.savefig(os.path.join(save_path, "f1_scores.png"))
+
+    results = []
+    for i in range(repeats):
+        output = outputs["all"][i]
+        gt = output["gt"]
+        preds = output["preds"]
+        results.append(gt)
+        results.append(preds)
+
+    # Since the result lengths can be different we need to save them line by line
+    for i in range(len(results)):
+        with open(os.path.join(save_path, "all_results.csv"), "a") as f:
+            np.savetxt(f, np.array([results[i]]), delimiter=",")
+
+    # Pickle Save the output["test_indices"]
+    test_indices = {"all": {"Transformer": output["test_indices"]}}
+    with open(os.path.join(save_path, "local_transformer_all_test_indices.pkl"), "wb") as f:
         pickle.dump(test_indices, f)
 
 if __name__ == "__main__": 
-    train_on_all_Transformer()
+    cross_animal_comprehensive()

@@ -1,5 +1,5 @@
 from ml_training.dataset_hidden import (TrainDataset, TestDataset, ValDataset, extract_data)
-from ml_training.model import GRU_Hidden, LSTM, BasicTransformer
+from ml_training.model import GRU_Hidden, LSTM, BasicTransformer, LocalTransformer
 from ml_training import config
 from torch.nn import BCEWithLogitsLoss
 from torch.optim import Adam
@@ -51,11 +51,20 @@ def train(paths=None, train_size=None, test_size=None, experiment_type="within_s
 		model = LSTM(hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS, inputs=config.INPUT).to(config.DEVICE)
 	elif model_type == "transformer":
 		model = BasicTransformer(sequence_len=config.SECTION_LEN, slack=config.SLACK, inputs=config.INPUT, hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS, num_heads=config.HEADS, classes=1).to(config.DEVICE)
+	elif model_type == "local_transformer":
+		model = LocalTransformer(inputs=config.INPUT, local_attn_window_size=config.HIDDEN_SIZE, 
+								max_seq_len=2*config.SLACK+config.SECTION_LEN, depth=config.NUM_LAYERS, 
+								causal=False, look_forward=1, look_backward=1, 
+								exact_windowsize=True, slack=config.SLACK,
+								sequence_len=config.SECTION_LEN, heads=config.HEADS).to(config.DEVICE)
 	else:
 		model = GRU_Hidden(hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS, inputs=config.INPUT).to(config.DEVICE)
 	# initialize loss function and optimizer
 
-	lossFunc = BCEWithLogitsLoss()
+	if model_type in ["transformer_local", "transformer"]:
+		lossFunc = BCEWithLogitsLoss(pos_weight=trainDS.weight.to(config.DEVICE)*config.WEIGHT_MULTIPLIER)
+	else:
+		lossFunc = BCEWithLogitsLoss()
 	opt = Adam(model.parameters(), lr=config.INIT_LR)
 	# calculate steps per epoch for training and validation set
 	trainSteps = trainDS.get_training_steps() // config.BATCH_SIZE
@@ -99,6 +108,8 @@ def train(paths=None, train_size=None, test_size=None, experiment_type="within_s
 						pred = model(x, h0)
 					else:
 						pred = model(x)
+					if pred.shape != y.shape:
+						y = y.squeeze(-1)
 					loss = lossFunc(pred, y)
 					# first, zero out any previously accumulated gradients, then
 					# perform backpropagation, and then update model parameters
@@ -130,6 +141,8 @@ def train(paths=None, train_size=None, test_size=None, experiment_type="within_s
 							pred = model(x, h0)
 						else:
 							pred = model(x)
+						if pred.shape != y.shape:
+							y = y.squeeze(-1)
 						totalValLoss += lossFunc(pred, y)
 		# calculate the average training and validation loss
 		avgTrainLoss = totalTrainLoss / trainSteps
@@ -177,26 +190,28 @@ def train(paths=None, train_size=None, test_size=None, experiment_type="within_s
 	preds = []
 	gt = []
 	# switch off autograd
-	if model_type in ["transformer_local", "transformer"]:
-		for path, unit_ids in testDS.get_test_indices().items():
-			minian_data = open_minian(path)
-			for unit_id in unit_ids:
-				input_data, output = extract_data(minian_data, unit_id, config.SLACK)
-				pred = sequence_to_predictions(model, input_data, config.ROLLING, voting="average")
-				preds.append(pred)
-				gt.append(output.cpu().detach().numpy())
-	with torch.no_grad():
-		# loop over the test set
-		for (i, (inputs, target)) in enumerate(tqdm(testLoader, leave=True)):
-			# unpack the data and make sure they are on the same device
-			x, y = inputs.to(config.DEVICE), target.to(config.DEVICE)
-			# perform a forward pass and calculate the training loss
-			pred = model(x)
-			pred = torch.sigmoid(pred)
-			pred = pred.cpu().detach().numpy()
-			preds.extend(pred)
-			# add the ground-truth to the list
-			gt.extend(y.cpu().detach().numpy())
+	if model_type in ["local_transformer", "transformer"]:
+		with torch.no_grad():
+			for path, unit_ids in testDS.get_test_indices().items():
+				minian_data = open_minian(path)
+				for unit_id in unit_ids:
+					input_data, output = extract_data(minian_data, unit_id, config.SLACK)
+					pred = sequence_to_predictions(model, input_data, config.ROLLING, voting="average")
+					preds.append(pred)
+					gt.append(output.cpu().detach().numpy())
+	else:
+		with torch.no_grad():	
+			# loop over the test set
+			for (i, (inputs, target)) in enumerate(tqdm(testLoader, leave=True)):
+				# unpack the data and make sure they are on the same device
+				x, y = inputs.to(config.DEVICE), target.to(config.DEVICE)
+				# perform a forward pass and calculate the training loss
+				pred = model(x)
+				pred = torch.sigmoid(pred)
+				pred = pred.cpu().detach().numpy()
+				preds.extend(pred)
+				# add the ground-truth to the list
+				gt.extend(y.cpu().detach().numpy())
 
 	preds = np.concatenate(preds).flatten()
 	gt = np.concatenate(gt).flatten()

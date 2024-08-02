@@ -1,6 +1,7 @@
-from ml_training.dataset import LocalTransformerDataset, train_val_test_split, extract_data
+from ml_training.dataset import CustomDataset, train_val_test_split, extract_data, train_val_test_split_custom
 from ml_training.model import LocalTransformer, GRU, BasicTransformer, LSTM
 from ml_training import config
+from ml_training.config import update_config
 from torch.nn import BCEWithLogitsLoss
 from torch.optim import Adam
 from torch.utils.data import DataLoader
@@ -15,7 +16,8 @@ import os
 from sklearn.metrics import f1_score, roc_auc_score, roc_curve, precision_score, recall_score, confusion_matrix, accuracy_score, ConfusionMatrixDisplay
 
 
-def train(): 
+def train(**kwargs):
+	update_config(kwargs)
 	# For saving purposes get the hour and minute and date of the run
 	t = time.localtime()
 	current_time = time.strftime("%m_%d_%H_%M", t)
@@ -28,11 +30,14 @@ def train():
 	
 	# load the image and mask filepaths in a sorted manner
 	paths = config.DATASET_PATH
-	train_unit_ids, val_unit_ids, test_unit_ids = train_val_test_split(paths, config.TEST_SIZE, config.VAL_SIZE)
+	if config.CUSTOM_TEST:
+		train_unit_ids, val_unit_ids, test_unit_ids = train_val_test_split_custom(paths[0], paths[1], config.TRAIN_SIZE, config.TEST_SIZE)
+	else:
+		train_unit_ids, val_unit_ids, test_unit_ids = train_val_test_split(paths, config.TEST_SIZE, config.VAL_SIZE)
 
 	# create the train and test datasets
-	trainDS = LocalTransformerDataset(train_unit_ids, section_len=config.SECTION_LEN, rolling=config.ROLLING, slack=config.SLACK, only_events=False)
-	valDS = LocalTransformerDataset(val_unit_ids, section_len=config.SECTION_LEN, rolling=config.ROLLING, slack=config.SLACK, only_events=False)
+	trainDS = CustomDataset(train_unit_ids, section_len=config.SECTION_LEN, rolling=config.ROLLING, slack=config.SLACK, only_events=False, extract_val=config.CUSTOM_TEST)
+	valDS = CustomDataset(val_unit_ids, section_len=config.SECTION_LEN, rolling=config.ROLLING, slack=config.SLACK, only_events=False, val_data=trainDS.val_data)
 	
 	# create the training and test data loaders
 	trainLoader = DataLoader(trainDS, shuffle=True,
@@ -62,7 +67,7 @@ def train():
 		model_name = "gru_"
 	# initialize loss function and optimizer
 
-	lossFunc = BCEWithLogitsLoss(pos_weight=trainDS.weight.to(config.DEVICE)*config.WEIGHT_MULTIPLIER)
+	lossFunc = BCEWithLogitsLoss()
 	opt = Adam(model.parameters(), lr=config.INIT_LR)
 	# calculate steps per epoch for training and validation set
 	trainSteps = len(trainDS) // config.BATCH_SIZE
@@ -158,7 +163,7 @@ def train():
 		minian_data = open_minian(path)
 		for unit_id in unit_ids:
 			input_data, output = extract_data(minian_data, unit_id, config.SLACK)
-			pred = sequence_to_predictions(model, input_data, config.ROLLING, voting="average")
+			pred = sequence_to_predictions(model, input_data, config.ROLLING, voting="max")
 			preds.append(pred)
 			gt.append(output.cpu().detach().numpy())
 	
@@ -204,21 +209,33 @@ def train():
 	plt.savefig(roc_path)
 
 	# Create a text file with the parameters used
-	with open(os.path.sep.join([output_path, "parameters.txt"]), "w") as file:
-		file.write("TYPE: Local Transformer\n")
-		file.write("INIT_LR: {}\nNUM_EPOCHS: {}\nBATCH_SIZE: {}\nTHRESHOLD: {}\nTEST_SIZE: {}\nVAL_SIZE: {}\nSECTION_LEN: {}\nHIDDEN_SIZE: {}\nNUM_LAYERS: {}\n SLACK: {} \n ROLLING: {}\n".format(
-			config.INIT_LR, config.NUM_EPOCHS, config.BATCH_SIZE, config.THRESHOLD, config.TEST_SIZE, config.VAL_SIZE, config.SECTION_LEN, config.HIDDEN_SIZE, config.NUM_LAYERS, config.SLACK, config.ROLLING))
-		file.write("Accuracy: {:.4f}\n".format(acc))
-		file.write("Transient Event Precision: {:.4f}\n".format(precision1))
-		file.write("Transient Event Recall: {:.4f}\n".format(recall1))
-		file.write("No Transient Event Precision: {:.4f}\n".format(precision2))
-		file.write("No Transient Event Recall: {:.4f}\n".format(recall2))
-		file.write("F1 score: {:.4f}\n".format(f1))
-		file.write("AUC ROC score: {:.4f}\n".format(auc))
-		file.write("Data used for training: \n")
-		for data_type in config.INPUT:
-			file.write(data_type + "\n")
-		# Write the data used for the training
-		file.write("Data paths for training: \n")
-		for path in paths:
-			file.write(path + "\n")
+	if not config.CUSTOM_TEST:
+		with open(os.path.sep.join([output_path, "parameters.txt"]), "w") as file:
+			file.write("TYPE: Local Transformer\n")
+			file.write("INIT_LR: {}\nNUM_EPOCHS: {}\nBATCH_SIZE: {}\nTHRESHOLD: {}\nTEST_SIZE: {}\nVAL_SIZE: {}\nSECTION_LEN: {}\nHIDDEN_SIZE: {}\nNUM_LAYERS: {}\n SLACK: {} \n ROLLING: {}\n".format(
+				config.INIT_LR, config.NUM_EPOCHS, config.BATCH_SIZE, config.THRESHOLD, config.TEST_SIZE, config.VAL_SIZE, config.SECTION_LEN, config.HIDDEN_SIZE, config.NUM_LAYERS, config.SLACK, config.ROLLING))
+			file.write("Accuracy: {:.4f}\n".format(acc))
+			file.write("Transient Event Precision: {:.4f}\n".format(precision1))
+			file.write("Transient Event Recall: {:.4f}\n".format(recall1))
+			file.write("No Transient Event Precision: {:.4f}\n".format(precision2))
+			file.write("No Transient Event Recall: {:.4f}\n".format(recall2))
+			file.write("F1 score: {:.4f}\n".format(f1))
+			file.write("AUC ROC score: {:.4f}\n".format(auc))
+			file.write("Data used for training: \n")
+			for data_type in config.INPUT:
+				file.write(data_type + "\n")
+			# Write the data used for the training
+			file.write("Data paths for training: \n")
+			for path in paths:
+				file.write(path + "\n")
+
+	# Create dict that keeps all the outputs
+	outputs = {"accuracy": acc, "precision1": precision1, "recall1": recall1,
+			 "precision0": precision2, "recall0": recall2, "f1": f1, "auc": auc,
+			 "preds": preds, "gt": gt}
+	
+	# Extract the indices from the test set
+	outputs["test_indices"] = test_unit_ids
+	outputs["train_indices"] = train_unit_ids
+
+	return outputs
