@@ -35,7 +35,7 @@ HEADS=1
 
 WEIGHT_MULTIPLIER = 1
 
-MODEL_TYPE = "BasicTransformer"
+MODEL_TYPE = "gru"
 
 
 def update_config(config_dict):

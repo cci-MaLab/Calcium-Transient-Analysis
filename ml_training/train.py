@@ -31,13 +31,16 @@ def train(**kwargs):
 	# load the image and mask filepaths in a sorted manner
 	paths = config.DATASET_PATH
 	if config.CUSTOM_TEST:
-		train_unit_ids, val_unit_ids, test_unit_ids = train_val_test_split_custom(paths[0], paths[1], config.TRAIN_SIZE, config.TEST_SIZE)
+		if type(paths[0]) == str:
+			paths[0] = [paths[0]]
+			paths[1] = [paths[1]]
+		train_unit_ids, val_unit_ids, test_unit_ids = train_val_test_split_custom(paths[0], paths[1], config.TRAIN_SIZE, config.VAL_SIZE, config.TEST_SIZE)
 	else:
-		train_unit_ids, val_unit_ids, test_unit_ids = train_val_test_split(paths, config.TEST_SIZE, config.VAL_SIZE)
+		train_unit_ids, val_unit_ids, test_unit_ids = train_val_test_split(paths, train_total=config.TRAIN_SIZE, test_split=config.TEST_SIZE, val_split=config.VAL_SIZE)
 
 	# create the train and test datasets
-	trainDS = CustomDataset(train_unit_ids, section_len=config.SECTION_LEN, rolling=config.ROLLING, slack=config.SLACK, only_events=False, extract_val=config.CUSTOM_TEST)
-	valDS = CustomDataset(val_unit_ids, section_len=config.SECTION_LEN, rolling=config.ROLLING, slack=config.SLACK, only_events=False, val_data=trainDS.val_data)
+	trainDS = CustomDataset(train_unit_ids, section_len=config.SECTION_LEN, rolling=config.ROLLING, slack=config.SLACK, only_events=False)
+	valDS = CustomDataset(val_unit_ids, section_len=config.SECTION_LEN, rolling=config.ROLLING, slack=config.SLACK, only_events=False)
 	
 	# create the training and test data loaders
 	trainLoader = DataLoader(trainDS, shuffle=True,
@@ -59,7 +62,7 @@ def train(**kwargs):
 						   hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS, 
 						   num_heads=config.HEADS, classes=1).to(config.DEVICE)
 		model_name = "basic_transformer_"
-	elif config.MODEL_TYPE == "LSTM":
+	elif config.MODEL_TYPE == "lstm":
 		model = LSTM(inputs=config.INPUT, hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS, sequence_len=config.SECTION_LEN, slack=config.SLACK).to(config.DEVICE)
 		model_name = "lstm_"
 	else:
