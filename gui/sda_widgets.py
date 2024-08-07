@@ -54,9 +54,17 @@ class Visualization(HasTraits):
         HasTraits.__init__(self)
         self.visualization_data = visualization_data
         self.axes = None
+        self.points_3d = None
 
     def update_frame(self, data):
         self.plot.mlab_source.set(scalars=data)
+
+    def update_points(self, points_coords):
+        if not len(points_coords[0]) == 0:
+            if self.points_3d is None:
+                self.points_3d = mlab.points3d(*points_coords)
+            else:
+                self.points_3d.mlab_source.set(x=points_coords[0], y=points_coords[1], z=points_coords[2])
     
     def reset_frame(self, frame_no=0):
         frame = self.visualization_data.data[0]
@@ -86,10 +94,12 @@ class Visualization(HasTraits):
                 )
     
     def set_frame(self, frame):
-        self.update_frame(self.visualization_data.get_frame(frame))
+        data_dict = self.visualization_data.get_3d_data(frame)
+        self.update_frame(data_dict["frame"])
+        self.update_points(data_dict["points_coords"])
 
 class CurrentVisualizationData():
-    def __init__(self, data, start_frame, end_frame, x_start, x_end, y_start, y_end):
+    def __init__(self, data, start_frame, end_frame, x_start, x_end, y_start, y_end, scaling_factor=10):
         self.data = data
         self.start_frame = start_frame
         self.end_frame = end_frame
@@ -97,9 +107,23 @@ class CurrentVisualizationData():
         self.x_end = x_end
         self.y_start = y_start
         self.y_end = y_end
+        self.scaling_factor = scaling_factor
+        self.points = {"x": np.array([]), "y": np.array([])}
 
-    def get_frame(self, frame):
-        return self.data[frame-self.start_frame]
+    def get_3d_data(self, frame) -> dict:
+        # Returns a dictionary containing the data for surface plot and the points of the centroids
+        frame = self.data[frame-self.start_frame] * self.scaling_factor
+        # Get the x, y and z values for the points
+        points_coords = (self.points["x"], self.points["y"], frame[self.points["x"], self.points["y"]]) if len(self.points["x"]) > 0 else ([], [], [])
+        return {"frame": frame, "points_coords": points_coords}
+    
+    def update_points_list(self, points):
+        points = points.values()
+        x_coords, y_coords = zip(*points)
+
+        x_coords, y_coords = np.array(x_coords).round().astype(int) - int(self.x_start), np.array(y_coords).round().astype(int) - int(self.y_start)
+        self.points = {"x": x_coords, "y": y_coords}
+
     
     def in_range(self, frame):
         return frame >= self.start_frame and frame <= self.end_frame-1
@@ -110,11 +134,11 @@ class CurrentVisualizationData():
     def get_extent(self):
         x = self.data.shape[1]
         y = self.data.shape[2]
-        z = self.data.max()
+        z = self.data.max() * self.scaling_factor
         return [0, x, 0, y, 0, z]
     
     def __mul__(self, factor):
-        self.data *= factor
+        self.scaling_factor = factor
         return self
 
     __rmul__ = __mul__
@@ -139,7 +163,10 @@ def base_visualization(session, precalculated_values=None, data_type="C", start_
 
     Y = np.flip(np.tensordot(signal, A, axes=([0], [0])).swapaxes(1, 2), 2) # In order to maintain parity with the 2D visualization
 
-    return CurrentVisualizationData(Y, start_frame, end_frame, x_start, x_end, y_start, y_end)
+    CV = CurrentVisualizationData(Y, start_frame, end_frame, x_start, x_end, y_start, y_end)
+    CV.update_points_list(session.centroids)
+
+    return CV
 
 
 class MayaviQWidget(QWidget):
