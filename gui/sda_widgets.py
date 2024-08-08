@@ -62,7 +62,9 @@ class Visualization(HasTraits):
     def update_points(self, points_coords):
         if not len(points_coords[0]) == 0:
             if self.points_3d is None:
-                self.points_3d = mlab.points3d(*points_coords)
+                self.points_3d = mlab.points3d(*points_coords, color=(1, 1, 1), mode="point", scale_mode="none", scale_factor=1.0)
+                self.points_3d.actor.property.point_size = 10
+                #self.points_3d.actor.property.render_points_as_spheres = True
             else:
                 self.points_3d.mlab_source.set(x=points_coords[0], y=points_coords[1], z=points_coords[2])
     
@@ -121,7 +123,9 @@ class CurrentVisualizationData():
         points = points.values()
         x_coords, y_coords = zip(*points)
 
-        x_coords, y_coords = np.array(x_coords).round().astype(int) - int(self.x_start), np.array(y_coords).round().astype(int) - int(self.y_start)
+        y_coords, x_coords = np.array(x_coords).round().astype(int) - int(self.x_start), np.array(y_coords).round().astype(int) - int(self.y_start) # They need to be switched around due prior flipping
+        # Finally y_coords needs to be flipped with respect to its axis
+        # TODO
         self.points = {"x": x_coords, "y": y_coords}
 
     
@@ -162,6 +166,9 @@ def base_visualization(session, precalculated_values=None, data_type="C", start_
     A = A[:, y_start:y_end, x_start:x_end]
 
     Y = np.flip(np.tensordot(signal, A, axes=([0], [0])).swapaxes(1, 2), 2) # In order to maintain parity with the 2D visualization
+
+    # Since we did the prior we need to flip x_start, y_start etc...
+    x_start, x_end, y_start, y_end = y_start, y_end, x_start, x_end
 
     CV = CurrentVisualizationData(Y, start_frame, end_frame, x_start, x_end, y_start, y_end)
     CV.update_points_list(session.centroids)
