@@ -5,6 +5,7 @@ from traitsui.api import View, Item
 from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
 from mayavi import mlab 
 from PyQt5.QtWidgets import  QWidget, QVBoxLayout, QPushButton
+from PyQt5.QtCore import pyqtSignal
 import numpy as np
 from scipy.interpolate import interp1d
 
@@ -50,11 +51,15 @@ class SDAWindowWidget(QWidget):
 class Visualization(HasTraits):
     # Signal to indicate scene has been activated
     scene = Instance(MlabSceneModel, ())
-    def __init__(self, visualization_data):
+    def __init__(self, visualization_data, parent=None):
         HasTraits.__init__(self)
         self.visualization_data = visualization_data
         self.axes = None
         self.points_3d = None
+        self.points_coords = None
+        self.current_shape = self.visualization_data.data[0].shape
+        self.parent = parent
+
 
     def update_frame(self, data):
         self.plot.mlab_source.set(scalars=data)
@@ -62,11 +67,15 @@ class Visualization(HasTraits):
     def update_points(self, points_coords):
         if not len(points_coords[0]) == 0:
             if self.points_3d is None:
-                self.points_3d = mlab.points3d(*points_coords, color=(1, 1, 1), mode="point", scale_mode="none", scale_factor=1.0)
-                self.points_3d.actor.property.point_size = 10
-                #self.points_3d.actor.property.render_points_as_spheres = True
+                self.points_3d = mlab.points3d(*points_coords, color=(1, 1, 1), mode="cube", scale_factor=2.0)
+                self.points_coords = points_coords
+                mlab.gcf().on_mouse_pick(self.picker_callback)
             else:
-                self.points_3d.mlab_source.set(x=points_coords[0], y=points_coords[1], z=points_coords[2])
+                if len(points_coords) == 4:
+                    self.points_3d.mlab_source.set(x=points_coords[0], y=points_coords[1], z=points_coords[2], color=points_coords[3])
+                else:
+                    self.points_3d.mlab_source.set(x=points_coords[0], y=points_coords[1], z=points_coords[2])
+                self.points_coords = (points_coords[0], points_coords[1], points_coords[2])
     
     def reset_frame(self, frame_no=0):
         frame = self.visualization_data.data[0]
@@ -76,6 +85,7 @@ class Visualization(HasTraits):
 
     def update_data(self, visualization_data, frame=0):
         self.visualization_data = visualization_data
+        self.current_shape = self.visualization_data.data[0].shape
         self.reset_frame(frame)
         self.axes = mlab.axes(extent=self.visualization_data.get_extent(), ranges=self.visualization_data.get_ranges(), xlabel='Width', ylabel='Height', zlabel='Spike Intensity')
 
@@ -100,6 +110,34 @@ class Visualization(HasTraits):
         self.update_frame(data_dict["frame"])
         self.update_points(data_dict["points_coords"])
 
+    def picker_callback(self, picker):
+        """ Picker callback: this get called when on pick events.
+        This method is a bit of a disaster but I will justify the approach.
+        I needed to use points for the visualization as I wanted to make the rendering as fast as possible.
+        Unfortunately to select a given point you need pixel perfect precision, way more than what I would
+        deem acceptable for the user. Therefore, when a pick is made I check both the surface and the points
+        to extrapolate the necessary x and y positions. This will be sent to the main GUI to cross, check whether
+        the selected point overlaps with a cell position. If so then it will be highlighted and the color of
+        the point will be updated.
+        """
+        x, y = -1, -1
+        if picker.actor in self.plot.actor.actors:
+            # The point ID gives us the index of the point picked. It start from the bottom left corner and goes right and then up.
+            x, y = int(picker.point_id % self.current_shape[0]), int(picker.point_id // self.current_shape[0])
+        elif picker.actor in self.points_3d.actor.actors:
+            # It's a mess but we need to extrapolate the correct point from the id we return.
+            glyph_points = self.points_3d.glyph.glyph_source.glyph_source.output.points.to_array()
+            point_id = picker.point_id//glyph_points.shape[0]
+            x, y = int(self.points_coords[0][point_id]), int(self.points_coords[1][point_id])
+        if x != -1 and y != -1:
+            # We need to flip the y value since the axes are flipped
+            y = self.current_shape[1] - y
+            # And now transpose the x and y values
+            x, y = y, x
+            self.parent.receive_click(x, y)
+
+
+
 class CurrentVisualizationData():
     def __init__(self, data, start_frame, end_frame, x_start, x_end, y_start, y_end, scaling_factor=10):
         self.data = data
@@ -123,9 +161,9 @@ class CurrentVisualizationData():
         points = points.values()
         x_coords, y_coords = zip(*points)
 
-        y_coords, x_coords = np.array(x_coords).round().astype(int) - int(self.x_start), np.array(y_coords).round().astype(int) - int(self.y_start) # They need to be switched around due prior flipping
+        y_coords, x_coords = int(self.x_end) - np.array(x_coords).round().astype(int), np.array(y_coords).round().astype(int) - int(self.y_start) # They need to be switched around due prior flipping
         # Finally y_coords needs to be flipped with respect to its axis
-        # TODO
+        
         self.points = {"x": x_coords, "y": y_coords}
 
     
@@ -171,12 +209,13 @@ def base_visualization(session, precalculated_values=None, data_type="C", start_
     x_start, x_end, y_start, y_end = y_start, y_end, x_start, x_end
 
     CV = CurrentVisualizationData(Y, start_frame, end_frame, x_start, x_end, y_start, y_end)
-    CV.update_points_list(session.centroids)
+    CV.update_points_list(session.centroids_max)
 
     return CV
 
 
 class MayaviQWidget(QWidget):
+    point_signal = pyqtSignal(int, int)
     def __init__(self, session, chunk_length=50, window_size=200, visualization_data=CurrentVisualizationData(np.random.rand(1, 608, 608), 0, 0, 0, 608, 0, 608), visualization_generator=base_visualization):
         super().__init__()
         self.chunk_length = chunk_length
@@ -185,7 +224,7 @@ class MayaviQWidget(QWidget):
         self.scaling_factor = 10
         self.visualization_data = visualization_data * self.scaling_factor
         self.anim = None
-        self.visualization = Visualization(self.visualization_data)
+        self.visualization = Visualization(self.visualization_data, self)
         self.visualization_generator = visualization_generator
         layout = QVBoxLayout(self)
         self.ui = self.visualization.edit_traits(parent=self,
@@ -193,6 +232,9 @@ class MayaviQWidget(QWidget):
         self.current_frame = 0
         layout.addWidget(self.ui)
         self.kwargs = {}
+
+        # We need to keep track the cell id to index position
+        self.cell_id_to_index = {cell_id: i for i, cell_id in enumerate(session.centroids_max.keys())}
 
         # We need to precalculate some data related to E to not cause slow down during visualization
         self.precalculated_values = self._precalculate(session)
@@ -325,6 +367,17 @@ class MayaviQWidget(QWidget):
         chunk_start = self.current_frame - self.current_frame % self.chunk_length
         self.set_data(self.visualization_generator(self.session, precalculated_values=self.precalculated_values,  start_frame=chunk_start, end_frame=chunk_start+self.window_size, **kwargs))
         self.set_frame(self.current_frame)
+
+    def receive_click(self, x, y):
+        x, y = self.visualization_data.x_start + x, self.visualization_data.y_start + y
+        self.point_signal.emit(x, y)
+
+    def update_selected_cells(self, cells):
+        ids_to_highlight = [self.cell_id_to_index[cell_id] for cell_id in cells]
+        points_coords = self.visualization.points_coords
+        colors = [1 if i in ids_to_highlight else 0 for i in range(len(points_coords[0]))]
+        points_coords = (points_coords[0], points_coords[1], points_coords[2], colors)
+        self.visualization.update_points(points_coords)
 
 
 

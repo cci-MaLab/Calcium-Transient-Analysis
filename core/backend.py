@@ -377,6 +377,7 @@ class DataInstance:
         self.value: dict #key is the unit_id,value is the numpy array
         self.outliers_list: List[int] = []
         self.centroids: dict
+        self.centroids_max: dict
         self.load_data(dpath=dpath)
         self.no_of_clusters = 4     
         self.distance_metric = 'euclidean'
@@ -499,13 +500,17 @@ class DataInstance:
         cells = self.data['unit_ids']
 
         cent = self.centroid(self.data['A'])
+        cent_max = self.centroid_max(self.data['A'])
 
         
         self.A = {}
         self.centroids = {}
+        self.centroids_max = {}
         for i in cells:
             self.A[i] = self.data['A'].sel(unit_id = i)
             self.centroids[i] = tuple(cent.loc[cent['unit_id'] == i].values[0][1:])
+            self.centroids_max[i] = tuple(cent_max.loc[cent_max['unit_id'] == i].values[0][1:])
+
 
         output_dpath = "/N/project/Cortical_Calcium_Image/analysis"
         if session is None:
@@ -896,6 +901,67 @@ class DataInstance:
         w_rg = (A.coords["width"].min().values, A.coords["width"].max().values)
         cents_df["height"] = cents_df["height"] * (h_rg[1] - h_rg[0]) + h_rg[0]
         cents_df["width"] = cents_df["width"] * (w_rg[1] - w_rg[0]) + w_rg[0]
+        return cents_df
+    
+    def centroid_max(self, A: xr.DataArray, verbose=False) -> pd.DataFrame:
+        """
+        Compute the centroid by taking the maximum value in the image. Nearly the same
+        as centroid() however it is looks better in the 3D visualizations
+
+        Parameters
+        ----------
+        A : xr.DataArray
+            Input spatial footprints.
+        verbose : bool, optional
+            Whether to print message and progress bar. By default `False`.
+
+        Returns
+        -------
+        cents_df : pd.DataFrame
+            Centroid Max of spatial footprints for each cell. Has columns "unit_id",
+            "height", "width" and any other additional metadata dimension.
+        """
+
+        def max_cent(im):
+            im_nan = np.isnan(im)
+            if im_nan.all():
+                return np.array([np.nan, np.nan])
+            if im_nan.any():
+                im = np.nan_to_num(im)
+            max_index_flat = np.argmax(im)
+            max_index = np.unravel_index(max_index_flat, im.shape)
+            return np.array(max_index)
+        
+        gu_max_cent = darr.gufunc(
+            max_cent,
+            signature="(h,w)->(d)",
+            output_dtypes=int,
+            output_sizes=dict(d=2),
+            vectorize=True,
+        )
+
+        cents = xr.apply_ufunc(
+            gu_max_cent,
+            A.chunk(dict(height=-1, width=-1)),
+            input_core_dims=[["height", "width"]],
+            output_core_dims=[["dim"]],
+            dask="allowed",
+        ).assign_coords(dim=["height", "width"])
+
+        if verbose:
+            print("computing centroids")
+            with ProgressBar():
+                cents = cents.compute()
+        
+        cents_df = (
+            cents.rename("cents")
+            .to_series()
+            .dropna()
+            .unstack("dim")
+            .rename_axis(None, axis="columns")
+            .reset_index()
+        )
+
         return cents_df
 
     def update_and_save_E(self, unit_id: int, spikes: Union[list, np.ndarray], update_type: str = "Accept Incoming Only"):

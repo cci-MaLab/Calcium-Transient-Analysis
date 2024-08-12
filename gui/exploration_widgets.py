@@ -65,6 +65,7 @@ class ExplorationWidget(QWidget):
         self.imv_behavior.setVisible(False)
         self.visualization_3D = MayaviQWidget(self.session)
         self.visualization_3D.setVisible(False)
+        self.visualization_3D.point_signal.connect(self.point_selection)
 
 
         self.session.load_videos()
@@ -1651,13 +1652,10 @@ class ExplorationWidget(QWidget):
             self.current_frame -= 1
             self.next_frame()
 
-    def video_click(self, event):       
-        point = self.imv_cell.getImageItem().mapFromScene(event.pos())
-        x, y = point.x(), point.y()
-        converted_point = (round(y - 0.5), round(x - 0.5)) # Switch x and y due to transpose
-        if converted_point in self.A_pos_to_cell:
+    def point_selection(self, x, y):
+        if (x, y) in self.A_pos_to_cell:
             temp_ids = set()
-            for cell_id in self.A_pos_to_cell[converted_point]:
+            for cell_id in self.A_pos_to_cell[(x, y)]:
                 temp_ids.add(cell_id)
 
             # We add selected cells and deactivate already selected cells
@@ -1672,10 +1670,11 @@ class ExplorationWidget(QWidget):
                 self.next_frame()
             
             self.selected_event_change(False)
+            self.visualization_3D.update_selected_cells(self.video_cell_selection)
         
-        if converted_point in self.A_pos_to_missed_cell:
+        if (x, y) in self.A_pos_to_missed_cell:
             temp_ids = set()
-            for missed_id in self.A_pos_to_missed_cell[converted_point]:
+            for missed_id in self.A_pos_to_missed_cell[(x, y)]:
                 temp_ids.add(missed_id)
 
             self.missed_cells_selection = (self.missed_cells_selection | temp_ids) - (self.missed_cells_selection & temp_ids)
@@ -1684,6 +1683,13 @@ class ExplorationWidget(QWidget):
                 self.current_frame -= 1
                 self.next_frame()
             self.visualize_signals(reset_view=False)
+
+    def video_click(self, event):       
+        point = self.imv_cell.getImageItem().mapFromScene(event.pos())
+        x, y = point.x(), point.y()
+        converted_point = (round(y - 0.5), round(x - 0.5)) # Switch x and y due to transpose
+        self.point_selection(*converted_point)
+        
             
             
     def enable_disable_justification(self, enable=True):
