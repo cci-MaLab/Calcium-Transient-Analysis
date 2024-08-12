@@ -3,7 +3,8 @@
 from traits.api import HasTraits, Instance, on_trait_change
 from traitsui.api import View, Item
 from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
-from mayavi import mlab 
+from mayavi import mlab
+from tvtk.api import tvtk
 from PyQt5.QtWidgets import  QWidget, QVBoxLayout, QPushButton
 from PyQt5.QtCore import pyqtSignal
 import numpy as np
@@ -67,12 +68,21 @@ class Visualization(HasTraits):
     def update_points(self, points_coords):
         if not len(points_coords[0]) == 0:
             if self.points_3d is None:
-                self.points_3d = mlab.points3d(*points_coords, color=(1, 1, 1), mode="cube", scale_factor=2.0)
+                self.points_3d = mlab.points3d(*points_coords, np.ones(len(points_coords[0])), colormap="prism",  mode="cube", scale_factor=2.0)
                 self.points_coords = points_coords
-                mlab.gcf().on_mouse_pick(self.picker_callback)
+                picker = mlab.gcf().on_mouse_pick(self.picker_callback)
+                picker.tolerance = 0.01
             else:
                 if len(points_coords) == 4:
-                    self.points_3d.mlab_source.set(x=points_coords[0], y=points_coords[1], z=points_coords[2], color=points_coords[3])
+                    self.points_3d.mlab_source.set(x=points_coords[0], y=points_coords[1], z=points_coords[2])
+                    # Get indices where equal to 1
+                    indices_selected = np.where(points_coords[3] == 1)[0]
+                    indices_not_selected = np.where(points_coords[3] == 0)[0]
+                    for idx in indices_selected:
+                        self.points_3d.mlab_source.dataset.point_data.scalars[int(idx)] = 2
+                    for idx in indices_not_selected:
+                        self.points_3d.mlab_source.dataset.point_data.scalars[int(idx)] = 1
+                    self.points_3d.mlab_source.dataset.modified()
                 else:
                     self.points_3d.mlab_source.set(x=points_coords[0], y=points_coords[1], z=points_coords[2])
                 self.points_coords = (points_coords[0], points_coords[1], points_coords[2])
@@ -375,7 +385,7 @@ class MayaviQWidget(QWidget):
     def update_selected_cells(self, cells):
         ids_to_highlight = [self.cell_id_to_index[cell_id] for cell_id in cells]
         points_coords = self.visualization.points_coords
-        colors = [1 if i in ids_to_highlight else 0 for i in range(len(points_coords[0]))]
+        colors = np.array([1 if i in ids_to_highlight else 0 for i in range(len(points_coords[0]))])
         points_coords = (points_coords[0], points_coords[1], points_coords[2], colors)
         self.visualization.update_points(points_coords)
 
