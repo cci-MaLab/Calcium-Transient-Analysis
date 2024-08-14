@@ -177,6 +177,8 @@ class ExplorationWidget(QWidget):
         self.tabs_video.setFixedWidth(330)
         tabs_signal = QTabWidget()
         tabs_signal.setFixedWidth(320)
+        self.tabs_global_cell_switch = QTabWidget() # This is for the bottom half of the screen
+
 
         # Rejected Cells
         w_rejected_cell_label = QLabel("Rejected Cells:")
@@ -398,6 +400,32 @@ class ExplorationWidget(QWidget):
         self.chkbox_plot_options_C.clicked.connect(self.enable_disable_event_buttons)
         self.chkbox_plot_options_C.setChecked(True)
 
+        # Global View Utility
+        self.chkbox_plot_global_C = QCheckBox("C Signal")
+        self.chkbox_plot_global_C.setStyleSheet("background-color: white; border: 1px solid black; width: 15px; height: 15px;")
+        self.chkbox_plot_global_S = QCheckBox("S Signal")
+        self.chkbox_plot_global_S.setStyleSheet("background-color: magenta; border: 1px solid black; width: 15px; height: 15px;")
+        self.chkbox_plot_global_YrA = QCheckBox("Raw Signal")
+        self.chkbox_plot_global_YrA.setStyleSheet("background-color: cyan; border: 1px solid black; width: 15px; height: 15px;")
+        self.chkbox_plot_global_dff = QCheckBox("ΔF/F")
+        self.chkbox_plot_global_dff.setStyleSheet("background-color: yellow; border: 1px solid black; width: 15px; height: 15px;")
+        self.btn_global_reset_view = QPushButton("Reset View")
+        # Input for window size
+        self.global_window_size_label = QLabel("Window Size")
+        self.global_window_size_input = QLineEdit()
+        self.global_window_size_input.setValidator(QIntValidator(1, self.session.data["C"].shape[0] // 10))
+        self.global_window_size_input.setText("1")
+        self.global_window_size_btn = QPushButton("Update Size")
+        self.layout_global_window_size = QHBoxLayout()
+        self.layout_global_window_size.addWidget(self.global_window_size_label)
+        self.layout_global_window_size.addWidget(self.global_window_size_input)
+        self.layout_global_window_size.addWidget(self.global_window_size_btn)
+        self.btn_global_reset_view.clicked.connect(lambda: self.visualize_global_signals(reset_view=True))
+        self.chkbox_plot_global_C.clicked.connect(lambda: self.visualize_global_signals(reset_view=False))
+        self.chkbox_plot_global_S.clicked.connect(lambda: self.visualize_global_signals(reset_view=False))
+        self.chkbox_plot_global_YrA.clicked.connect(lambda: self.visualize_global_signals(reset_view=False))
+        self.chkbox_plot_global_dff.clicked.connect(lambda: self.visualize_global_signals(reset_view=False))
+
         if "RNFS" in self.session.data:
             self.chkbox_plot_options_RNFS = QCheckBox("RNFS")
             self.chkbox_plot_options_RNFS.setStyleSheet("background-color: rgb(250, 200, 20); border: 1px solid black; width: 15px; height: 15px;")
@@ -469,6 +497,7 @@ class ExplorationWidget(QWidget):
 
         # Visualize signals selected in video
         self.w_signals = pg.GraphicsLayoutWidget()
+        self.w_global_signals = pg.GraphicsLayoutWidget()
         
 
         # Layouts
@@ -592,7 +621,6 @@ class ExplorationWidget(QWidget):
 
         self.tabs_visualization.addTab(self.tabs_video, "Cell Video")
         self.tabs_visualization.addTab(visualization_3D_tools, "3D Visualization")
-
 
         # General plot utility
         layout_plot_utility = QVBoxLayout()
@@ -884,6 +912,21 @@ class ExplorationWidget(QWidget):
         layout_plot_options.addWidget(self.chkbox_plot_options_dff)
         layout_plot_options.addWidget(self.chkbox_plot_options_savgol)
 
+        # Global plot options
+        frame_global_plot_options = QFrame()
+        frame_global_plot_options.setFrameShape(QFrame.Box)
+        frame_global_plot_options.setFrameShadow(QFrame.Raised)
+        frame_global_plot_options.setLineWidth(3)
+        layout_global_plot_options = QVBoxLayout(frame_global_plot_options)
+        layout_global_plot_options.addStretch()
+        layout_global_plot_options.setDirection(3)
+        layout_global_plot_options.addWidget(self.btn_global_reset_view)
+        layout_global_plot_options.addLayout(self.layout_global_window_size)
+        layout_global_plot_options.addWidget(self.chkbox_plot_global_C)
+        layout_global_plot_options.addWidget(self.chkbox_plot_global_S)
+        layout_global_plot_options.addWidget(self.chkbox_plot_global_YrA)
+        layout_global_plot_options.addWidget(self.chkbox_plot_global_dff)
+
 
         layout_plot_utility.addWidget(tab_params)
         layout_plot_utility.addWidget(frame_plot_options)
@@ -916,6 +959,18 @@ class ExplorationWidget(QWidget):
         widget_video_cells_visualize = QWidget()
         widget_video_cells_visualize.setLayout(layout_video_cells_visualize)
 
+        layout_global_plot_utility = QVBoxLayout()
+        layout_global_plot_utility.addWidget(frame_global_plot_options)
+
+        layout_global_cell_switch = QHBoxLayout()
+        layout_global_cell_switch.addWidget(self.w_global_signals)
+        layout_global_cell_switch.addLayout(layout_global_plot_utility)
+        widget_global_cell_switch = QWidget()
+        widget_global_cell_switch.setLayout(layout_global_cell_switch)
+        self.tabs_global_cell_switch.addTab(widget_video_cells_visualize, "Per Cell View")
+        self.tabs_global_cell_switch.addTab(widget_global_cell_switch, "Global View")
+        
+
         layout = QVBoxLayout()
         main_widget = QSplitter(Qt.Orientation.Vertical)
         main_widget.setFrameShape(QFrame.StyledPanel)
@@ -923,7 +978,7 @@ class ExplorationWidget(QWidget):
             "QSplitter::handle{background-color: gray; width: 5px; border: 1px dotted gray}"
         )
         main_widget.addWidget(self.widget_video_cells)
-        main_widget.addWidget(widget_video_cells_visualize)
+        main_widget.addWidget(self.tabs_global_cell_switch)
         layout.addWidget(main_widget)
         layout.setMenuBar(menu)
 
@@ -1719,6 +1774,18 @@ class ExplorationWidget(QWidget):
             self.frame_algo_events.setEnabled(False)
             self.frame_manual_events.setEnabled(False)
 
+    def get_selected_data_type_global(self):
+        selected_data_type = []
+        if self.chkbox_plot_global_C.isChecked():
+            selected_data_type.append('C')
+        if self.chkbox_plot_global_S.isChecked():
+            selected_data_type.append('S')
+        if self.chkbox_plot_global_YrA.isChecked():
+            selected_data_type.append('YrA')
+        if self.chkbox_plot_global_dff.isChecked():
+            selected_data_type.append('DFF')
+        
+        return selected_data_type
 
     def get_selected_data_type(self):
         selected_data_type = []
@@ -1756,6 +1823,21 @@ class ExplorationWidget(QWidget):
 
         return selected_events
 
+    def visualize_global_signals(self, reset_view=False):
+        self.w_global_signals.clear()
+        # Depending on the selected data types we'll visualize the data as averages
+        p = PlotItemEnhanced(id="Global", cell_type="Standard")
+        p.plotLine.setPos(self.scroll_video.value())
+        p.plotLine.sigDragged.connect(self.pause_video)
+        p.plotLine.sigPositionChangeFinished.connect(self.update_slider_pos)
+        p.setTitle("Averaged Signals")
+
+        self.w_global_signals.addItem(p, row=0, col=0)
+
+        selected_types = self.get_selected_data_type_global()
+        for data_type in selected_types:
+            data = self.session.data[data_type].mean(dim="unit_id").values
+            p.add_main_curve(data, is_C=False, pen=self.color_mapping[data_type])
 
 
     def visualize_signals(self, reset_view=False):

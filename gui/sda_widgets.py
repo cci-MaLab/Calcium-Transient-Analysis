@@ -375,6 +375,10 @@ class MayaviQWidget(QWidget):
         self.visualization_generator = func
         self.kwargs = kwargs
         chunk_start = self.current_frame - self.current_frame % self.chunk_length
+
+        # Check if we have the right frame data
+        self.calculate_window_size(**kwargs)
+
         self.set_data(self.visualization_generator(self.session, precalculated_values=self.precalculated_values,  start_frame=chunk_start, end_frame=chunk_start+self.window_size, **kwargs))
         self.set_frame(self.current_frame)
 
@@ -388,6 +392,23 @@ class MayaviQWidget(QWidget):
         colors = np.array([1 if i in ids_to_highlight else 0 for i in range(len(points_coords[0]))])
         points_coords = (points_coords[0], points_coords[1], points_coords[2], colors)
         self.visualization.update_points(points_coords)
+
+    def calculate_window_size(self, **kwargs):
+        # We need to calculate the window size
+        window_size = kwargs["window_size"]
+        visualization_type = kwargs["visualization_type"]
+
+        if window_size != 1 or "base" in visualization_type:
+            if visualization_type not in self.precalculated_values:
+                self.precalculated_values[visualization_type] = {}
+            else:
+                if self.precalculated_values[visualization_type][window_size]:
+                    return
+            
+            # Calculate the rolling average for the window size
+
+        
+
 
 
 
