@@ -26,6 +26,7 @@ class StatsWidget(QWidget):
         btn_copy.triggered.connect(self.copy_to_clipboard)
         stats_menu = self.menu.addMenu("&Tools")
         stats_menu.addAction(btn_copy)
+        self.type = "Cell"
 
     def pandas_to_table(self):
         '''
@@ -35,7 +36,7 @@ class StatsWidget(QWidget):
         self.table.setRowCount(self.pd_table.shape[0])
         self.table.setColumnCount(self.pd_table.shape[1])
         self.table.setHorizontalHeaderLabels(self.pd_table.columns)
-        self.table.setVerticalHeaderLabels([f"Cell {idx}" for idx in self.pd_table.index])
+        self.table.setVerticalHeaderLabels([f"{self.type} {idx}" for idx in self.pd_table.index])
         for i in range(self.pd_table.shape[0]):
             for j in range(self.pd_table.shape[1]):
                 val = self.pd_table.iloc[i, j]
@@ -302,6 +303,7 @@ class LocalStatsWidget(StatsWidget):
         The window will display from the exploration window and will display general statistics
         related to results from a specific mouse.
         '''
+        self.type = "Transient"
         self.main_window_ref = main_win_ref
 
         self.unit_id = unit_id

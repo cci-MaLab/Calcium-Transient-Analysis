@@ -620,7 +620,7 @@ class ExplorationWidget(QWidget):
         self.tabs_video.currentChanged.connect(self.switched_tabs)
 
         self.tabs_visualization.addTab(self.tabs_video, "Cell Video")
-        self.tabs_visualization.addTab(visualization_3D_tools, "3D Visualization")
+        #self.tabs_visualization.addTab(visualization_3D_tools, "3D Visualization")
 
         # General plot utility
         layout_plot_utility = QVBoxLayout()
@@ -968,7 +968,7 @@ class ExplorationWidget(QWidget):
         widget_global_cell_switch = QWidget()
         widget_global_cell_switch.setLayout(layout_global_cell_switch)
         self.tabs_global_cell_switch.addTab(widget_video_cells_visualize, "Per Cell View")
-        self.tabs_global_cell_switch.addTab(widget_global_cell_switch, "Global View")
+        #self.tabs_global_cell_switch.addTab(widget_global_cell_switch, "Global View")
         
 
         layout = QVBoxLayout()
@@ -2358,6 +2358,7 @@ class PlotItemEnhanced(PlotItem):
             self.addItem(event_curve)
     
     def draw_behavior_events(self, indices, color):
+        indices = indices.flatten()
         for idx in indices:
             # draw verical line
             self.addItem(InfiniteLine(pos=idx, angle=90, pen=color))

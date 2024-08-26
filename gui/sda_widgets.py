@@ -60,6 +60,7 @@ class Visualization(HasTraits):
         self.points_coords = None
         self.current_shape = self.visualization_data.data[0].shape
         self.parent = parent
+        self.cells = None
 
 
     def update_frame(self, data):
@@ -72,6 +73,8 @@ class Visualization(HasTraits):
                 self.points_coords = points_coords
                 picker = mlab.gcf().on_mouse_pick(self.picker_callback)
                 picker.tolerance = 0.01
+                if self.cells is not None:
+                    self.parent.update_selected_cells(self.cells)
             else:
                 if len(points_coords) == 4:
                     self.points_3d.mlab_source.set(x=points_coords[0], y=points_coords[1], z=points_coords[2])
@@ -387,11 +390,16 @@ class MayaviQWidget(QWidget):
         self.point_signal.emit(x, y)
 
     def update_selected_cells(self, cells):
-        ids_to_highlight = [self.cell_id_to_index[cell_id] for cell_id in cells]
         points_coords = self.visualization.points_coords
-        colors = np.array([1 if i in ids_to_highlight else 0 for i in range(len(points_coords[0]))])
-        points_coords = (points_coords[0], points_coords[1], points_coords[2], colors)
-        self.visualization.update_points(points_coords)
+        if points_coords is None:
+            # This means that the 3D part wasn't initialized yet
+            # We need to store the cells for when it might be called
+            self.visualization.cells = cells
+        else:
+            ids_to_highlight = [self.cell_id_to_index[cell_id] for cell_id in cells]
+            colors = np.array([1 if i in ids_to_highlight else 0 for i in range(len(points_coords[0]))])
+            points_coords = (points_coords[0], points_coords[1], points_coords[2], colors)
+            self.visualization.update_points(points_coords)
 
     def calculate_window_size(self, **kwargs):
         # We need to calculate the window size

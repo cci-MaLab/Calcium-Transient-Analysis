@@ -483,8 +483,8 @@ def train_on_all_LocalTransformer():
     repeats = 10
     outputs = {"all": {}}
     for i in range(repeats):
-        output = train(**{"PATHS": all_paths, "MODEL_TYPE": "LocalTransformer", "NUM_EPOCHS": 10,
-                          "HIDDEN_SIZE": 30, "NUM_LAYERS": 3, "HEADS": 2})
+        output = train(**{"PATHS": all_paths, "MODEL_TYPE": "LocalTransformer", "NUM_EPOCHS": 1,
+                          "HIDDEN_SIZE": 10, "NUM_LAYERS": 3, "HEADS": 2})
         outputs["all"][i] = output
     
     f1_scores = [outputs["all"][i]["f1"] for i in range(repeats)]
@@ -514,6 +514,4 @@ def train_on_all_LocalTransformer():
         pickle.dump(test_indices, f)
 
 if __name__ == "__main__": 
-    cross_day_cross_session()
-    cross_day_same_session()
-    cross_session_same_day()
+    train_on_all_LocalTransformer()
