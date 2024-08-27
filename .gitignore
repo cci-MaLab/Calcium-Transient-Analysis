@@ -9,3 +9,4 @@ backup/*
 */test_results/*
 *.pkl
 *.csv
+*.svg

@@ -52,7 +52,7 @@ def train(**kwargs):
 	if config.MODEL_TYPE == "LocalTransformer":
 		model = LocalTransformer(inputs=config.INPUT, local_attn_window_size=config.HIDDEN_SIZE, 
 											max_seq_len=2*config.SLACK+config.SECTION_LEN, depth=config.NUM_LAYERS, 
-											causal=False, look_forward=1, look_backward=1, 
+											causal=False, look_forward=5, look_backward=5, 
 											exact_windowsize=True, slack=config.SLACK,
 											sequence_len=config.SECTION_LEN, heads=config.HEADS).to(config.DEVICE)
 		model_name = "local_transformer_"

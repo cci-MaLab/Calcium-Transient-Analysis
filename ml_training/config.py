@@ -15,7 +15,7 @@ STRATIFICATION = True
 # batch size
 INPUT = ["C", "DFF"]
 INIT_LR = 0.001
-NUM_EPOCHS = 10 
+NUM_EPOCHS = 1
 BATCH_SIZE = 1
 # define threshold to filter weak predictions
 THRESHOLD = 0.5
@@ -24,7 +24,7 @@ BASE_OUTPUT = "ml_training/output"
 CUSTOM_TEST = False
 
 TEST_SIZE = 0.1
-TRAIN_SIZE = 1
+TRAIN_SIZE = None
 VAL_SIZE = 0.1
 SECTION_LEN=200
 HIDDEN_SIZE=30 
