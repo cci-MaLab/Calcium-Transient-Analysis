@@ -76,28 +76,39 @@ class advanced:
                 # features_group.append(features)
         elif feature_type == 'AUC':
             for instance_index,instance in enumerate(self.dataInstances):
-                timestamps = instance.get_timestep(event_type) # need to double check frame number or real time
+                timestamps = instance.get_timestep(event_type) # need to double-check frame number or real time
                 print(instance_index,':',instance.group)
                 unit_ids = instance.A.keys()
                 # print(timestamps)
                 for single_time in timestamps:
                     delay = 0-self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['preNum']
                     duration = self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['postNum']+ self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['preNum']
-                    start = time.time()
-                    single_event_feature, start_frame, end_frame,integrity = instance.events[event_type].get_interval_section(event_frame = single_time, duration = duration, delay = delay,interval = 0,type = value_type)
-                    end = time.time()
-                    print('Running time is: '+str(end-start))
-                    if integrity == False:
-                        continue
+                    bin_features = []
+                    for bin_num in range(self.behavior_timewindow_dict['preNum'],0,-1):
+                        start = time.time()
+                        single_event_bin_feature, start_frame, end_frame,integrity = instance.events[event_type].get_interval_section(event_frame = single_time, duration = self.behavior_timewindow_dict['binSize'], delay = -bin_num*self.behavior_timewindow_dict['binSize'],interval = 0,type = value_type)
+                        end = time.time()
+                        bin_features.append(single_event_bin_feature)
+                    for bin_num in range(self.behavior_timewindow_dict['postNum']):
+                        single_event_bin_feature, start_frame, end_frame, integrity = instance.events[
+                            event_type].get_interval_section(event_frame=single_time,
+                                                             duration=self.behavior_timewindow_dict['binSize'],
+                                                             delay=bin_num * self.behavior_timewindow_dict['binSize'],
+                                                             interval=0, type=value_type)
+                        bin_features.append(single_event_bin_feature)
+                    # print('Running time is: '+str(end-start))
+                        if integrity == False:
+                            continue
                     single_event_trace, start_frame, end_frame = instance.events[event_type].get_section(event_frame = single_time, duration = duration, delay = delay,type = 'C')
                     frameline = list(range(start_frame-single_time,end_frame-single_time+1))
                     # print('frameline:',len(frameline), 'event:',len(single_event_trace.coords['frame'].values))
-
                     for uid in unit_ids:
-                        auc = np.sum(np.asarray(single_event_feature.sel(unit_id = uid)))
+                        single_feature = []
+                        for sbe in bin_features:
+                            auc = np.sum(np.asarray(sbe.sel(unit_id = uid)))
                         # print('uid: '+ str(uid)+' auc: '+str(auc))
                         # print('group: ' + instance.group)
-                        single_feature = [auc]
+                            single_feature.append(auc)
                         single_trace = single_event_trace.sel(unit_id = uid)
                         if instance.group == 'Cocaine':
                             feature_A.append(single_feature)
