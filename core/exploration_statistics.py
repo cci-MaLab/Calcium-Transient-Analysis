@@ -209,7 +209,7 @@ class GeneralStatsWidget(StatsWidget):
         self.finalize_window()
 
     def generate_amp_boxplot(self):
-        data = self.pd_table["Average Amplitude (ΔF/F)"].dropna()
+        data = self.pd_table["Average Peak Amplitude (ΔF/F)"].dropna()
         if data.empty:
             return
         self.amp_win = GeneralVizWidget(data, "Amplitude")
@@ -220,7 +220,7 @@ class GeneralStatsWidget(StatsWidget):
         data = self.pd_table["Average interval (seconds)"].dropna()
         if data.empty:
             return
-        data = data.drop(data[data == 'N/A'].index).astype(float) * 1000
+        data = data.drop(data[data == 'N/A'].index).astype(float)
         self.iei_win = GeneralVizWidget(data, "IEI")
         self.iei_win.setWindowTitle("IEI Box Plot")
         self.iei_win.show()
@@ -255,7 +255,7 @@ class GeneralVizWidget(QWidget):
         data = data.astype(float)
         bp = data.plot.box(ax=self.visualization.axes)
         bp.set_title(f"{viz_type} Box Plot")
-        bp.set_ylabel(f"{viz_type} (msec)" if viz_type == "IEI" else f"{viz_type} (ΔF/F)")
+        bp.set_ylabel(f"Seconds" if viz_type == "IEI" else f"(ΔF/F)")
         # Add jitter to the box plot
         for point in data:
             self.visualization.axes.plot([np.random.normal(1, 0.04)], point, 'r.', alpha=0.2)
