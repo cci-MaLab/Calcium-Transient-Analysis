@@ -4,7 +4,8 @@ The following file will be used for doing a deeper dive into the selected sessio
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAction, QStyle, 
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
                             QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar, QCheckBox,
-                            QTextEdit, QComboBox, QGraphicsTextItem, QMessageBox, QFileDialog)
+                            QTextEdit, QComboBox, QGraphicsTextItem, QMessageBox, QFileDialog,
+                            QScrollArea)
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5 import QtCore
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont)
@@ -156,7 +157,7 @@ class ExplorationWidget(QWidget):
         # Select Cells
         w_cell_label = QLabel("Pick which cells to focus (Hold ctrl/shift for multi):")
         self.list_cell = QListWidget()
-        self.list_cell.setMaximumSize(250, 600)
+        self.list_cell.setMaximumHeight(600)
         self.list_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
 
         self.btn_cell_focus = QPushButton("Focus Selection")
@@ -171,19 +172,27 @@ class ExplorationWidget(QWidget):
         self.btn_cell_reject = QPushButton("Reject Cell(s)")
         self.btn_cell_reject.clicked.connect(self.reject_cells)
 
+        self.tabs_visualization_parent = QScrollArea()
         self.tabs_visualization = QTabWidget()
-        self.tabs_visualization.setFixedWidth(330)
+        self.tabs_visualization_parent.setFixedWidth(340)
+        self.tabs_visualization_parent.setWidgetResizable(True)
+        self.tabs_visualization_parent.setWidget(self.tabs_visualization)
+
         self.tabs_video = QTabWidget()
         self.tabs_video.setFixedWidth(330)
+
+        tabs_signal_parent = QScrollArea()
         tabs_signal = QTabWidget()
-        tabs_signal.setFixedWidth(320)
+        tabs_signal_parent.setWidgetResizable(True)
+        tabs_signal_parent.setWidget(tabs_signal)
+        tabs_signal_parent.setFixedWidth(350)
         self.tabs_global_cell_switch = QTabWidget() # This is for the bottom half of the screen
 
 
         # Rejected Cells
         w_rejected_cell_label = QLabel("Rejected Cells:")
         self.list_rejected_cell = QListWidget()
-        self.list_rejected_cell.setMaximumSize(320, 600)
+        self.list_rejected_cell.setMaximumHeight(600)
         self.list_rejected_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.list_rejected_cell.itemSelectionChanged.connect(lambda: self.enable_disable_justification(True))
         
@@ -205,7 +214,7 @@ class ExplorationWidget(QWidget):
         # Missed Cells
         w_missed_cell_label = QLabel("Missed Cells:")
         self.list_missed_cell = QListWidget()
-        self.list_missed_cell.setMaximumSize(320, 600)
+        self.list_missed_cell.setMaximumHeight(600)
         self.list_missed_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
 
         self.btn_missed_select = QPushButton("Enable Select Cell Mode")
@@ -620,7 +629,7 @@ class ExplorationWidget(QWidget):
         self.tabs_video.currentChanged.connect(self.switched_tabs)
 
         self.tabs_visualization.addTab(self.tabs_video, "Cell Video")
-        #self.tabs_visualization.addTab(visualization_3D_tools, "3D Visualization")
+        self.tabs_visualization.addTab(visualization_3D_tools, "3D Visualization")
 
         # General plot utility
         layout_plot_utility = QVBoxLayout()
@@ -939,7 +948,7 @@ class ExplorationWidget(QWidget):
         tabs_signal.addTab(frame_stats, "Local Stats")
 
         layout_video_cells.addLayout(layout_video)
-        layout_video_cells.addWidget(self.tabs_visualization)
+        layout_video_cells.addWidget(self.tabs_visualization_parent)
         self.widget_video_cells = QWidget()
         self.widget_video_cells.setLayout(layout_video_cells)
 
@@ -948,7 +957,7 @@ class ExplorationWidget(QWidget):
         layout_plot_utility = QVBoxLayout()
         layout_plot_utility.addWidget(btn_clear_traces)
         layout_plot_utility.addWidget(btn_clear_events)
-        layout_plot_utility.addWidget(tabs_signal)
+        layout_plot_utility.addWidget(tabs_signal_parent)
 
         layout_plot = QHBoxLayout()
         layout_plot.addWidget(self.w_signals)
@@ -968,7 +977,7 @@ class ExplorationWidget(QWidget):
         widget_global_cell_switch = QWidget()
         widget_global_cell_switch.setLayout(layout_global_cell_switch)
         self.tabs_global_cell_switch.addTab(widget_video_cells_visualize, "Per Cell View")
-        #self.tabs_global_cell_switch.addTab(widget_global_cell_switch, "Global View")
+        self.tabs_global_cell_switch.addTab(widget_global_cell_switch, "Global View")
         
 
         layout = QVBoxLayout()

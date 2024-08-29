@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox, QAction,
-                            QVBoxLayout, QHBoxLayout, QWidget, QTabWidget)
+                            QVBoxLayout, QHBoxLayout, QWidget, QTabWidget, QErrorMessage)
 from gui.main_widgets import (UpdateDialog, ParamDialog, VisualizeInstanceWidget, Viewer, ClusteringToolWidget,
                             GAToolWidget, ExplorationToolWidget, SDAToolWidget)
 
@@ -258,13 +258,15 @@ class MainWindow(QMainWindow):
     def remove_window(self, name):
         del self.windows[name]
 
-    def print_error(self, s):
+    def print_error(self, s, extra_info=""):
         dlg = QMessageBox(self)
-        dlg.setWindowTitle("I have a question!")
+        dlg.setWindowTitle("Error Message")
         if isinstance(s, tuple):
             text = f"For path {s[1]} the following error occurred:\n {s[0]}"
         else:
             text = s
+        if extra_info != "":
+            text += f"\n{extra_info}"
         dlg.setText(text)
         dlg.setIcon(QMessageBox.Icon.Critical)
         dlg.exec()
@@ -277,7 +279,10 @@ class MainWindow(QMainWindow):
         )
         fname = fname[0]
         if fname != '' and fname not in self.path_list:
-            self.load_instance(fname)
+            try:
+                self.load_instance(fname)
+            except Exception as e:
+                self.print_error((str(e), fname), extra_info="Make sure the file is a valid ini file.")
 
     def load_clustering_params(self):
         pdg = ParamDialog(self.event_defaults)
@@ -385,6 +390,12 @@ class MainWindow(QMainWindow):
                 extended_json["defaults"] = self.event_defaults
                 with open(filename, 'w') as f:
                     json.dump(extended_json, f)
+
+    def closeEvent(self, event):
+        windows_to_close = list(self.windows.values())
+        for window in windows_to_close:
+            window.close()
+        event.accept()
     
 
 app = QApplication([])
