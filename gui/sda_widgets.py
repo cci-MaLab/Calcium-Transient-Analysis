@@ -76,8 +76,12 @@ class Visualization(HasTraits):
                 if self.cells is not None:
                     self.parent.update_selected_cells(self.cells)
             else:
-                if len(points_coords) == 4:
+                if len(points_coords[0]) != len(self.points_coords[0]):
+                    # The number of points has changed, we need to therefore reset the points
+                    self.points_3d.mlab_source.reset(x=points_coords[0], y=points_coords[1], z=points_coords[2], scalars=np.ones(len(points_coords[0])))
+                else:
                     self.points_3d.mlab_source.set(x=points_coords[0], y=points_coords[1], z=points_coords[2])
+                if len(points_coords) == 4:
                     # Get indices where equal to 1
                     indices_selected = np.where(points_coords[3] == 1)[0]
                     indices_not_selected = np.where(points_coords[3] == 0)[0]
@@ -86,8 +90,6 @@ class Visualization(HasTraits):
                     for idx in indices_not_selected:
                         self.points_3d.mlab_source.dataset.point_data.scalars[int(idx)] = 1
                     self.points_3d.mlab_source.dataset.modified()
-                else:
-                    self.points_3d.mlab_source.set(x=points_coords[0], y=points_coords[1], z=points_coords[2])
                 self.points_coords = (points_coords[0], points_coords[1], points_coords[2])
     
     def reset_frame(self, frame_no=0):
@@ -100,6 +102,8 @@ class Visualization(HasTraits):
         self.visualization_data = visualization_data
         self.current_shape = self.visualization_data.data[0].shape
         self.reset_frame(frame)
+        if self.axes is not None:
+            self.axes.remove()
         self.axes = mlab.axes(extent=self.visualization_data.get_extent(), ranges=self.visualization_data.get_ranges(), xlabel='Width', ylabel='Height', zlabel='Spike Intensity')
 
         
@@ -162,6 +166,7 @@ class CurrentVisualizationData():
         self.y_end = y_end
         self.scaling_factor = scaling_factor
         self.points = {"x": np.array([]), "y": np.array([])}
+        self.cell_id_to_index = {}
 
     def get_3d_data(self, frame) -> dict:
         # Returns a dictionary containing the data for surface plot and the points of the centroids
@@ -171,6 +176,7 @@ class CurrentVisualizationData():
         return {"frame": frame, "points_coords": points_coords}
     
     def update_points_list(self, points):
+        self.cell_id_to_index = {cell_id: i for i, cell_id in enumerate(points.keys())}
         points = points.values()
         x_coords, y_coords = zip(*points)
 
@@ -198,12 +204,14 @@ class CurrentVisualizationData():
 
     __rmul__ = __mul__
 
-def base_visualization(session, precalculated_values=None, data_type="C", start_frame=0, end_frame=200, **kwargs):
+def base_visualization(session, precalculated_values=None, data_type="C", start_frame=0, end_frame=200, cells_to_visualize="All Cells", **kwargs):
     if data_type in session.data:
-        signal = session.data[data_type].sel(frame=slice(start_frame, end_frame-1)).values # -1 since it is inclusive
+        signal = session.data[data_type].sel(frame=slice(start_frame, end_frame-1)) # -1 since it is inclusive
     else:
-        signal = precalculated_values[data_type].sel(frame=slice(start_frame, end_frame-1)).values # -1 since it is inclusive
-    A = session.data["A"].values
+        signal = precalculated_values[data_type].sel(frame=slice(start_frame, end_frame-1)) # -1 since it is inclusive
+    ids = session.get_cell_ids(cells_to_visualize)
+    signal = signal.sel(unit_id=ids).values
+    A = session.data["A"].sel(unit_id=ids).values
     A_flat = A.sum(axis=0)
 
     # Only use subset of A where values are positive, trim out 0 areas around the edges
@@ -222,7 +230,10 @@ def base_visualization(session, precalculated_values=None, data_type="C", start_
     x_start, x_end, y_start, y_end = y_start, y_end, x_start, x_end
 
     CV = CurrentVisualizationData(Y, start_frame, end_frame, x_start, x_end, y_start, y_end)
-    CV.update_points_list(session.centroids_max)
+    centroids = session.centroids_max
+    # Include only the ones that rea in ids
+    centroids = {id: centroids[id] for id in ids}
+    CV.update_points_list(centroids)
 
     return CV
 
@@ -250,13 +261,13 @@ class MayaviQWidget(QWidget):
         self.cell_id_to_index = {cell_id: i for i, cell_id in enumerate(session.centroids_max.keys())}
 
         # We need to precalculate some data related to E to not cause slow down during visualization
-        self.precalculated_values = self._precalculate(session)
+        self.precalculated_values = self._precalculate()
 
         # Convert the numpy arrays to xarray DataArrays, copy over coords and dims from C
         for key, value in self.precalculated_values.items():
             self.precalculated_values[key] = session.data['C'].copy(data=value)
 
-    def _precalculate(self, session):
+    def _precalculate(self):
         precalculated_values = {}
         E = self.session.data['E'].values
         C = self.session.data['C'].values
@@ -358,6 +369,7 @@ class MayaviQWidget(QWidget):
     def set_data(self, visualization_data):
         self.visualization_data = visualization_data * self.scaling_factor
         self.visualization.update_data(self.visualization_data)
+        self.cell_id_to_index = self.visualization_data.cell_id_to_index # This gets updated in the update_data method
     
     def set_frame(self, frame):
         if not self.visualization_data.in_range(frame):
@@ -380,7 +392,7 @@ class MayaviQWidget(QWidget):
         chunk_start = self.current_frame - self.current_frame % self.chunk_length
 
         # Check if we have the right frame data
-        self.calculate_window_size(**kwargs)
+        #self.calculate_window_size(**kwargs)
 
         self.set_data(self.visualization_generator(self.session, precalculated_values=self.precalculated_values,  start_frame=chunk_start, end_frame=chunk_start+self.window_size, **kwargs))
         self.set_frame(self.current_frame)

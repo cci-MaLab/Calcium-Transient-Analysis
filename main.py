@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox, QAction,
-                            QVBoxLayout, QHBoxLayout, QWidget, QTabWidget, QErrorMessage)
+                            QVBoxLayout, QHBoxLayout, QWidget, QTabWidget)
 from gui.main_widgets import (UpdateDialog, ParamDialog, VisualizeInstanceWidget, Viewer, ClusteringToolWidget,
                             GAToolWidget, ExplorationToolWidget, SDAToolWidget)
 
@@ -80,7 +80,7 @@ class MainWindow(QMainWindow):
 
         tabs.addTab(self.e_tools, "Exploration")
         tabs.addTab(self.cl_tools, "Clustering")
-        tabs.addTab(self.sda_tools, "SDA")
+        #tabs.addTab(self.sda_tools, "SDA")
         tabs.addTab(self.ga_tools, "Genetic Algorithm")
 
         layout_cluster.addWidget(self.instance_viz)

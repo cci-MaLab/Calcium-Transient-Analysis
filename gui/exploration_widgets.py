@@ -169,6 +169,10 @@ class ExplorationWidget(QWidget):
         self.cmb_cell_highlight_mode.addItems(["Outline", "Color", "Clear"])
         self.cmb_cell_highlight_mode.setCurrentIndex(0)
         self.cmb_cell_highlight_mode.currentIndexChanged.connect(self.refresh_image)
+        self.btn_add_to_group = QPushButton("Add to Group")
+        self.btn_add_to_group.clicked.connect(self.add_to_group)
+        self.btn_remove_from_group = QPushButton("Remove from Group")
+        self.btn_remove_from_group.clicked.connect(self.remove_from_group)
         self.btn_cell_reject = QPushButton("Reject Cell(s)")
         self.btn_cell_reject.clicked.connect(self.reject_cells)
 
@@ -499,6 +503,10 @@ class ExplorationWidget(QWidget):
         self.scroll_video.sliderReleased.connect(self.slider_update)
         self.scroll_video.valueChanged.connect(self.update_plot_lines)
 
+        self.video_timer_label = QLabel("00:00:00")
+        self.video_timer_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.video_timer_label.setFixedSize(80, 30)
+
         # Video interaction elements
         self.imv_cell.scene.sigMouseClicked.connect(self.video_click)
         self.video_cell_selection = set()
@@ -518,6 +526,7 @@ class ExplorationWidget(QWidget):
         layout_video_tools.addWidget(self.btn_play)
         layout_video_tools.addWidget(self.btn_forward)
         layout_video_tools.addWidget(self.scroll_video)
+        layout_video_tools.addWidget(self.video_timer_label)
 
         widget_video_subvideos = QSplitter(Qt.Orientation.Horizontal)
         widget_video_subvideos.setFrameShape(QFrame.StyledPanel)
@@ -537,12 +546,17 @@ class ExplorationWidget(QWidget):
         layout_highlight_mode.addWidget(cell_highlight_mode_label)
         layout_highlight_mode.addWidget(self.cmb_cell_highlight_mode)
 
+        layout_add_remove_group = QHBoxLayout()
+        layout_add_remove_group.addWidget(self.btn_add_to_group)
+        layout_add_remove_group.addWidget(self.btn_remove_from_group)
+
         layout_cells = QVBoxLayout()
         layout_cells.addWidget(w_cell_label)
         layout_cells.addWidget(self.list_cell)
         layout_cells.addWidget(self.btn_cell_focus)
         layout_cells.addWidget(self.btn_cell_reset)
         layout_cells.addLayout(layout_highlight_mode)
+        layout_cells.addLayout(layout_add_remove_group)
         layout_cells.addWidget(self.btn_cell_reject)
         layout_cells.addWidget(btn_verified)
         w_cells = QWidget()
@@ -551,6 +565,11 @@ class ExplorationWidget(QWidget):
         # 3D Visualization Tools
         visualization_3D_layout = QVBoxLayout()
         
+        label_which_cells = QLabel("Which Cells to Visualize")
+        self.list_3D_which_cells = QComboBox()
+        self.list_3D_which_cells.addItems(["All Cells", "Verified Cells"])
+        unique_groups = self.session.get_group_ids()
+        self.list_3D_which_cells.addItems([f"Group {group}" for group in unique_groups])
         label_3D_functions = QLabel("3D Visualization Functions")
         self.dropdown_3D_functions = QComboBox()
         self.dropdown_3D_functions.addItems(["Base Visualization", "Normalized Visualization"])
@@ -582,6 +601,9 @@ class ExplorationWidget(QWidget):
         dropdown_3D_colormap.currentIndexChanged.connect(lambda: self.visualization_3D.change_colormap(dropdown_3D_colormap.currentText()))
         layout_colormap.addWidget(dropdown_3D_colormap)
 
+
+        visualization_3D_layout.addWidget(label_which_cells)
+        visualization_3D_layout.addWidget(self.list_3D_which_cells)
         visualization_3D_layout.addWidget(label_3D_functions)
         visualization_3D_layout.addWidget(self.dropdown_3D_functions)
         visualization_3D_layout.addWidget(self.dropdown_3D_data_types)
@@ -995,7 +1017,8 @@ class ExplorationWidget(QWidget):
         QApplication.setStyle(QStyleFactory.create('Cleanlooks'))
 
         self.video_timer = QTimer()
-        self.video_timer.setInterval(int(1000/30))
+        interval = self.session.get_video_interval()
+        self.video_timer.setInterval(interval)
         self.video_timer.timeout.connect(self.next_frame)
 
         self.missed_cell_init()
@@ -1011,6 +1034,7 @@ class ExplorationWidget(QWidget):
     def visualize_3D(self):
         visualization_type = self.dropdown_3D_functions.currentText()
         scaling = self.slider_3D_scaling.value()
+        cells_to_visualize = self.list_3D_which_cells.currentText()
 
         if visualization_type == "Normalized Visualization" and self.chkbox_3D_cumulative.isChecked():
             visualization_type = self.dropdown_3D_data_types.currentText() + "_cumulative"
@@ -1019,7 +1043,7 @@ class ExplorationWidget(QWidget):
         else:
             visualization_type = self.dropdown_3D_data_types.currentText()
             
-        self.visualization_3D.change_func(base_visualization, data_type=visualization_type, scaling=scaling)
+        self.visualization_3D.change_func(base_visualization, data_type=visualization_type, scaling=scaling, cells_to_visualize=cells_to_visualize)
 
     def check_if_results_exist(self):
         idx_to_cells = {"0":"1", "1":"2", "2":"5", "3":"10", "4":"15", "5":"20"}
@@ -1504,6 +1528,7 @@ class ExplorationWidget(QWidget):
             self.next_frame()
 
         self.selected_event_change(False)
+        self.visualization_3D.update_selected_cells(self.video_cell_selection)
 
 
     def switch_missed_cell_mode(self):
@@ -1967,7 +1992,7 @@ class ExplorationWidget(QWidget):
 
 
     def verification_state_changed(self):
-        cell_ids = [int(item.text()) for item in self.list_cell.selectedItems()]
+        cell_ids = [self.extract_id(item) for item in self.list_cell.selectedItems()]
         self.session.update_verified(cell_ids)
         self.refresh_cell_list()   
 
@@ -1975,7 +2000,7 @@ class ExplorationWidget(QWidget):
     def focus_mask(self):
         
         if self.tabs_video.currentIndex() == 0:            
-            cell_ids = [int(item.text()) for item in self.list_cell.selectedItems()]
+            cell_ids = [self.extract_id(item) for item in self.list_cell.selectedItems()]
             new_mask = np.zeros(self.mask.shape)
             if cell_ids:
                 for cell_id in cell_ids:
@@ -2035,6 +2060,9 @@ class ExplorationWidget(QWidget):
             self.imv_cell.setImage(image, autoRange=False, autoLevels=False)
         if bimage is not None:
             self.imv_behavior.setImage(bimage, autoRange=False, autoLevels=False)
+        
+        self.video_timer_label.setText(f"{self.session.frame_to_time(self.current_frame)}")
+        
 
     def prev_frame(self):
         self.current_frame = (self.current_frame - 1) % self.video_length
@@ -2120,25 +2148,56 @@ class ExplorationWidget(QWidget):
     def refresh_cell_list(self):
         self.list_cell.clear()
         self.list_rejected_cell.clear()
+        cell_ids_to_groups = self.session.cell_ids_to_groups
         good_bad_cells = self.session.data['E']['good_cells'].values
         reject_size = 0
         for i, cell_id in enumerate(self.session.data['E']['unit_id'].values):
             if good_bad_cells[i]:
-                self.list_cell.addItem(str(cell_id))
+                if cell_id in cell_ids_to_groups:
+                    self.list_cell.addItem(f"{cell_id} G{cell_ids_to_groups[cell_id]}")
+                else:
+                    self.list_cell.addItem(str(cell_id))
                 if self.session.data['E']['verified'].loc[{'unit_id': cell_id}].values.item():
                     self.list_cell.item(i-reject_size).setBackground(Qt.green)
             else:
                 self.list_rejected_cell.addItem(str(cell_id))
                 reject_size += 1
 
+    def extract_id(self, item):
+        if "G" in item.text():
+            # Remove everything just after " "
+            return int(item.text().split(" ")[0])
+        else:
+            return int(item.text())
+
+
+    def add_to_group(self):
+        cell_ids = [self.extract_id(item) for item in self.list_cell.selectedItems()]
+
+        self.session.add_cell_id_group(cell_ids)
+        unique_groups = self.session.get_group_ids()
+        self.list_3D_which_cells.clear()
+        self.list_3D_which_cells.addItems(["All Cells", "Verified Cells"])
+        self.list_3D_which_cells.addItems([f"Group {group_id}" for group_id in unique_groups])
+        self.refresh_cell_list()
+    
+    def remove_from_group(self):
+        cell_ids = [self.extract_id(item) for item in self.list_cell.selectedItems()]
+        self.session.remove_cell_id_group(cell_ids)
+        unique_groups = self.session.get_group_ids()
+        self.list_3D_which_cells.clear()
+        self.list_3D_which_cells.addItems(["All Cells", "Verified Cells"])
+        self.list_3D_which_cells.addItems([f"Group {group_id}" for group_id in unique_groups])
+        self.refresh_cell_list()
+
     def reject_cells(self):
-        cell_ids = [int(item.text()) for item in self.list_cell.selectedItems()]
+        cell_ids = [self.extract_id(item) for item in self.list_cell.selectedItems()]
         # Update good_cell list in E values
         self.session.reject_cells(cell_ids)
         self.refresh_cell_list()
 
     def approve_cells(self):
-        cell_ids = [int(item.text()) for item in self.list_rejected_cell.selectedItems()]
+        cell_ids = [self.extract_id(item) for item in self.list_rejected_cell.selectedItems()]
         self.session.approve_cells(cell_ids)
         self.refresh_cell_list()
 

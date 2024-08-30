@@ -27,6 +27,7 @@ import matplotlib.pyplot as plt
 
 import configparser
 import time
+import datetime
 
 def open_minian(
     dpath: str, post_process: Optional[Callable] = None, return_dict=True
@@ -384,6 +385,7 @@ class DataInstance:
         self.missed_signals = {}
         self.load_events(self.events_type)
         self.noise_values = {}
+        self.cell_ids_to_groups = {} # This differs from self.group as it is used for preselected groups by the user
 
         # Create the default image
         self.clustering_result = {"basic": {"image": np.stack((self.data['A'].sum("unit_id").values,)*3, axis=-1)}}
@@ -1116,8 +1118,54 @@ class DataInstance:
 
         return got_data
 
+    def add_cell_id_group(self, cell_id_group):
+        # First remove any cell ids that are already in the group
+        self.remove_cell_id_group(cell_id_group)
+        # First find the lowest available group id
+        current_ids = set(self.cell_ids_to_groups.values())
+        new_group_id = 1
+        while new_group_id in current_ids:
+            new_group_id += 1
 
-        
+        for id in cell_id_group:
+            self.cell_ids_to_groups[id] = new_group_id
+    
+    def remove_cell_id_group(self, cell_id_group):
+        for id in cell_id_group:
+            if id in self.cell_ids_to_groups:
+                del self.cell_ids_to_groups[id]
+
+    def get_group_ids(self):
+        return np.unique(list(self.cell_ids_to_groups.values()))
+
+    def get_video_interval(self):
+        timestamps = self.data['timestamp(ms)'].values
+        # Take first 100 frames and calculate the frame rate
+        elapsed_time = timestamps[100] - timestamps[0]
+        frame_time = int(elapsed_time / 100)
+        return frame_time
+
+    def frame_to_time(self, frame):
+        timestamp = self.data['timestamp(ms)'].values[frame].item()
+        # Convert to 00:00:00.00 format
+        seconds = timestamp / 1000
+        isec, fsec = divmod(round(seconds*100), 100)
+        return "{}.{:02.0f}".format(datetime.timedelta(seconds=isec), fsec)
+
+    def get_cell_ids(self, group_id):
+        if group_id == "All Cells":
+            return self.data['E'].unit_id.values
+        elif group_id == "Verified Cells":
+            all_unit_ids = self.data['E'].unit_id.values
+            verified = self.data['E'].verified.values.astype(int)
+            return all_unit_ids[verified==1]
+        else:
+            if "Group" not in group_id:
+                raise ValueError("Invalid group id")
+            # Extract the group id from the string
+            group_id = int(group_id.split(" ")[1])
+            # Find the corresponding cell ids
+            return [key for key, value in self.cell_ids_to_groups.items() if value == group_id]
 
 class CellClustering:
     """
