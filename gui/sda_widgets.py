@@ -204,13 +204,18 @@ class CurrentVisualizationData():
 
     __rmul__ = __mul__
 
-def base_visualization(session, precalculated_values=None, data_type="C", start_frame=0, end_frame=200, cells_to_visualize="All Cells", **kwargs):
+def base_visualization(session, precalculated_values=None, window_size=1, data_type="C", start_frame=0, end_frame=200,
+                       cells_to_visualize="All Cells", smoothing_type="mean", **kwargs):
     if data_type in session.data:
         signal = session.data[data_type].sel(frame=slice(start_frame, end_frame-1)) # -1 since it is inclusive
     else:
         signal = precalculated_values[data_type].sel(frame=slice(start_frame, end_frame-1)) # -1 since it is inclusive
     ids = session.get_cell_ids(cells_to_visualize)
-    signal = signal.sel(unit_id=ids).values
+    signal = signal.sel(unit_id=ids)
+    if window_size != 1:
+        if smoothing_type == "mean":
+            signal = signal.rolling(min_periods=1, frame=window_size, center=True).mean()
+    signal = signal.values
     A = session.data["A"].sel(unit_id=ids).values
     A_flat = A.sum(axis=0)
 
@@ -240,10 +245,10 @@ def base_visualization(session, precalculated_values=None, data_type="C", start_
 
 class MayaviQWidget(QWidget):
     point_signal = pyqtSignal(int, int)
-    def __init__(self, session, chunk_length=50, window_size=200, visualization_data=CurrentVisualizationData(np.random.rand(1, 608, 608), 0, 0, 0, 608, 0, 608), visualization_generator=base_visualization):
+    def __init__(self, session, chunk_length=50, chunk_size=200, visualization_data=CurrentVisualizationData(np.random.rand(1, 608, 608), 0, 0, 0, 608, 0, 608), visualization_generator=base_visualization):
         super().__init__()
         self.chunk_length = chunk_length
-        self.window_size = window_size
+        self.chunk_size = chunk_size
         self.session = session
         self.scaling_factor = 10
         self.visualization_data = visualization_data * self.scaling_factor
@@ -350,7 +355,6 @@ class MayaviQWidget(QWidget):
                         DFF_based_events[i, end:end+DFF_no_of_frames] = DFF_decay_values
 
 
-        
         precalculated_values['C_base'] = C_based_events
         precalculated_values['C_cumulative'] = C_cumulative_events
         precalculated_values['DFF_base'] = DFF_based_events
@@ -375,7 +379,7 @@ class MayaviQWidget(QWidget):
         if not self.visualization_data.in_range(frame):
             # We are out of range and we need to update the data, first we need to find the nearest chunk, which is a multiple of chunk_length
             chunk_start = frame - frame % self.chunk_length
-            self.set_data(self.visualization_generator(self.session, precalculated_values=self.precalculated_values, start_frame=chunk_start, end_frame=chunk_start+self.window_size, **self.kwargs))
+            self.set_data(self.visualization_generator(self.session, precalculated_values=self.precalculated_values, start_frame=chunk_start, end_frame=chunk_start+self.chunk_size, **self.kwargs))
         self.visualization.set_frame(frame)
         self.current_frame = frame
 
@@ -391,10 +395,7 @@ class MayaviQWidget(QWidget):
         self.kwargs = kwargs
         chunk_start = self.current_frame - self.current_frame % self.chunk_length
 
-        # Check if we have the right frame data
-        #self.calculate_window_size(**kwargs)
-
-        self.set_data(self.visualization_generator(self.session, precalculated_values=self.precalculated_values,  start_frame=chunk_start, end_frame=chunk_start+self.window_size, **kwargs))
+        self.set_data(self.visualization_generator(self.session, precalculated_values=self.precalculated_values,  start_frame=chunk_start, end_frame=chunk_start+self.chunk_size, **kwargs))
         self.set_frame(self.current_frame)
 
     def receive_click(self, x, y):
@@ -413,21 +414,7 @@ class MayaviQWidget(QWidget):
             points_coords = (points_coords[0], points_coords[1], points_coords[2], colors)
             self.visualization.update_points(points_coords)
 
-    def calculate_window_size(self, **kwargs):
-        # We need to calculate the window size
-        window_size = kwargs["window_size"]
-        visualization_type = kwargs["visualization_type"]
 
-        if window_size != 1 or "base" in visualization_type:
-            if visualization_type not in self.precalculated_values:
-                self.precalculated_values[visualization_type] = {}
-            else:
-                if self.precalculated_values[visualization_type][window_size]:
-                    return
-            
-            # Calculate the rolling average for the window size
-
-        
 
 
 

@@ -426,13 +426,24 @@ class ExplorationWidget(QWidget):
         # Input for window size
         self.global_window_size_label = QLabel("Window Size")
         self.global_window_size_input = QLineEdit()
-        self.global_window_size_input.setValidator(QIntValidator(1, self.session.data["C"].shape[0] // 10))
+        self.global_window_size_input.setValidator(QIntValidator(1, 1000))
         self.global_window_size_input.setText("1")
         self.global_window_size_btn = QPushButton("Update Size")
+        self.global_window_size_btn.clicked.connect(lambda: self.visualize_global_signals(reset_view=False))
         self.layout_global_window_size = QHBoxLayout()
         self.layout_global_window_size.addWidget(self.global_window_size_label)
         self.layout_global_window_size.addWidget(self.global_window_size_input)
         self.layout_global_window_size.addWidget(self.global_window_size_btn)
+        # Set which method for gathering averages
+        layout_global_avg_method = QHBoxLayout()
+        global_avg_method_label = QLabel("Averaging Method:")
+        self.global_avg_method = QComboBox()
+        self.global_avg_method.addItems(["Rolling", "Coarse"])
+        self.global_avg_method.setCurrentIndex(0)
+        self.global_avg_method.currentIndexChanged.connect(lambda: self.visualize_global_signals(reset_view=False))
+        layout_global_avg_method.addWidget(global_avg_method_label)
+        layout_global_avg_method.addWidget(self.global_avg_method)
+        # CheckBoxes for global signals
         self.btn_global_reset_view.clicked.connect(lambda: self.visualize_global_signals(reset_view=True))
         self.chkbox_plot_global_C.clicked.connect(lambda: self.visualize_global_signals(reset_view=False))
         self.chkbox_plot_global_S.clicked.connect(lambda: self.visualize_global_signals(reset_view=False))
@@ -578,6 +589,20 @@ class ExplorationWidget(QWidget):
         self.dropdown_3D_data_types.addItems(["C", "DFF"])
         self.chkbox_3D_cumulative = QCheckBox("Cumulative")
         self.chkbox_3D_cumulative.hide()
+        label_smoothing = QLabel("Smoothing")
+        layout_smoothing_type = QHBoxLayout()
+        label_smoothing_type = QLabel("Type:")
+        self.dropdown_smoothing_type = QComboBox()
+        self.dropdown_smoothing_type.addItems(["Mean"])
+        layout_smoothing_type.addWidget(label_smoothing_type)
+        layout_smoothing_type.addWidget(self.dropdown_smoothing_type)
+        layout_smoothing_size = QHBoxLayout()
+        label_smoothing_size = QLabel("Size:")
+        self.input_smoothing_size = QLineEdit()
+        self.input_smoothing_size.setValidator(QIntValidator(1, 1000))
+        self.input_smoothing_size.setText("1")
+        layout_smoothing_size.addWidget(label_smoothing_size)
+        layout_smoothing_size.addWidget(self.input_smoothing_size)
         label_3D_slider = QLabel("Scaling")
         self.slider_value = QLabel("1")
         self.slider_value.setFixedWidth(30)
@@ -608,6 +633,9 @@ class ExplorationWidget(QWidget):
         visualization_3D_layout.addWidget(self.dropdown_3D_functions)
         visualization_3D_layout.addWidget(self.dropdown_3D_data_types)
         visualization_3D_layout.addWidget(self.chkbox_3D_cumulative)
+        visualization_3D_layout.addWidget(label_smoothing)
+        visualization_3D_layout.addLayout(layout_smoothing_type)
+        visualization_3D_layout.addLayout(layout_smoothing_size)
         visualization_3D_layout.addWidget(label_3D_slider)
         visualization_3D_layout.addLayout(layout_3D_slider)
         visualization_3D_layout.addWidget(self.btn_3D_visualize)
@@ -952,6 +980,7 @@ class ExplorationWidget(QWidget):
         layout_global_plot_options.addStretch()
         layout_global_plot_options.setDirection(3)
         layout_global_plot_options.addWidget(self.btn_global_reset_view)
+        layout_global_plot_options.addLayout(layout_global_avg_method)
         layout_global_plot_options.addLayout(self.layout_global_window_size)
         layout_global_plot_options.addWidget(self.chkbox_plot_global_C)
         layout_global_plot_options.addWidget(self.chkbox_plot_global_S)
@@ -1035,6 +1064,12 @@ class ExplorationWidget(QWidget):
         visualization_type = self.dropdown_3D_functions.currentText()
         scaling = self.slider_3D_scaling.value()
         cells_to_visualize = self.list_3D_which_cells.currentText()
+        # Clamp values between 1 and 1000
+        window_size = int(self.input_smoothing_size.text())
+        window_size = max(1, min(window_size, 1000))
+        smoothing_type = self.dropdown_smoothing_type.currentText().lower()
+        
+
 
         if visualization_type == "Normalized Visualization" and self.chkbox_3D_cumulative.isChecked():
             visualization_type = self.dropdown_3D_data_types.currentText() + "_cumulative"
@@ -1043,7 +1078,8 @@ class ExplorationWidget(QWidget):
         else:
             visualization_type = self.dropdown_3D_data_types.currentText()
             
-        self.visualization_3D.change_func(base_visualization, data_type=visualization_type, scaling=scaling, cells_to_visualize=cells_to_visualize)
+        self.visualization_3D.change_func(base_visualization, data_type=visualization_type, scaling=scaling, cells_to_visualize=cells_to_visualize,
+                                          window_size=window_size, smoothing_type=smoothing_type)
 
     def check_if_results_exist(self):
         idx_to_cells = {"0":"1", "1":"2", "2":"5", "3":"10", "4":"15", "5":"20"}
@@ -1870,8 +1906,19 @@ class ExplorationWidget(QWidget):
 
         selected_types = self.get_selected_data_type_global()
         for data_type in selected_types:
-            data = self.session.data[data_type].mean(dim="unit_id").values
-            p.add_main_curve(data, is_C=False, pen=self.color_mapping[data_type])
+            custom_indices = None # Due to Coarsening
+            data = self.session.data[data_type].mean(dim="unit_id")
+            global_window_size = int(self.global_window_size_input.text())
+            if global_window_size > 1:
+                if self.global_avg_method.currentText() == "Rolling":
+                    data = data.rolling(frame=global_window_size, center=True).mean()
+                elif self.global_avg_method.currentText() == "Coarse":
+                    data = data.coarsen(frame=global_window_size, boundary="trim").mean()
+                    custom_indices = np.arange(global_window_size//2, self.session.data["C"].shape[1]-global_window_size//2, global_window_size)
+            
+            data = data.values
+
+            p.add_main_curve(data, custom_indices=custom_indices, is_C=False, pen=self.color_mapping[data_type])
 
 
     def visualize_signals(self, reset_view=False):
@@ -2447,10 +2494,13 @@ class PlotItemEnhanced(PlotItem):
                 event_curve = PlotCurveItemEnhanced(np.arange(beg, end), self.C_signal[beg:end], pen=color, is_event=False, main_plot=self)
                 self.addItem(event_curve)
 
-    def add_main_curve(self, data, is_C=False, pen='w'):
+    def add_main_curve(self, data, custom_indices=None, is_C=False, pen='w'):
         if is_C:
             self.C_signal = data
-        curve = PlotCurveItemEnhanced(np.arange(len(data)), data, pen=pen, is_event=False)
+        if custom_indices is None:
+            curve = PlotCurveItemEnhanced(np.arange(len(data)), data, pen=pen, is_event=False)
+        else:
+            curve = PlotCurveItemEnhanced(custom_indices, data, pen=pen, is_event=False)
         self.addItem(curve)
 
     def clear_selected_events_local(self):
