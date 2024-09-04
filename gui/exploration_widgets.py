@@ -423,15 +423,22 @@ class ExplorationWidget(QWidget):
         self.chkbox_plot_global_dff = QCheckBox("ΔF/F")
         self.chkbox_plot_global_dff.setStyleSheet("background-color: yellow; border: 1px solid black; width: 15px; height: 15px;")
         self.btn_global_reset_view = QPushButton("Reset View")
+        # Which group of cells to visualize
+        label_global_which_cells = QLabel("Which Cells to Visualize")
+        self.list_global_which_cells = QComboBox()
+        self.list_global_which_cells.addItems(["All Cells", "Verified Cells"])
+        unique_groups = self.session.get_group_ids()
+        self.list_global_which_cells.addItems([f"Group {group}" for group in unique_groups])
+        self.list_global_which_cells.currentIndexChanged.connect(lambda: self.visualize_global_signals(reset_view=False))
         # Input for window size
-        self.global_window_size_label = QLabel("Window Size")
+        global_window_size_label = QLabel("Window Size")
         self.global_window_size_input = QLineEdit()
         self.global_window_size_input.setValidator(QIntValidator(1, 1000))
         self.global_window_size_input.setText("1")
         self.global_window_size_btn = QPushButton("Update Size")
         self.global_window_size_btn.clicked.connect(lambda: self.visualize_global_signals(reset_view=False))
         self.layout_global_window_size = QHBoxLayout()
-        self.layout_global_window_size.addWidget(self.global_window_size_label)
+        self.layout_global_window_size.addWidget(global_window_size_label)
         self.layout_global_window_size.addWidget(self.global_window_size_input)
         self.layout_global_window_size.addWidget(self.global_window_size_btn)
         # Set which method for gathering averages
@@ -579,14 +586,13 @@ class ExplorationWidget(QWidget):
         label_which_cells = QLabel("Which Cells to Visualize")
         self.list_3D_which_cells = QComboBox()
         self.list_3D_which_cells.addItems(["All Cells", "Verified Cells"])
-        unique_groups = self.session.get_group_ids()
         self.list_3D_which_cells.addItems([f"Group {group}" for group in unique_groups])
         label_3D_functions = QLabel("3D Visualization Functions")
         self.dropdown_3D_functions = QComboBox()
         self.dropdown_3D_functions.addItems(["Base Visualization", "Normalized Visualization"])
         self.dropdown_3D_functions.currentIndexChanged.connect(self.changed_3D_function)
         self.dropdown_3D_data_types = QComboBox()
-        self.dropdown_3D_data_types.addItems(["C", "DFF"])
+        self.dropdown_3D_data_types.addItems(["C", "DFF", "Frequency"])
         self.chkbox_3D_cumulative = QCheckBox("Cumulative")
         self.chkbox_3D_cumulative.hide()
         label_smoothing = QLabel("Smoothing")
@@ -603,7 +609,7 @@ class ExplorationWidget(QWidget):
         self.input_smoothing_size.setText("1")
         layout_smoothing_size.addWidget(label_smoothing_size)
         layout_smoothing_size.addWidget(self.input_smoothing_size)
-        label_3D_slider = QLabel("Scaling")
+        label_3D_slider = QLabel("Scale Z Axis")
         self.slider_value = QLabel("1")
         self.slider_value.setFixedWidth(30)
         self.slider_3D_scaling = QSlider(Qt.Orientation.Horizontal)
@@ -982,6 +988,8 @@ class ExplorationWidget(QWidget):
         layout_global_plot_options.addWidget(self.btn_global_reset_view)
         layout_global_plot_options.addLayout(layout_global_avg_method)
         layout_global_plot_options.addLayout(self.layout_global_window_size)
+        layout_global_plot_options.addWidget(self.list_global_which_cells)
+        layout_global_plot_options.addWidget(label_global_which_cells)
         layout_global_plot_options.addWidget(self.chkbox_plot_global_C)
         layout_global_plot_options.addWidget(self.chkbox_plot_global_S)
         layout_global_plot_options.addWidget(self.chkbox_plot_global_YrA)
@@ -1061,22 +1069,20 @@ class ExplorationWidget(QWidget):
             self.chkbox_3D_cumulative.show()
 
     def visualize_3D(self):
-        visualization_type = self.dropdown_3D_functions.currentText()
+        visualization_function = self.dropdown_3D_functions.currentText()
+        visualization_type = self.dropdown_3D_data_types.currentText()
         scaling = self.slider_3D_scaling.value()
         cells_to_visualize = self.list_3D_which_cells.currentText()
         # Clamp values between 1 and 1000
         window_size = int(self.input_smoothing_size.text())
         window_size = max(1, min(window_size, 1000))
         smoothing_type = self.dropdown_smoothing_type.currentText().lower()
-        
 
-
-        if visualization_type == "Normalized Visualization" and self.chkbox_3D_cumulative.isChecked():
-            visualization_type = self.dropdown_3D_data_types.currentText() + "_cumulative"
-        elif visualization_type == "Normalized Visualization":
-            visualization_type = self.dropdown_3D_data_types.currentText() + "_base"
-        else:
-            visualization_type = self.dropdown_3D_data_types.currentText()
+        if visualization_type in ["C", "DFF"]:
+            if visualization_function == "Normalized Visualization" and self.chkbox_3D_cumulative.isChecked():
+                visualization_type = self.dropdown_3D_data_types.currentText() + "_cumulative"
+            elif visualization_function == "Normalized Visualization":
+                visualization_type = self.dropdown_3D_data_types.currentText() + "_base"
             
         self.visualization_3D.change_func(base_visualization, data_type=visualization_type, scaling=scaling, cells_to_visualize=cells_to_visualize,
                                           window_size=window_size, smoothing_type=smoothing_type)
@@ -1907,7 +1913,10 @@ class ExplorationWidget(QWidget):
         selected_types = self.get_selected_data_type_global()
         for data_type in selected_types:
             custom_indices = None # Due to Coarsening
-            data = self.session.data[data_type].mean(dim="unit_id")
+            data = self.session.data[data_type]
+            cells_to_visualize = self.list_global_which_cells.currentText()
+            units = self.session.get_cell_ids(cells_to_visualize)
+            data = data.sel(unit_id=units).mean(dim="unit_id")
             global_window_size = int(self.global_window_size_input.text())
             if global_window_size > 1:
                 if self.global_avg_method.currentText() == "Rolling":
@@ -2226,6 +2235,9 @@ class ExplorationWidget(QWidget):
         self.list_3D_which_cells.clear()
         self.list_3D_which_cells.addItems(["All Cells", "Verified Cells"])
         self.list_3D_which_cells.addItems([f"Group {group_id}" for group_id in unique_groups])
+        self.list_global_which_cells.clear()
+        self.list_global_which_cells.addItems(["All Cells", "Verified Cells"])
+        self.list_global_which_cells.addItems([f"Group {group_id}" for group_id in unique_groups])
         self.refresh_cell_list()
     
     def remove_from_group(self):
@@ -2235,6 +2247,9 @@ class ExplorationWidget(QWidget):
         self.list_3D_which_cells.clear()
         self.list_3D_which_cells.addItems(["All Cells", "Verified Cells"])
         self.list_3D_which_cells.addItems([f"Group {group_id}" for group_id in unique_groups])
+        self.list_global_which_cells.clear()
+        self.list_global_which_cells.addItems(["All Cells", "Verified Cells"])
+        self.list_global_which_cells.addItems([f"Group {group_id}" for group_id in unique_groups])
         self.refresh_cell_list()
 
     def reject_cells(self):
@@ -2445,7 +2460,6 @@ class ExplorationWidget(QWidget):
                     frame_length *= 2
         
         return (start, end)
-
 
 class PlotItemEnhanced(PlotItem):
     signalChangedSelection = QtCore.Signal(object)

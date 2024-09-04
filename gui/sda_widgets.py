@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import  QWidget, QVBoxLayout, QPushButton
 from PyQt5.QtCore import pyqtSignal
 import numpy as np
 from scipy.interpolate import interp1d
+import xarray as xr
 
 class SDAWindowWidget(QWidget):
     def __init__(self, session, name, main_window_ref, parent=None):
@@ -156,8 +157,9 @@ class Visualization(HasTraits):
 
 
 class CurrentVisualizationData():
-    def __init__(self, data, start_frame, end_frame, x_start, x_end, y_start, y_end, scaling_factor=10):
+    def __init__(self, data, max_height, start_frame, end_frame, x_start, x_end, y_start, y_end, scaling_factor=10):
         self.data = data
+        self.max_height = max_height
         self.start_frame = start_frame
         self.end_frame = end_frame
         self.x_start = x_start
@@ -181,8 +183,7 @@ class CurrentVisualizationData():
         x_coords, y_coords = zip(*points)
 
         y_coords, x_coords = int(self.x_end) - np.array(x_coords).round().astype(int), np.array(y_coords).round().astype(int) - int(self.y_start) # They need to be switched around due prior flipping
-        # Finally y_coords needs to be flipped with respect to its axis
-        
+        # Finally y_coords needs to be flipped with respect to its axis        
         self.points = {"x": x_coords, "y": y_coords}
 
     
@@ -190,12 +191,12 @@ class CurrentVisualizationData():
         return frame >= self.start_frame and frame <= self.end_frame-1
     
     def get_ranges(self):
-        return [self.x_start, self.x_end, self.y_start, self.y_end, 0, self.data.max()]
+        return [self.x_start, self.x_end, self.y_start, self.y_end, 0, self.max_height]
     
     def get_extent(self):
         x = self.data.shape[1]
         y = self.data.shape[2]
-        z = self.data.max() * self.scaling_factor
+        z = self.max_height * self.scaling_factor
         return [0, x, 0, y, 0, z]
     
     def __mul__(self, factor):
@@ -207,8 +208,10 @@ class CurrentVisualizationData():
 def base_visualization(session, precalculated_values=None, window_size=1, data_type="C", start_frame=0, end_frame=200,
                        cells_to_visualize="All Cells", smoothing_type="mean", **kwargs):
     if data_type in session.data:
+        max_height = session.data[data_type].max().values
         signal = session.data[data_type].sel(frame=slice(start_frame, end_frame-1)) # -1 since it is inclusive
     else:
+        max_height = precalculated_values[data_type].max().values
         signal = precalculated_values[data_type].sel(frame=slice(start_frame, end_frame-1)) # -1 since it is inclusive
     ids = session.get_cell_ids(cells_to_visualize)
     signal = signal.sel(unit_id=ids)
@@ -234,7 +237,7 @@ def base_visualization(session, precalculated_values=None, window_size=1, data_t
     # Since we did the prior we need to flip x_start, y_start etc...
     x_start, x_end, y_start, y_end = y_start, y_end, x_start, x_end
 
-    CV = CurrentVisualizationData(Y, start_frame, end_frame, x_start, x_end, y_start, y_end)
+    CV = CurrentVisualizationData(Y, max_height, start_frame, end_frame, x_start, x_end, y_start, y_end)
     centroids = session.centroids_max
     # Include only the ones that rea in ids
     centroids = {id: centroids[id] for id in ids}
@@ -245,7 +248,7 @@ def base_visualization(session, precalculated_values=None, window_size=1, data_t
 
 class MayaviQWidget(QWidget):
     point_signal = pyqtSignal(int, int)
-    def __init__(self, session, chunk_length=50, chunk_size=200, visualization_data=CurrentVisualizationData(np.random.rand(1, 608, 608), 0, 0, 0, 608, 0, 608), visualization_generator=base_visualization):
+    def __init__(self, session, chunk_length=50, chunk_size=200, visualization_data=CurrentVisualizationData(np.random.rand(1, 608, 608), 1, 0, 0, 0, 608, 0, 608), visualization_generator=base_visualization):
         super().__init__()
         self.chunk_length = chunk_length
         self.chunk_size = chunk_size
@@ -268,23 +271,26 @@ class MayaviQWidget(QWidget):
         # We need to precalculate some data related to E to not cause slow down during visualization
         self.precalculated_values = self._precalculate()
 
-        # Convert the numpy arrays to xarray DataArrays, copy over coords and dims from C
-        for key, value in self.precalculated_values.items():
-            self.precalculated_values[key] = session.data['C'].copy(data=value)
-
     def _precalculate(self):
         precalculated_values = {}
-        E = self.session.data['E'].values
-        C = self.session.data['C'].values
-        DFF = self.session.data['DFF'].values
+        E = self.session.data['E']
+        C = self.session.data['C']
+        DFF = self.session.data['DFF']
+
+        # Unit ids
+        unit_ids = self.session.data['E'].unit_id.values
 
         # Output values
         C_based_events = np.zeros(C.shape)
         C_cumulative_events = np.zeros(C.shape)
         DFF_based_events = np.zeros(DFF.shape)
         DFF_cumulative_events = np.zeros(DFF.shape)
+        frequency = np.zeros(C.shape)
 
-        for i, row in enumerate(E):
+        for i, unit_id in enumerate(unit_ids):
+            row = E.sel(unit_id=unit_id).values
+            C_row = C.sel(unit_id=unit_id).values
+            DFF_row = DFF.sel(unit_id=unit_id).values
             events = np.nan_to_num(row, nan=0) # Sometimes saving errors can cause NaNs
             indices = events.nonzero()
             if indices[0].any():
@@ -295,10 +301,11 @@ class MayaviQWidget(QWidget):
 
                 C_based_total = 0
                 DFF_based_total = 0
+                frequency_total = 0
                 indices_to_remove = []
                 for j, (start, end) in enumerate(split_indices):
-                    C_based_val = abs(C[i, start:end].max() - C[i, start:end].min())
-                    DFF_based_val = abs(DFF[i, start:end].max() - DFF[i, start:end].min())
+                    C_based_val = abs(C_row[start:end].max() - C_row[start:end].min())
+                    DFF_based_val = abs(DFF_row[start:end].max() - DFF_row[start:end].min())
 
                     if C_based_val == 0 or DFF_based_val == 0:
                         indices_to_remove.append(j)
@@ -306,6 +313,8 @@ class MayaviQWidget(QWidget):
 
                     C_based_events[i, start:end] = C_based_val
                     DFF_based_events[i, start:end] = DFF_based_val
+                    frequency_total += 1
+                    frequency[i, start:end] = frequency_total
 
                     C_based_total += C_based_val
                     DFF_based_total += DFF_based_val
@@ -320,15 +329,13 @@ class MayaviQWidget(QWidget):
                 C_based_events[i] /= C_based_total
                 DFF_based_events[i] /= DFF_based_total
                 C_cumulative_events[i] /= C_based_total
-                C_cumulative_events[i][0] = 0.000001 # So we don't have interpolation issues
-                C_cumulative_events[i][-1] = 1
                 DFF_cumulative_events[i] /= DFF_based_total
-                DFF_cumulative_events[i][0] = 0.000001
-                DFF_cumulative_events[i][-1] = 1
+                frequency[i] /= frequency_total
 
                 # Interpolate the values to fill in the gaps for cumulative events
-                C_cumulative_events[i] = self._interpolate(C_cumulative_events[i])
-                DFF_cumulative_events[i] = self._interpolate(DFF_cumulative_events[i])
+                C_cumulative_events[i] = self._forward_fill(C_cumulative_events[i])
+                DFF_cumulative_events[i] = self._forward_fill(DFF_cumulative_events[i])
+                frequency[i] = self._forward_fill(frequency[i])
 
                 # We'll simulate decay for the base events by taking the last value and multiplying it by 0.95
                 for j, (_, end) in enumerate(split_indices):
@@ -355,19 +362,19 @@ class MayaviQWidget(QWidget):
                         DFF_based_events[i, end:end+DFF_no_of_frames] = DFF_decay_values
 
 
-        precalculated_values['C_base'] = C_based_events
-        precalculated_values['C_cumulative'] = C_cumulative_events
-        precalculated_values['DFF_base'] = DFF_based_events
-        precalculated_values['DFF_cumulative'] = DFF_cumulative_events
+        precalculated_values['C_base'] = xr.DataArray(C_based_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='C_base')
+        precalculated_values['C_cumulative'] = xr.DataArray(C_cumulative_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='C_cumulative')
+        precalculated_values['DFF_base'] = xr.DataArray(DFF_based_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='DFF_base')
+        precalculated_values['DFF_cumulative'] = xr.DataArray(DFF_cumulative_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='DFF_cumulative')
+        precalculated_values['Frequency'] = xr.DataArray(frequency, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='frequency')
         
         return precalculated_values
                     
-    def _interpolate(self, y):
-        x = np.arange(len(y))
-        idx = np.nonzero(y)
-        interp = interp1d(x[idx],y[idx])
-
-        return interp(x)
+    def _forward_fill(self, y):
+        prev = np.arange(len(y))
+        prev[y == 0] = 0
+        prev = np.maximum.accumulate(prev)
+        return y[prev]
         
 
     def set_data(self, visualization_data):
@@ -409,7 +416,10 @@ class MayaviQWidget(QWidget):
             # We need to store the cells for when it might be called
             self.visualization.cells = cells
         else:
-            ids_to_highlight = [self.cell_id_to_index[cell_id] for cell_id in cells]
+            ids_to_highlight = []
+            for cell_id in cells:
+                if cell_id in self.cell_id_to_index:
+                    ids_to_highlight.append(self.cell_id_to_index[cell_id])
             colors = np.array([1 if i in ids_to_highlight else 0 for i in range(len(points_coords[0]))])
             points_coords = (points_coords[0], points_coords[1], points_coords[2], colors)
             self.visualization.update_points(points_coords)
