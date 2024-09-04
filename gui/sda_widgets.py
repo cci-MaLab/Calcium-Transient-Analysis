@@ -182,7 +182,7 @@ class CurrentVisualizationData():
         points = points.values()
         x_coords, y_coords = zip(*points)
 
-        y_coords, x_coords = int(self.x_end) - np.array(x_coords).round().astype(int), np.array(y_coords).round().astype(int) - int(self.y_start) # They need to be switched around due prior flipping
+        y_coords, x_coords = int(self.x_end) - np.array(x_coords).astype(int) - 1, np.array(y_coords).astype(int) - int(self.y_start) # They need to be switched around due prior flipping
         # Finally y_coords needs to be flipped with respect to its axis        
         self.points = {"x": x_coords, "y": y_coords}
 

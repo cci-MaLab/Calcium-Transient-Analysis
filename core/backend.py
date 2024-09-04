@@ -512,8 +512,8 @@ class DataInstance:
             self.A[i] = self.data['A'].sel(unit_id = i)
             self.centroids[i] = tuple(cent.loc[cent['unit_id'] == i].values[0][1:])
             self.centroids_max[i] = tuple(cent_max.loc[cent_max['unit_id'] == i].values[0][1:])
-
-
+        
+        
         output_dpath = "/N/project/Cortical_Calcium_Image/analysis"
         if session is None:
             self.output_path = os.path.join(output_dpath, mouseID,day)
