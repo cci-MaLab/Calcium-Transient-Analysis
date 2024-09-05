@@ -589,12 +589,24 @@ class ExplorationWidget(QWidget):
         self.list_3D_which_cells.addItems([f"Group {group}" for group in unique_groups])
         label_3D_functions = QLabel("3D Visualization Functions")
         self.dropdown_3D_functions = QComboBox()
-        self.dropdown_3D_functions.addItems(["Base Visualization", "Normalized Visualization"])
+        self.dropdown_3D_functions.addItems(["Raw Visualization", "Transient Visualization"])
         self.dropdown_3D_functions.currentIndexChanged.connect(self.changed_3D_function)
         self.dropdown_3D_data_types = QComboBox()
         self.dropdown_3D_data_types.addItems(["C", "DFF", "Frequency"])
+
+        self.layout_3D_chkbox = QHBoxLayout()
         self.chkbox_3D_cumulative = QCheckBox("Cumulative")
-        self.chkbox_3D_cumulative.hide()
+        self.chkbox_3D_normalize = QCheckBox("Normalize")
+        self.layout_3D_chkbox.addWidget(self.chkbox_3D_cumulative)
+        self.layout_3D_chkbox.addWidget(self.chkbox_3D_normalize)
+        self.layout_3D_chkbox.hide()
+
+        # Smoothing
+        frame_smoothing = QFrame()
+        frame_smoothing.setFrameShape(QFrame.StyledPanel)
+        frame_smoothing.setFrameShadow(QFrame.Raised)
+        frame_smoothing.setLineWidth(3)
+        layout_smoothing = QVBoxLayout(frame_smoothing)
         label_smoothing = QLabel("Smoothing")
         layout_smoothing_type = QHBoxLayout()
         label_smoothing_type = QLabel("Type:")
@@ -609,6 +621,31 @@ class ExplorationWidget(QWidget):
         self.input_smoothing_size.setText("1")
         layout_smoothing_size.addWidget(label_smoothing_size)
         layout_smoothing_size.addWidget(self.input_smoothing_size)
+        layout_smoothing.addWidget(label_smoothing)
+        layout_smoothing.addLayout(layout_smoothing_type)
+        layout_smoothing.addLayout(layout_smoothing_size)
+
+        # Window Size
+        self.frame_3D_window_size = QFrame()
+        self.frame_3D_window_size.setFrameShape(QFrame.StyledPanel)
+        self.frame_3D_window_size.setFrameShadow(QFrame.Raised)
+        self.frame_3D_window_size.setLineWidth(3)
+        self.frame_3D_window_size.hide()
+        layout_window_size = QHBoxLayout(self.frame_3D_window_size)
+        label_window_size = QLabel("Window Size:")
+        self.input_3D_window_size = QLineEdit()
+        self.input_3D_window_size.setValidator(QIntValidator(1, 10000))
+        self.input_3D_window_size.setText("1")
+        layout_window_size.addWidget(label_window_size)
+        layout_window_size.addWidget(self.input_3D_window_size)
+
+
+        # 3D Z Axis Scaling
+        frame_3D_scaling = QFrame()
+        frame_3D_scaling.setFrameShape(QFrame.StyledPanel)
+        frame_3D_scaling.setFrameShadow(QFrame.Raised)
+        frame_3D_scaling.setLineWidth(3)
+        layout_3D_scaling = QVBoxLayout(frame_3D_scaling)
         label_3D_slider = QLabel("Scale Z Axis")
         self.slider_value = QLabel("1")
         self.slider_value.setFixedWidth(30)
@@ -619,6 +656,9 @@ class ExplorationWidget(QWidget):
         layout_3D_slider = QHBoxLayout()
         layout_3D_slider.addWidget(self.slider_3D_scaling)
         layout_3D_slider.addWidget(self.slider_value)
+        layout_3D_scaling.addWidget(label_3D_slider)
+        layout_3D_scaling.addLayout(layout_3D_slider)
+
         self.btn_3D_visualize = QPushButton("Visualize")
         self.btn_3D_visualize.clicked.connect(self.visualize_3D)
 
@@ -638,14 +678,12 @@ class ExplorationWidget(QWidget):
         visualization_3D_layout.addWidget(label_3D_functions)
         visualization_3D_layout.addWidget(self.dropdown_3D_functions)
         visualization_3D_layout.addWidget(self.dropdown_3D_data_types)
-        visualization_3D_layout.addWidget(self.chkbox_3D_cumulative)
-        visualization_3D_layout.addWidget(label_smoothing)
-        visualization_3D_layout.addLayout(layout_smoothing_type)
-        visualization_3D_layout.addLayout(layout_smoothing_size)
-        visualization_3D_layout.addWidget(label_3D_slider)
-        visualization_3D_layout.addLayout(layout_3D_slider)
-        visualization_3D_layout.addWidget(self.btn_3D_visualize)
+        visualization_3D_layout.addWidget(self.layout_3D_chkbox)
+        visualization_3D_layout.addWidget(frame_smoothing)
+        visualization_3D_layout.addWidget(self.frame_3D_window_size)
+        visualization_3D_layout.addWidget(frame_3D_scaling)
         visualization_3D_layout.addLayout(layout_colormap)
+        visualization_3D_layout.addWidget(self.btn_3D_visualize)
         visualization_3D_layout.addStretch()
         visualization_3D_tools = QWidget()
         visualization_3D_tools.setLayout(visualization_3D_layout)
@@ -1063,10 +1101,12 @@ class ExplorationWidget(QWidget):
         self.imv_cell.scene.sigMouseMoved.connect(self.detect_cell_hover)
 
     def changed_3D_function(self):
-        if self.dropdown_3D_functions.currentText() == "Base Visualization":
-            self.chkbox_3D_cumulative.hide()
+        if self.dropdown_3D_functions.currentText() == "Raw Visualization":
+            self.layout_3D_chkbox.hide()
+            self.frame_3D_window_size.hide()
         else:
-            self.chkbox_3D_cumulative.show()
+            self.layout_3D_chkbox.show()
+            self.frame_3D_window_size.show()
 
     def visualize_3D(self):
         visualization_function = self.dropdown_3D_functions.currentText()
@@ -1074,18 +1114,20 @@ class ExplorationWidget(QWidget):
         scaling = self.slider_3D_scaling.value()
         cells_to_visualize = self.list_3D_which_cells.currentText()
         # Clamp values between 1 and 1000
-        window_size = int(self.input_smoothing_size.text())
-        window_size = max(1, min(window_size, 1000))
+        smoothing_size = int(self.input_smoothing_size.text())
+        smoothing_size = max(1, min(smoothing_size, 1000))
         smoothing_type = self.dropdown_smoothing_type.currentText().lower()
+        window_size = int(self.input_3D_window_size.text()) if visualization_function == "Transient Visualization" else 1
+        normalize = self.chkbox_3D_normalize.isChecked()
 
         if visualization_type in ["C", "DFF"]:
-            if visualization_function == "Normalized Visualization" and self.chkbox_3D_cumulative.isChecked():
+            if visualization_function == "Transient Visualization" and self.chkbox_3D_cumulative.isChecked():
                 visualization_type = self.dropdown_3D_data_types.currentText() + "_cumulative"
-            elif visualization_function == "Normalized Visualization":
-                visualization_type = self.dropdown_3D_data_types.currentText() + "_base"
+            elif visualization_function == "Transient Visualization":
+                visualization_type = self.dropdown_3D_data_types.currentText() + "_transient"
             
         self.visualization_3D.change_func(base_visualization, data_type=visualization_type, scaling=scaling, cells_to_visualize=cells_to_visualize,
-                                          window_size=window_size, smoothing_type=smoothing_type)
+                                          smoothing_size=smoothing_size, smoothing_type=smoothing_type, window_size=window_size, normalize=normalize)
 
     def check_if_results_exist(self):
         idx_to_cells = {"0":"1", "1":"2", "2":"5", "3":"10", "4":"15", "5":"20"}

@@ -205,19 +205,33 @@ class CurrentVisualizationData():
 
     __rmul__ = __mul__
 
-def base_visualization(session, precalculated_values=None, window_size=1, data_type="C", start_frame=0, end_frame=200,
+def base_visualization(session, precalculated_values=None, smoothing_size=1, window_size=1, data_type="C", start_frame=0, end_frame=200,
                        cells_to_visualize="All Cells", smoothing_type="mean", **kwargs):
-    if data_type in session.data:
-        max_height = session.data[data_type].max().values
-        signal = session.data[data_type].sel(frame=slice(start_frame, end_frame-1)) # -1 since it is inclusive
-    else:
-        max_height = precalculated_values[data_type].max().values
-        signal = precalculated_values[data_type].sel(frame=slice(start_frame, end_frame-1)) # -1 since it is inclusive
+    
     ids = session.get_cell_ids(cells_to_visualize)
-    signal = signal.sel(unit_id=ids)
     if window_size != 1:
+        # We'll first check if the visualization data exists within precalculated, otherwise we'll calculate it
+        name = f"{data_type}_window_{window_size}"
+        cumulative = True if "cumulative" in data_type else False
+        name = name + "_cumulative" if cumulative else name
+        normalized = True if "normalized" in data_type else False
+        name = name + "_normalized" if normalized else name
+        if name in precalculated_values:
+            signal = precalculated_values[name].sel(unit_id=ids).sel(frame=slice(start_frame, end_frame-1))
+        else:
+            pass
+            # We need to calculate the windowed data
+    else:
+        if data_type in session.data:
+            max_height = session.data[data_type].max().values
+            signal = session.data[data_type].sel(frame=slice(start_frame, end_frame-1)) # -1 since it is inclusive
+        else:
+            max_height = precalculated_values[data_type].max().values
+            signal = precalculated_values[data_type].sel(frame=slice(start_frame, end_frame-1)) # -1 since it is inclusive
+        signal = signal.sel(unit_id=ids)
+    if smoothing_size != 1:
         if smoothing_type == "mean":
-            signal = signal.rolling(min_periods=1, frame=window_size, center=True).mean()
+            signal = signal.rolling(min_periods=1, frame=smoothing_size, center=True).mean()
     signal = signal.values
     A = session.data["A"].sel(unit_id=ids).values
     A_flat = A.sum(axis=0)
@@ -286,6 +300,10 @@ class MayaviQWidget(QWidget):
         DFF_based_events = np.zeros(DFF.shape)
         DFF_cumulative_events = np.zeros(DFF.shape)
         frequency = np.zeros(C.shape)
+        # We are also going to maintain a dictionary for transient information
+        # what frame the transient starts, its duration and the value in terms of C and DFF
+        # Top level are unit_ids which leads to dictionaries of the aforementioned values
+        transient_info = {}
 
         for i, unit_id in enumerate(unit_ids):
             row = E.sel(unit_id=unit_id).values
@@ -294,6 +312,11 @@ class MayaviQWidget(QWidget):
             events = np.nan_to_num(row, nan=0) # Sometimes saving errors can cause NaNs
             indices = events.nonzero()
             if indices[0].any():
+                transient_info[unit_id] = {}
+                frame_start = []
+                frame_end = []
+                c_values = []
+                dff_values = []
                 # Split up the indices into groups
                 split_indices = np.split(indices[0], np.where(np.diff(indices[0]) != 1)[0]+1)
                 # Now Split the indices into pairs of first and last indices
@@ -311,6 +334,11 @@ class MayaviQWidget(QWidget):
                         indices_to_remove.append(j)
                         continue # Can occur due to erroneous data, skip these
 
+                    frame_start.append(start)
+                    frame_end.append(end)
+                    c_values.append(C_based_val)
+                    dff_values.append(DFF_based_val)
+
                     C_based_events[i, start:end] = C_based_val
                     DFF_based_events[i, start:end] = DFF_based_val
                     frequency_total += 1
@@ -322,6 +350,15 @@ class MayaviQWidget(QWidget):
                     C_cumulative_events[i, start:end] = C_based_total
                     DFF_cumulative_events[i, start:end] = DFF_based_total
                 
+
+                # Add to info dictionary
+                transient_info[unit_id]['frame_start'] = frame_start
+                transient_info[unit_id]['frame_end'] = frame_end
+                transient_info[unit_id]['C_values'] = c_values
+                transient_info[unit_id]['DFF_values'] = dff_values
+                transient_info[unit_id]['C_total'] = C_based_total
+                transient_info[unit_id]['DFF_total'] = DFF_based_total
+
                 # Remove the erroneous indices
                 split_indices = [split_indices[j] for j in range(len(split_indices)) if j not in indices_to_remove]
                 
@@ -362,11 +399,12 @@ class MayaviQWidget(QWidget):
                         DFF_based_events[i, end:end+DFF_no_of_frames] = DFF_decay_values
 
 
-        precalculated_values['C_base'] = xr.DataArray(C_based_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='C_base')
+        precalculated_values['C_transient'] = xr.DataArray(C_based_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='C_base')
         precalculated_values['C_cumulative'] = xr.DataArray(C_cumulative_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='C_cumulative')
-        precalculated_values['DFF_base'] = xr.DataArray(DFF_based_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='DFF_base')
+        precalculated_values['DFF_transient'] = xr.DataArray(DFF_based_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='DFF_base')
         precalculated_values['DFF_cumulative'] = xr.DataArray(DFF_cumulative_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='DFF_cumulative')
         precalculated_values['Frequency'] = xr.DataArray(frequency, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='frequency')
+        precalculated_values['transient_info'] = transient_info
         
         return precalculated_values
                     
