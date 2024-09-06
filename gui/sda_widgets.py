@@ -206,21 +206,25 @@ class CurrentVisualizationData():
     __rmul__ = __mul__
 
 def base_visualization(session, precalculated_values=None, smoothing_size=1, window_size=1, data_type="C", start_frame=0, end_frame=200,
-                       cells_to_visualize="All Cells", smoothing_type="mean", **kwargs):
+                       cells_to_visualize="All Cells", smoothing_type="mean", cumulative=False, average=False, normalize=False, **kwargs):
     
     ids = session.get_cell_ids(cells_to_visualize)
     if window_size != 1:
         # We'll first check if the visualization data exists within precalculated, otherwise we'll calculate it
         name = f"{data_type}_window_{window_size}"
-        cumulative = True if "cumulative" in data_type else False
         name = name + "_cumulative" if cumulative else name
-        normalized = True if "normalized" in data_type else False
-        name = name + "_normalized" if normalized else name
+        name = name + "_normalized" if normalize else name
+        name = name + "_averaged" if average else name
         if name in precalculated_values:
-            signal = precalculated_values[name].sel(unit_id=ids).sel(frame=slice(start_frame, end_frame-1))
+            xr_data = precalculated_values[name]
+            max_height = xr_data.max().values
+            signal = xr_data.sel(unit_id=ids).sel(frame=slice(start_frame, end_frame-1))
         else:
-            pass
-            # We need to calculate the windowed data
+            xr_data = calculate_windowed_data(session, precalculated_values, data_type, window_size,
+                                              cumulative=cumulative, normalize=normalize, average=average, name=name)
+            precalculated_values[name] = xr_data
+            max_height = xr_data.max().values
+            signal = xr_data.sel(unit_id=ids).sel(frame=slice(start_frame, end_frame-1))
     else:
         if data_type in session.data:
             max_height = session.data[data_type].max().values
@@ -259,6 +263,84 @@ def base_visualization(session, precalculated_values=None, smoothing_size=1, win
 
     return CV
 
+def calculate_windowed_data(session, precalculated_values, data_type, window_size, cumulative=False, normalize=False, average=False, name=""):
+    E = session.data['E']
+    unit_ids = E.unit_id.values
+
+    if "C" in data_type:
+        data_type = "C"
+    elif "DFF" in data_type:
+        data_type = "DFF"
+    elif "Transient Count" in data_type:
+        data_type = "Transient Count"
+    else:
+        raise ValueError("Data type not recognized")
+
+    data = []
+    for unit_id in unit_ids:
+        if unit_id not in precalculated_values['transient_info']:
+            data.append(np.zeros(E.shape[1]))
+        else:
+            unit_id_info = precalculated_values['transient_info'][unit_id]
+            # Run through the unit_id_info and allocate the values to the respective bins
+            no_of_bins = int(np.ceil(E.shape[1]/window_size))
+            window_bins = [[] for _ in range(no_of_bins)]
+            for start, c_val, dff_val in zip(unit_id_info['frame_start'], unit_id_info['C_values'], unit_id_info['DFF_values']):
+                match data_type:
+                    case "C":
+                        window_bins[start//window_size].append(c_val)
+                    case "DFF":
+                        window_bins[start//window_size].append(dff_val)
+                    case "Transient Count":
+                        window_bins[start//window_size].append(1)
+            # Replace any empty lists with 0
+            for i, window_bin in enumerate(window_bins):
+                if not window_bin:
+                    window_bins[i] = [0]
+            
+            # To avoid weird things with average and count, we'll just sum the values
+            if "Transient Count" == data_type:
+                window_bins = [[np.sum(bin)] for bin in window_bins]
+
+            # First Normalize the values
+            if normalize:
+                match data_type:
+                    case "C":
+                        total = unit_id_info['C_total']
+                    case "DFF":
+                        total = unit_id_info['DFF_total']
+                    case "Transient Count":
+                        total = np.sum(window_bins)
+                for i in range(len(window_bins)):
+                    for j in range(len(window_bins[i])):
+                        window_bins[i][j] /= total
+            
+            if average:
+                for i in range(len(window_bins)):
+                    window_bins[i] = np.mean(window_bins[i])
+            else:
+                # Just sum the values
+                for i in range(len(window_bins)):
+                    window_bins[i] = np.sum(window_bins[i])
+            window_bins = np.array(window_bins)
+
+            if cumulative:
+                window_bins = np.cumsum(window_bins)
+
+            # Now convert the window_bins to the correct shape
+            window_bins = np.repeat(window_bins, window_size)
+            window_bins = window_bins[:E.shape[1]]
+        
+            data.append(window_bins)
+
+    data = np.array(data)
+    return xr.DataArray(data, coords=[unit_ids, np.arange(E.shape[1])], dims=['unit_id', 'frame'], name=name)
+
+
+                
+
+
+
 
 class MayaviQWidget(QWidget):
     point_signal = pyqtSignal(int, int)
@@ -292,7 +374,7 @@ class MayaviQWidget(QWidget):
         DFF = self.session.data['DFF']
 
         # Unit ids
-        unit_ids = self.session.data['E'].unit_id.values
+        unit_ids = E.unit_id.values
 
         # Output values
         C_based_events = np.zeros(C.shape)

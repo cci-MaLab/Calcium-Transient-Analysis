@@ -435,11 +435,14 @@ class ExplorationWidget(QWidget):
         self.global_window_size_input = QLineEdit()
         self.global_window_size_input.setValidator(QIntValidator(1, 1000))
         self.global_window_size_input.setText("1")
+        self.global_window_preview_chkbox = QCheckBox("Preview")
+        self.global_window_preview_chkbox.clicked.connect(lambda: self.visualize_global_signals(reset_view=False))
         self.global_window_size_btn = QPushButton("Update Size")
         self.global_window_size_btn.clicked.connect(lambda: self.visualize_global_signals(reset_view=False))
         self.layout_global_window_size = QHBoxLayout()
         self.layout_global_window_size.addWidget(global_window_size_label)
         self.layout_global_window_size.addWidget(self.global_window_size_input)
+        self.layout_global_window_size.addWidget(self.global_window_preview_chkbox)
         self.layout_global_window_size.addWidget(self.global_window_size_btn)
         # Set which method for gathering averages
         layout_global_avg_method = QHBoxLayout()
@@ -592,14 +595,17 @@ class ExplorationWidget(QWidget):
         self.dropdown_3D_functions.addItems(["Raw Visualization", "Transient Visualization"])
         self.dropdown_3D_functions.currentIndexChanged.connect(self.changed_3D_function)
         self.dropdown_3D_data_types = QComboBox()
-        self.dropdown_3D_data_types.addItems(["C", "DFF", "Frequency"])
+        self.dropdown_3D_data_types.addItems(["C", "DFF", "Transient Count"])
 
-        self.layout_3D_chkbox = QHBoxLayout()
+        self.layout_3D_chkbox_parent = QWidget()
+        layout_3D_chkbox = QHBoxLayout(self.layout_3D_chkbox_parent)
         self.chkbox_3D_cumulative = QCheckBox("Cumulative")
         self.chkbox_3D_normalize = QCheckBox("Normalize")
-        self.layout_3D_chkbox.addWidget(self.chkbox_3D_cumulative)
-        self.layout_3D_chkbox.addWidget(self.chkbox_3D_normalize)
-        self.layout_3D_chkbox.hide()
+        self.chkbox_3D_average = QCheckBox("Average")
+        layout_3D_chkbox.addWidget(self.chkbox_3D_cumulative)
+        layout_3D_chkbox.addWidget(self.chkbox_3D_normalize)
+        layout_3D_chkbox.addWidget(self.chkbox_3D_average)
+        self.layout_3D_chkbox_parent.hide()
 
         # Smoothing
         frame_smoothing = QFrame()
@@ -678,7 +684,7 @@ class ExplorationWidget(QWidget):
         visualization_3D_layout.addWidget(label_3D_functions)
         visualization_3D_layout.addWidget(self.dropdown_3D_functions)
         visualization_3D_layout.addWidget(self.dropdown_3D_data_types)
-        visualization_3D_layout.addWidget(self.layout_3D_chkbox)
+        visualization_3D_layout.addWidget(self.layout_3D_chkbox_parent)
         visualization_3D_layout.addWidget(frame_smoothing)
         visualization_3D_layout.addWidget(self.frame_3D_window_size)
         visualization_3D_layout.addWidget(frame_3D_scaling)
@@ -1020,6 +1026,7 @@ class ExplorationWidget(QWidget):
         frame_global_plot_options.setFrameShape(QFrame.Box)
         frame_global_plot_options.setFrameShadow(QFrame.Raised)
         frame_global_plot_options.setLineWidth(3)
+        frame_global_plot_options.setMaximumWidth(300)
         layout_global_plot_options = QVBoxLayout(frame_global_plot_options)
         layout_global_plot_options.addStretch()
         layout_global_plot_options.setDirection(3)
@@ -1102,10 +1109,10 @@ class ExplorationWidget(QWidget):
 
     def changed_3D_function(self):
         if self.dropdown_3D_functions.currentText() == "Raw Visualization":
-            self.layout_3D_chkbox.hide()
+            self.layout_3D_chkbox_parent.hide()
             self.frame_3D_window_size.hide()
         else:
-            self.layout_3D_chkbox.show()
+            self.layout_3D_chkbox_parent.show()
             self.frame_3D_window_size.show()
 
     def visualize_3D(self):
@@ -1119,15 +1126,17 @@ class ExplorationWidget(QWidget):
         smoothing_type = self.dropdown_smoothing_type.currentText().lower()
         window_size = int(self.input_3D_window_size.text()) if visualization_function == "Transient Visualization" else 1
         normalize = self.chkbox_3D_normalize.isChecked()
+        average = self.chkbox_3D_average.isChecked()
+        cumulative = self.chkbox_3D_cumulative.isChecked()
 
         if visualization_type in ["C", "DFF"]:
-            if visualization_function == "Transient Visualization" and self.chkbox_3D_cumulative.isChecked():
+            if visualization_function == "Transient Visualization" and cumulative:
                 visualization_type = self.dropdown_3D_data_types.currentText() + "_cumulative"
             elif visualization_function == "Transient Visualization":
                 visualization_type = self.dropdown_3D_data_types.currentText() + "_transient"
             
         self.visualization_3D.change_func(base_visualization, data_type=visualization_type, scaling=scaling, cells_to_visualize=cells_to_visualize,
-                                          smoothing_size=smoothing_size, smoothing_type=smoothing_type, window_size=window_size, normalize=normalize)
+                                          smoothing_size=smoothing_size, smoothing_type=smoothing_type, window_size=window_size, normalize=normalize, average=average, cumulative=cumulative)
 
     def check_if_results_exist(self):
         idx_to_cells = {"0":"1", "1":"2", "2":"5", "3":"10", "4":"15", "5":"20"}
@@ -1952,6 +1961,7 @@ class ExplorationWidget(QWidget):
 
         self.w_global_signals.addItem(p, row=0, col=0)
 
+        global_window_size = int(self.global_window_size_input.text())
         selected_types = self.get_selected_data_type_global()
         for data_type in selected_types:
             custom_indices = None # Due to Coarsening
@@ -1959,7 +1969,6 @@ class ExplorationWidget(QWidget):
             cells_to_visualize = self.list_global_which_cells.currentText()
             units = self.session.get_cell_ids(cells_to_visualize)
             data = data.sel(unit_id=units).mean(dim="unit_id")
-            global_window_size = int(self.global_window_size_input.text())
             if global_window_size > 1:
                 if self.global_avg_method.currentText() == "Rolling":
                     data = data.rolling(frame=global_window_size, center=True).mean()
@@ -1969,7 +1978,10 @@ class ExplorationWidget(QWidget):
             
             data = data.values
 
-            p.add_main_curve(data, custom_indices=custom_indices, is_C=False, pen=self.color_mapping[data_type])
+
+            global_window_size = int(self.global_window_size_input.text()) if self.global_window_preview_chkbox.isChecked() else 1
+
+            p.add_main_curve(data, custom_indices=custom_indices, is_C=False, pen=self.color_mapping[data_type], window_preview=global_window_size)
 
 
     def visualize_signals(self, reset_view=False):
@@ -2550,13 +2562,18 @@ class PlotItemEnhanced(PlotItem):
                 event_curve = PlotCurveItemEnhanced(np.arange(beg, end), self.C_signal[beg:end], pen=color, is_event=False, main_plot=self)
                 self.addItem(event_curve)
 
-    def add_main_curve(self, data, custom_indices=None, is_C=False, pen='w'):
+    def add_main_curve(self, data, custom_indices=None, is_C=False, pen='w', window_preview=1):
         if is_C:
             self.C_signal = data
         if custom_indices is None:
             curve = PlotCurveItemEnhanced(np.arange(len(data)), data, pen=pen, is_event=False)
         else:
             curve = PlotCurveItemEnhanced(custom_indices, data, pen=pen, is_event=False)
+        if window_preview > 1:
+            total_frames = len(data) if custom_indices is None else custom_indices[-1]
+            # Add vertical lines every window_preview frames in red
+            for i in range(0, total_frames + window_preview, window_preview):
+                self.addItem(InfiniteLine(pos=i, angle=90, pen='r'))
         self.addItem(curve)
 
     def clear_selected_events_local(self):
