@@ -377,7 +377,7 @@ def train_on_all_Transformer():
     repeats = 10
     outputs = {"all": {}}
     for i in range(repeats):
-        output = train(**{"PATHS": all_paths, "MODEL_TYPE": "BasicTransformer", "NUM_EPOCHS": 10,
+        output = train(**{"PATHS": all_paths, "MODEL_TYPE": "BasicTransformer", "NUM_EPOCHS": 1,
                           "HIDDEN_SIZE": 42, "NUM_LAYERS": 3, "HEADS": 2})
         outputs["all"][i] = output
     

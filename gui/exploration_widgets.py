@@ -595,7 +595,8 @@ class ExplorationWidget(QWidget):
         self.dropdown_3D_functions.addItems(["Raw Visualization", "Transient Visualization"])
         self.dropdown_3D_functions.currentIndexChanged.connect(self.changed_3D_function)
         self.dropdown_3D_data_types = QComboBox()
-        self.dropdown_3D_data_types.addItems(["C", "DFF", "Transient Count"])
+        self.dropdown_3D_data_types.addItems(["C", "DFF", "Binary Transient"])
+        self.dropdown_3D_data_types.currentIndexChanged.connect(self.changed_3D_data_type)
 
         self.layout_3D_chkbox_parent = QWidget()
         layout_3D_chkbox = QHBoxLayout(self.layout_3D_chkbox_parent)
@@ -1107,13 +1108,23 @@ class ExplorationWidget(QWidget):
 
         self.imv_cell.scene.sigMouseMoved.connect(self.detect_cell_hover)
 
+    def changed_3D_data_type(self):
+        if self.dropdown_3D_data_types.currentText() == "Transient Count":
+            self.chkbox_3D_average.hide()
+        else:
+            self.chkbox_3D_average.show()
+
     def changed_3D_function(self):
         if self.dropdown_3D_functions.currentText() == "Raw Visualization":
             self.layout_3D_chkbox_parent.hide()
             self.frame_3D_window_size.hide()
+            self.dropdown_3D_data_types.clear()
+            self.dropdown_3D_data_types.addItems(["C", "DFF", "Binary Transient"])
         else:
             self.layout_3D_chkbox_parent.show()
             self.frame_3D_window_size.show()
+            self.dropdown_3D_data_types.clear()
+            self.dropdown_3D_data_types.addItems(["C", "DFF", "Transient Count"])
 
     def visualize_3D(self):
         visualization_function = self.dropdown_3D_functions.currentText()
@@ -1135,6 +1146,9 @@ class ExplorationWidget(QWidget):
             elif visualization_function == "Transient Visualization":
                 visualization_type = self.dropdown_3D_data_types.currentText() + "_transient"
             
+        if visualization_type == "Binary Transient":
+            visualization_type = "E"
+
         self.visualization_3D.change_func(base_visualization, data_type=visualization_type, scaling=scaling, cells_to_visualize=cells_to_visualize,
                                           smoothing_size=smoothing_size, smoothing_type=smoothing_type, window_size=window_size, normalize=normalize, average=average, cumulative=cumulative)
 
