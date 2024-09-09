@@ -598,7 +598,8 @@ class ClusteringToolWidget(QWidget):
 class GAToolWidget(QWidget):
     def __init__(self, main_ref, parent=None):
         super().__init__(parent)
-        self.value_feature_dict = {"C":["Signal","AUC"], "S":["Signal","AUC","Frequency"], "C_filtered":["Signal","AUC"],"DFF":["Signal","AUC"]}
+        self.value_feature_dict = {"signal":["C","S","C_filtered","DFF","E"],"AUC":["C","S","C_filtered","DFF","E"],"Frequency":["S","DFF","E"]}
+        # self.value_feature_dict = {"C":["Signal","AUC"], "S":["Signal","AUC","Frequency"], "C_filtered":["Signal","AUC"],"DFF":["Signal","AUC"]}
         # Max Generations
         self.main_ref = main_ref
         label_max_gen = QLabel("Max Generations:")
@@ -643,21 +644,23 @@ class GAToolWidget(QWidget):
         layout_event_type.addWidget(label_event_type)
         layout_event_type.addWidget(self.dropdown_event_type)
 
+        # Feature Vector
+        label_feature_type = QLabel("Feature Type:")
+        self.dropdown_feature_type = QComboBox()
+        self.dropdown_feature_type.addItems(self.value_feature_dict.keys())
+        layout_feature_type = QHBoxLayout()
+        layout_feature_type.addWidget(label_feature_type)
+        layout_feature_type.addWidget(self.dropdown_feature_type)
+
         # Value Type
         label_value_type = QLabel("Value Type:")
         self.dropdown_value_type = QComboBox()
-        self.dropdown_value_type.addItems(self.value_feature_dict.keys())
+        self.dropdown_value_type.addItems(self.value_feature_dict[self.dropdown_feature_type.currentText()])
         layout_value_type = QHBoxLayout()
         layout_value_type.addWidget(label_value_type)
         layout_value_type.addWidget(self.dropdown_value_type)
 
-        # Feature Vector
-        label_feature_type = QLabel("Feature Type:")
-        self.dropdown_feature_type = QComboBox()
-        self.dropdown_feature_type.addItems(self.value_feature_dict[self.dropdown_value_type.currentText()])
-        layout_feature_type = QHBoxLayout()
-        layout_feature_type.addWidget(label_feature_type)
-        layout_feature_type.addWidget(self.dropdown_feature_type)
+
         
         self.dropdown_value_type.currentIndexChanged.connect(lambda: self.update_feature(self.dropdown_value_type.currentText()))
 
@@ -677,8 +680,8 @@ class GAToolWidget(QWidget):
         layout.setDirection(3)
         layout.addWidget(btn_start)
         layout.addLayout(layout_log_file)
-        layout.addLayout(layout_feature_type)
         layout.addLayout(layout_value_type)
+        layout.addLayout(layout_feature_type)
         layout.addLayout(layout_event_type)
         layout.addLayout(layout_mut_rate)
         layout.addLayout(layout_cross_rate)
