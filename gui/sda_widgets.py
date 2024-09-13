@@ -57,12 +57,18 @@ class Visualization(HasTraits):
         HasTraits.__init__(self)
         self.visualization_data = visualization_data
         self.axes = None
-        self.points_3d = None
-        self.points_coords = None
+        self.points_3d = None # The actual mlab points3d object
+        self.points_coords = None # The coordinates of the points
         self.current_shape = self.visualization_data.data[0].shape
         self.parent = parent
         self.cells = None
+        self.arrows = []
 
+    def update_arrows(self, arrows):
+        if self.arrows:
+            for arrow in self.arrows:
+                arrow.remove()
+        self.arrows = arrows
 
     def update_frame(self, data):
         self.plot.mlab_source.set(scalars=data)
@@ -169,6 +175,7 @@ class CurrentVisualizationData():
         self.scaling_factor = scaling_factor
         self.points = {"x": np.array([]), "y": np.array([])}
         self.cell_id_to_index = {}
+        self.cell_id_coords = {}
 
     def get_3d_data(self, frame) -> dict:
         # Returns a dictionary containing the data for surface plot and the points of the centroids
@@ -179,12 +186,15 @@ class CurrentVisualizationData():
     
     def update_points_list(self, points):
         self.cell_id_to_index = {cell_id: i for i, cell_id in enumerate(points.keys())}
+        cell_ids = points.keys()
         points = points.values()
         x_coords, y_coords = zip(*points)
 
         y_coords, x_coords = int(self.x_end) - np.array(x_coords).astype(int) - 1, np.array(y_coords).astype(int) - int(self.y_start) # They need to be switched around due prior flipping
         # Finally y_coords needs to be flipped with respect to its axis        
         self.points = {"x": x_coords, "y": y_coords}
+        # Keep a local dict cell_id to coords
+        self.cell_id_coords = {cell_id: (x, y) for cell_id, x, y in zip(cell_ids, x_coords, y_coords)}
 
     
     def in_range(self, frame):
@@ -546,7 +556,70 @@ class MayaviQWidget(QWidget):
 
 
 
+    def change_cofiring_window(self, window_size, visualize=False, nums_to_visualize=None):
+        name = f"cofiring_{window_size}"
+        if name not in self.precalculated_values:
+            # Cells to Number
+            cofiring_data_cells = {}
+            # Number to Cells
+            cofiring_data_number = {}
 
+            unit_ids = self.session.get_cell_ids("Verified Cells")
+            for unit_id in unit_ids:
+                for unit_id_2 in unit_ids:
+                    if unit_id == unit_id_2:
+                        continue
+                    unit1_starts = self.precalculated_values['transient_info'][unit_id]['frame_start']
+                    unit2_starts = self.precalculated_values['transient_info'][unit_id_2]['frame_start']
+                    value = _check_cofiring(unit1_starts, unit2_starts, window_size)
+                    cofiring_data_cells[(unit_id, unit_id_2)] = value
+                    if value not in cofiring_data_number:
+                        cofiring_data_number[value] = []
+                    cofiring_data_number[value].append((unit_id, unit_id_2))
+            self.precalculated_values[name] = {"cells": cofiring_data_cells, "number": cofiring_data_number}
 
+        if visualize:
+            # This means the checkbox is checked and we need to visualize the data
+            if nums_to_visualize is None:
+                nums_to_visualize = list(self.precalculated_values[name]["number"].keys())
+            self.visualize_arrows(nums_to_visualize, window_size)
+        
+        return nums_to_visualize
+
+    def visualize_arrows(self, nums_to_visualize, window_size):
+        name = f"cofiring_{window_size}"
+        if name not in self.precalculated_values:
+            self.change_cofiring_window(window_size, visualize=True, nums_to_visualize=nums_to_visualize)
+            return
+        # We need to visualize the arrows
+        cell_id_coords = self.visualization_data.cell_id_coords
+        if cell_id_coords is None:
+            return
+        arrows = []
+        for num in nums_to_visualize:
+            if num not in self.precalculated_values[name]["number"]:
+                continue
+            for unit_id, unit_id_2 in self.precalculated_values[name]["number"][num]:
+                if unit_id not in cell_id_coords or unit_id_2 not in cell_id_coords:
+                    continue
+                coords1 = cell_id_coords[unit_id]
+                coords2 = cell_id_coords[unit_id_2]
+                arrow = mlab.quiver3d(coords1[0], coords1[1], 0, coords2[0]-coords1[0], coords2[1]-coords1[1], 0)
+                arrow.glyph.glyph.clamping = False
+                arrows.append(arrow)
+        
+        self.visualization.update_arrows(arrows)
+        
+
+        
 
     
+def _check_cofiring(unit1_starts, unit2_starts, window_size):
+    num_cofiring = 0
+
+    for start1 in unit1_starts:
+        for start2 in unit2_starts:
+            if abs(start1 - start2) <= window_size:
+                num_cofiring += 1
+
+    return num_cofiring

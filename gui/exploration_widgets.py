@@ -55,7 +55,6 @@ class ExplorationWidget(QWidget):
         self.show_temp_picks = True
         self.pre_images = None
         self.pre_bimages = None
-        self.image_offset = (0, 0)
 
 
 
@@ -176,11 +175,13 @@ class ExplorationWidget(QWidget):
         self.btn_cell_reject = QPushButton("Reject Cell(s)")
         self.btn_cell_reject.clicked.connect(self.reject_cells)
 
-        self.tabs_visualization_parent = QScrollArea()
+        self.tabs_video_tools_parent = QScrollArea()
+        self.tabs_video_tools = QTabWidget()
+        self.tabs_video_tools_parent.setFixedWidth(340)
+        self.tabs_video_tools_parent.setWidgetResizable(True)
+        self.tabs_video_tools_parent.setWidget(self.tabs_video_tools)
+
         self.tabs_visualization = QTabWidget()
-        self.tabs_visualization_parent.setFixedWidth(340)
-        self.tabs_visualization_parent.setWidgetResizable(True)
-        self.tabs_visualization_parent.setWidget(self.tabs_visualization)
 
         self.tabs_video = QTabWidget()
         self.tabs_video.setFixedWidth(330)
@@ -608,6 +609,20 @@ class ExplorationWidget(QWidget):
         layout_3D_chkbox.addWidget(self.chkbox_3D_average)
         self.layout_3D_chkbox_parent.hide()
 
+        # Cofiring Tools
+        cofiring_layout = QVBoxLayout()
+        cofiring_layout.addWidget(QLabel("Cofiring Tools"))
+        cofiring_window_layout = QHBoxLayout()
+        self.cofiring_window_size = QLineEdit()
+        self.cofiring_window_btn = QPushButton("Update Cofiring Window")
+        self.cofiring_window_btn.clicked.connect(self.update_cofiring_window)
+        cofiring_window_layout.addWidget(self.cofiring_window_size)
+        cofiring_window_layout.addWidget(self.cofiring_window_btn)
+        self.cofiring_window_size.setValidator(QIntValidator(1, 1000))
+        self.cofiring_window_size.setText("30")
+        self.cofiring_chkbox = QCheckBox("Show Cofiring")
+        self.cofiring_list = QListWidget()
+
         # Smoothing
         frame_smoothing = QFrame()
         frame_smoothing.setFrameShape(QFrame.StyledPanel)
@@ -696,8 +711,13 @@ class ExplorationWidget(QWidget):
         visualization_3D_tools.setLayout(visualization_3D_layout)
 
 
-
-
+        # Co-Firing Tools
+        cofiring_layout.addLayout(cofiring_window_layout)
+        cofiring_layout.addWidget(self.cofiring_chkbox)
+        cofiring_layout.addWidget(self.cofiring_list)
+        cofiring_layout.addStretch()
+        cofiring_tools = QWidget()
+        cofiring_tools.setLayout(cofiring_layout)
 
         # Rejected
         layout_rejected_justification_utility = QHBoxLayout()
@@ -729,8 +749,11 @@ class ExplorationWidget(QWidget):
         self.tabs_video.addTab(w_missed_cells, "Missed Cells")
         self.tabs_video.currentChanged.connect(self.switched_tabs)
 
-        self.tabs_visualization.addTab(self.tabs_video, "Cell Video")
-        self.tabs_visualization.addTab(visualization_3D_tools, "3D Visualization")
+        self.tabs_visualization.addTab(visualization_3D_tools, "Signal Settings")
+        self.tabs_visualization.addTab(cofiring_tools, "Co-Firing")
+
+        self.tabs_video_tools.addTab(self.tabs_video, "Cell Video")
+        self.tabs_video_tools.addTab(self.tabs_visualization, "3D Visualization")
 
         # General plot utility
         layout_plot_utility = QVBoxLayout()
@@ -1053,7 +1076,7 @@ class ExplorationWidget(QWidget):
         tabs_signal.addTab(frame_stats, "Local Stats")
 
         layout_video_cells.addLayout(layout_video)
-        layout_video_cells.addWidget(self.tabs_visualization_parent)
+        layout_video_cells.addWidget(self.tabs_video_tools_parent)
         self.widget_video_cells = QWidget()
         self.widget_video_cells.setLayout(layout_video_cells)
 
@@ -1107,6 +1130,11 @@ class ExplorationWidget(QWidget):
         self.missed_cell_init()
 
         self.imv_cell.scene.sigMouseMoved.connect(self.detect_cell_hover)
+
+    def update_cofiring_window(self):
+        window_size = int(self.cofiring_window_size.text())
+        visualize_cofiring = self.cofiring_chkbox.isChecked()
+        self.visualization_3D.change_cofiring_window(window_size, visualize_cofiring)
 
     def changed_3D_data_type(self):
         if self.dropdown_3D_data_types.currentText() == "Transient Count":
