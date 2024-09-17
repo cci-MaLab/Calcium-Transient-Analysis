@@ -1152,20 +1152,31 @@ class DataInstance:
         isec, fsec = divmod(round(seconds*100), 100)
         return "{}.{:02.0f}".format(datetime.timedelta(seconds=isec), fsec)
 
-    def get_cell_ids(self, group_id):
+    def get_cell_ids(self, group_id, verified=False):
         if group_id == "All Cells":
-            return self.data['E'].unit_id.values
+            unit_ids = self.data['E'].unit_id.values
         elif group_id == "Verified Cells":
             all_unit_ids = self.data['E'].unit_id.values
-            verified = self.data['E'].verified.values.astype(int)
-            return all_unit_ids[verified==1]
+            verified_idxs = self.data['E'].verified.values.astype(int)
+            unit_ids = all_unit_ids[verified_idxs==1]
         else:
             if "Group" not in group_id:
                 raise ValueError("Invalid group id")
             # Extract the group id from the string
             group_id = int(group_id.split(" ")[1])
             # Find the corresponding cell ids
-            return [key for key, value in self.cell_ids_to_groups.items() if value == group_id]
+            unit_ids = [key for key, value in self.cell_ids_to_groups.items() if value == group_id]
+
+        if verified:
+            all_unit_ids = self.data['E'].unit_id.values
+            verified_cells = self.data['E'].verified.values
+            verified_cells = all_unit_ids[verified_cells==1]
+            intersection = np.intersect1d(unit_ids, verified_cells)
+            unit_ids = list(intersection)
+        
+        return unit_ids
+
+        
 
 class CellClustering:
     """

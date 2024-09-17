@@ -7,9 +7,12 @@ from mayavi import mlab
 from tvtk.api import tvtk
 from PyQt5.QtWidgets import  QWidget, QVBoxLayout, QPushButton
 from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtWidgets import QMessageBox
 import numpy as np
 from scipy.interpolate import interp1d
 import xarray as xr
+from gui.pop_up_messages import print_error
+from matplotlib import cm
 
 class SDAWindowWidget(QWidget):
     def __init__(self, session, name, main_window_ref, parent=None):
@@ -555,18 +558,28 @@ class MayaviQWidget(QWidget):
             self.visualization.update_points(points_coords)
 
 
+    def remove_cofiring(self):
+        self.visualization.update_arrows([])
 
-    def change_cofiring_window(self, window_size, visualize=False, nums_to_visualize=None):
+
+    def change_cofiring_window(self, window_size, visualize=False, nums_to_visualize="Verified Cells", cofiring_nums=set()):
         name = f"cofiring_{window_size}"
+        unit_ids = self.session.get_cell_ids(nums_to_visualize, verified=True)
+
+        if len(unit_ids) < 2:
+            print_error("Not Enough Cells for Cofiring", extra_info="Make sure that you have at least two verified cells for cofiring.", severity=QMessageBox.Warning)
+            return unit_ids
+
         if name not in self.precalculated_values:
             # Cells to Number
             cofiring_data_cells = {}
             # Number to Cells
             cofiring_data_number = {}
 
-            unit_ids = self.session.get_cell_ids("Verified Cells")
-            for unit_id in unit_ids:
-                for unit_id_2 in unit_ids:
+            verified_unit_ids = self.session.get_cell_ids("Verified Cells")
+            
+            for unit_id in verified_unit_ids:
+                for unit_id_2 in verified_unit_ids:
                     if unit_id == unit_id_2:
                         continue
                     unit1_starts = self.precalculated_values['transient_info'][unit_id]['frame_start']
@@ -580,13 +593,11 @@ class MayaviQWidget(QWidget):
 
         if visualize:
             # This means the checkbox is checked and we need to visualize the data
-            if nums_to_visualize is None:
-                nums_to_visualize = list(self.precalculated_values[name]["number"].keys())
-            self.visualize_arrows(nums_to_visualize, window_size)
+            self.visualize_arrows(unit_ids, window_size, cofiring_nums=cofiring_nums)
         
-        return nums_to_visualize
+        return list(self.precalculated_values[name]["number"].keys())
 
-    def visualize_arrows(self, nums_to_visualize, window_size):
+    def visualize_arrows(self, nums_to_visualize, window_size, cofiring_nums=set()):
         name = f"cofiring_{window_size}"
         if name not in self.precalculated_values:
             self.change_cofiring_window(window_size, visualize=True, nums_to_visualize=nums_to_visualize)
@@ -596,19 +607,41 @@ class MayaviQWidget(QWidget):
         if cell_id_coords is None:
             return
         arrows = []
-        for num in nums_to_visualize:
-            if num not in self.precalculated_values[name]["number"]:
-                continue
-            for unit_id, unit_id_2 in self.precalculated_values[name]["number"][num]:
-                if unit_id not in cell_id_coords or unit_id_2 not in cell_id_coords:
+        # We need to save the view and camera so we can restore it after the arrows are drawn
+        current_view = mlab.view()
+        max_cofiring = max(self.precalculated_values[name]["number"].keys())
+        colormap = cm.get_cmap("rainbow")
+        for id1 in nums_to_visualize:
+            for id2 in nums_to_visualize:
+                if (id1, id2) in self.precalculated_values[name]["cells"]:
+                    value = self.precalculated_values[name]["cells"][(id1, id2)]
+                else:
                     continue
-                coords1 = cell_id_coords[unit_id]
-                coords2 = cell_id_coords[unit_id_2]
-                arrow = mlab.quiver3d(coords1[0], coords1[1], 0, coords2[0]-coords1[0], coords2[1]-coords1[1], 0)
-                arrow.glyph.glyph.clamping = False
-                arrows.append(arrow)
+                if value not in cofiring_nums and "all" not in cofiring_nums:
+                    continue
+                coords1 = cell_id_coords[id1]
+                coords2 = cell_id_coords[id2]
+                z_offset = 0.5 # We need to offset the arrows slightly above the surface
+                if value > 1:
+                    normalized_value = value / max_cofiring
+                    color = colormap(normalized_value)
+                    color = (color[0], color[1], color[2])
+                    arrow = mlab.quiver3d(coords1[0], coords1[1], z_offset, coords2[0]-coords1[0], coords2[1]-coords1[1], z_offset, mode="arrow", color=color)
+                    arrow.glyph.glyph.clamping = False
+                    # Because we removed clamping the parameters we set to the arrow will be additionally scaled
+                    # We need to calculate the scaling factor for the arrow, which is relative to the distance between the two points
+                    distance = np.sqrt((coords2[0]-coords1[0])**2 + (coords2[1]-coords1[1])**2)
+                    arrow.glyph.glyph_source.glyph_source.tip_length = 2 / distance
+                    arrow.glyph.glyph_source.glyph_source.tip_radius = 1 / distance
+                    arrow.glyph.glyph_source.glyph_source.shaft_radius = 0.1 * value / distance
+
+                    arrows.append(arrow)
         
         self.visualization.update_arrows(arrows)
+
+        # Restore the view
+        mlab.view(*current_view)
+        mlab.draw()
         
 
         

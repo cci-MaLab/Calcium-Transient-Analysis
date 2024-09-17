@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAc
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
                             QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar, QCheckBox,
                             QTextEdit, QComboBox, QGraphicsTextItem, QMessageBox, QFileDialog,
-                            QScrollArea)
+                            QScrollArea, QListWidgetItem)
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5 import QtCore
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont)
@@ -441,6 +441,7 @@ class ExplorationWidget(QWidget):
         self.global_window_size_btn = QPushButton("Update Size")
         self.global_window_size_btn.clicked.connect(lambda: self.visualize_global_signals(reset_view=False))
         self.layout_global_window_size = QHBoxLayout()
+
         self.layout_global_window_size.addWidget(global_window_size_label)
         self.layout_global_window_size.addWidget(self.global_window_size_input)
         self.layout_global_window_size.addWidget(self.global_window_preview_chkbox)
@@ -587,7 +588,7 @@ class ExplorationWidget(QWidget):
         # 3D Visualization Tools
         visualization_3D_layout = QVBoxLayout()
         
-        label_which_cells = QLabel("Which Cells to Visualize")
+        label_3D_which_cells = QLabel("Which Cells to Visualize")
         self.list_3D_which_cells = QComboBox()
         self.list_3D_which_cells.addItems(["All Cells", "Verified Cells"])
         self.list_3D_which_cells.addItems([f"Group {group}" for group in unique_groups])
@@ -621,7 +622,10 @@ class ExplorationWidget(QWidget):
         self.cofiring_window_size.setValidator(QIntValidator(1, 1000))
         self.cofiring_window_size.setText("30")
         self.cofiring_chkbox = QCheckBox("Show Cofiring")
+        self.cofiring_chkbox.clicked.connect(self.visualize_cofiring)
         self.cofiring_list = QListWidget()
+        # On selection fire event
+        self.cofiring_list.itemChanged.connect(lambda: self.update_cofiring_window(reset_list=False))
 
         # Smoothing
         frame_smoothing = QFrame()
@@ -695,8 +699,6 @@ class ExplorationWidget(QWidget):
         layout_colormap.addWidget(dropdown_3D_colormap)
 
 
-        visualization_3D_layout.addWidget(label_which_cells)
-        visualization_3D_layout.addWidget(self.list_3D_which_cells)
         visualization_3D_layout.addWidget(label_3D_functions)
         visualization_3D_layout.addWidget(self.dropdown_3D_functions)
         visualization_3D_layout.addWidget(self.dropdown_3D_data_types)
@@ -749,11 +751,19 @@ class ExplorationWidget(QWidget):
         self.tabs_video.addTab(w_missed_cells, "Missed Cells")
         self.tabs_video.currentChanged.connect(self.switched_tabs)
 
+        tabs_visualization_layout = QVBoxLayout()
+        tabs_visualization_layout.addWidget(label_3D_which_cells)
+        tabs_visualization_layout.addWidget(self.list_3D_which_cells)
+        tabs_visualization_layout.addWidget(self.tabs_visualization)
+        tabs_visualization_parent = QWidget()
+        tabs_visualization_parent.setLayout(tabs_visualization_layout)
+        
+
         self.tabs_visualization.addTab(visualization_3D_tools, "Signal Settings")
         self.tabs_visualization.addTab(cofiring_tools, "Co-Firing")
 
         self.tabs_video_tools.addTab(self.tabs_video, "Cell Video")
-        self.tabs_video_tools.addTab(self.tabs_visualization, "3D Visualization")
+        self.tabs_video_tools.addTab(tabs_visualization_parent, "3D Visualization")
 
         # General plot utility
         layout_plot_utility = QVBoxLayout()
@@ -1131,10 +1141,47 @@ class ExplorationWidget(QWidget):
 
         self.imv_cell.scene.sigMouseMoved.connect(self.detect_cell_hover)
 
-    def update_cofiring_window(self):
+    def visualize_cofiring(self):
+        visualize_cofiring = self.cofiring_chkbox.isChecked()
+        
+        if not visualize_cofiring:
+            self.visualization_3D.remove_cofiring()
+            return
+        else:
+            self.update_cofiring_window()
+
+    def update_cofiring_window(self, reset_list=True):
         window_size = int(self.cofiring_window_size.text())
         visualize_cofiring = self.cofiring_chkbox.isChecked()
-        self.visualization_3D.change_cofiring_window(window_size, visualize_cofiring)
+        cells_for_cofiring = self.list_3D_which_cells.currentText()
+
+        # Get items that are checked
+        cofiring_nums = set()
+        for i in range(self.cofiring_list.count()):
+            item = self.cofiring_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                cofiring_nums.add(int(item.text().split(" ")[1]))
+
+        # When we reset the list we want to visualize all cofiring connections
+        if reset_list:
+            cofiring_nums.add("all")
+
+        cofiring_nums = self.visualization_3D.change_cofiring_window(window_size, visualize=visualize_cofiring, nums_to_visualize=cells_for_cofiring, cofiring_nums=cofiring_nums)
+
+        if reset_list:
+            # Populate the list
+            self.cofiring_list.clear()
+            # Add cofiring numbers to the list and make them checkable
+            cofiring_nums.sort()
+            # Remove 0 if it exists because we are not interested in no cofiring connections.
+            cofiring_nums = cofiring_nums[1:] if cofiring_nums[0] == 0 else cofiring_nums
+            self.cofiring_list.itemChanged.disconnect()
+            for num in cofiring_nums:
+                item = QListWidgetItem(f"Cofiring {num}")
+                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                item.setCheckState(Qt.CheckState.Checked)           
+                self.cofiring_list.addItem(item)
+            self.cofiring_list.itemChanged.connect(lambda: self.update_cofiring_window(reset_list=False))
 
     def changed_3D_data_type(self):
         if self.dropdown_3D_data_types.currentText() == "Transient Count":
@@ -1179,6 +1226,9 @@ class ExplorationWidget(QWidget):
 
         self.visualization_3D.change_func(base_visualization, data_type=visualization_type, scaling=scaling, cells_to_visualize=cells_to_visualize,
                                           smoothing_size=smoothing_size, smoothing_type=smoothing_type, window_size=window_size, normalize=normalize, average=average, cumulative=cumulative)
+        
+        self.cofiring_chkbox.setChecked(False)
+        self.visualization_3D.remove_cofiring()
 
     def check_if_results_exist(self):
         idx_to_cells = {"0":"1", "1":"2", "2":"5", "3":"10", "4":"15", "5":"20"}

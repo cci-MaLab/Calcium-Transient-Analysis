@@ -6,6 +6,7 @@ from gui.main_widgets import (UpdateDialog, ParamDialog, VisualizeInstanceWidget
 from gui.genetic_algorithm_widgets import GAWindowWidget,GAGenerationScoreWindowWidget
 from gui.exploration_widgets import ExplorationWidget
 from gui.sda_widgets import SDAWindowWidget
+from gui.pop_up_messages import print_error
 import sys
 import os
 import json
@@ -258,19 +259,6 @@ class MainWindow(QMainWindow):
     def remove_window(self, name):
         del self.windows[name]
 
-    def print_error(self, s, extra_info=""):
-        dlg = QMessageBox(self)
-        dlg.setWindowTitle("Error Message")
-        if isinstance(s, tuple):
-            text = f"For path {s[1]} the following error occurred:\n {s[0]}"
-        else:
-            text = s
-        if extra_info != "":
-            text += f"\n{extra_info}"
-        dlg.setText(text)
-        dlg.setIcon(QMessageBox.Icon.Critical)
-        dlg.exec()
-
 
     def load_data(self, _):
         fname = QFileDialog.getOpenFileName(
@@ -282,7 +270,7 @@ class MainWindow(QMainWindow):
             try:
                 self.load_instance(fname)
             except Exception as e:
-                self.print_error((str(e), fname), extra_info="Make sure the file is a valid ini file.")
+                print_error((str(e), fname), extra_info="Make sure the file is a valid ini file.", severity=QMessageBox.Critical)
 
     def load_clustering_params(self):
         pdg = ParamDialog(self.event_defaults)
