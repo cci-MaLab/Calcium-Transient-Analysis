@@ -13,6 +13,7 @@ from scipy.interpolate import interp1d
 import xarray as xr
 from gui.pop_up_messages import print_error
 from matplotlib import cm
+from typing import List
 
 class SDAWindowWidget(QWidget):
     def __init__(self, session, name, main_window_ref, parent=None):
@@ -562,8 +563,13 @@ class MayaviQWidget(QWidget):
         self.visualization.update_arrows([])
 
 
-    def change_cofiring_window(self, window_size, visualize=False, nums_to_visualize="Verified Cells", cofiring_nums=set()):
+    def change_cofiring_window(self, window_size, visualize=False, nums_to_visualize="Verified Cells",
+                               **kwargs):
+        
         name = f"cofiring_{window_size}"
+        name += "_shared_A" if kwargs["shareA"] else ""
+        name += "_shared_B" if kwargs["shareB"] else ""
+        name += kwargs["direction"]
         unit_ids = self.session.get_cell_ids(nums_to_visualize, verified=True)
 
         if len(unit_ids) < 2:
@@ -584,7 +590,7 @@ class MayaviQWidget(QWidget):
                         continue
                     unit1_starts = self.precalculated_values['transient_info'][unit_id]['frame_start']
                     unit2_starts = self.precalculated_values['transient_info'][unit_id_2]['frame_start']
-                    value = _check_cofiring(unit1_starts, unit2_starts, window_size)
+                    value = _check_cofiring(unit1_starts, unit2_starts, window_size, **kwargs)
                     cofiring_data_cells[(unit_id, unit_id_2)] = value
                     if value not in cofiring_data_number:
                         cofiring_data_number[value] = []
@@ -593,18 +599,25 @@ class MayaviQWidget(QWidget):
 
         if visualize:
             # This means the checkbox is checked and we need to visualize the data
-            self.visualize_arrows(unit_ids, window_size, cofiring_nums=cofiring_nums)
+            self.visualize_arrows(unit_ids, window_size, **kwargs)
         
         return list(self.precalculated_values[name]["number"].keys())
 
-    def visualize_arrows(self, nums_to_visualize, window_size, cofiring_nums=set()):
+    def visualize_arrows(self, nums_to_visualize, window_size, cofiring_nums=[], shareA=True, shareB=True, direction="bidirectional", **kwargs):
+        
         name = f"cofiring_{window_size}"
+        name += "_shared_A" if shareA else ""
+        name += "_shared_B" if shareB else ""
+        name += direction
+
         if name not in self.precalculated_values:
-            self.change_cofiring_window(window_size, visualize=True, nums_to_visualize=nums_to_visualize)
+            self.change_cofiring_window(window_size, shareA=shareA, shareB=shareB, 
+                                        nums_to_visualize=nums_to_visualize, direction=direction,
+                                          **kwargs)
             return
         # We need to visualize the arrows
         cell_id_coords = self.visualization_data.cell_id_coords
-        if cell_id_coords is None:
+        if len(cell_id_coords) == 0:
             return
         arrows = []
         # We need to save the view and camera so we can restore it after the arrows are drawn
@@ -642,17 +655,80 @@ class MayaviQWidget(QWidget):
         # Restore the view
         mlab.view(*current_view)
         mlab.draw()
+
+    def extract_cofiring_data(self, window_size, **kwargs):
+        name = f"cofiring_{window_size}"
+        name += "_shared_A" if kwargs["shareA"] else ""
+        name += "_shared_B" if kwargs["shareB"] else ""
+        name += kwargs["direction"]
+        if name not in self.precalculated_values:
+            self.change_cofiring_window(window_size, **kwargs)
+        return self.precalculated_values[name]
         
 
         
 
     
-def _check_cofiring(unit1_starts, unit2_starts, window_size):
-    num_cofiring = 0
+def _check_cofiring(A_starts: List[int], B_starts: List[int], window_size: int, shareA:bool=True, shareB:bool=True, direction:str="bidirectional", **kwargs):
+    """
+    Check if two cells are cofiring with each other. This is generally done
+    by checking if the start of a transient in one cell is within the window
+    size of the start of a transient in another cell. If the `shareA` this 
+    means that a transient in cell A can be shared with multiple transients
+    in cell B. The same goes for `shareB`, where a transient in cell B can be
+    shared with multiple transients in cell A. The `direction` parameter indicates
+    whether the window size looks forward, backward or bidirectional with respect
+    to the temporal axis.
 
-    for start1 in unit1_starts:
-        for start2 in unit2_starts:
-            if abs(start1 - start2) <= window_size:
+    Parameters
+    ----------
+    A_starts : list
+        The starts of the transients in cell A.
+    B_starts : list
+        The starts of the transients in cell B.
+    window_size : int
+        The window size to check for cofiring.
+    shareA : bool
+        Whether a transient in cell A can be shared with multiple transients in cell B.
+    shareB : bool
+        Whether a transient in cell B can be shared with multiple transients in cell A.
+    direction : str
+        The direction to check for cofiring. Can be 'forward', 'backward' or 'bidirectional'.
+
+    Returns
+    -------
+    num_cofiring : int
+        The number of cofiring events between the two cells.
+    """
+
+    num_cofiring = 0
+    A_starts_used = set()
+    B_starts_used = set()
+
+
+    def check_overlap(start1, start2):
+        if direction == "forward":
+            return 0 <= start2 - start1 <= window_size
+        elif direction == "backward":
+            return 0 <= start1 - start2 <= window_size
+        else:
+            return abs(start1 - start2) <= (window_size // 2)
+
+
+    # This is a brute force method, but it should be fine for the number of transients
+    # Might be worth optimizing this in the future
+    for startA in A_starts:
+        for startB in B_starts:
+            if check_overlap(startA, startB):
+                if not shareA:
+                    if startA in A_starts_used:
+                        continue
+                if not shareB:
+                    if startB in B_starts_used:
+                        continue
+                
+                A_starts_used.add(startA)
+                B_starts_used.add(startB)
                 num_cofiring += 1
 
     return num_cofiring

@@ -9,17 +9,17 @@ from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAc
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5 import QtCore
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont)
-from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem)
+from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem, InfiniteLine)
 import pyqtgraph as pg
 import numpy as np
-from pyqtgraph import InfiniteLine
 from scipy.signal import find_peaks
-from core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget, MetricsWidget)
-from core.pyqtgraph_override import ImageViewOverride
-from gui.sda_widgets import (MayaviQWidget, base_visualization)
 from skimage.segmentation import flood_fill
 from skimage.feature import canny
 from skimage.measure import find_contours
+from core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget, MetricsWidget)
+from core.pyqtgraph_override import ImageViewOverride
+from gui.cofiring_2d_widgets import Cofiring2DWidget
+from gui.sda_widgets import (MayaviQWidget, base_visualization)
 import os
 import matplotlib.pyplot as plt
 import pickle
@@ -55,6 +55,7 @@ class ExplorationWidget(QWidget):
         self.show_temp_picks = True
         self.pre_images = None
         self.pre_bimages = None
+        self.windows = {}
 
 
 
@@ -622,10 +623,20 @@ class ExplorationWidget(QWidget):
         self.cofiring_window_size.setValidator(QIntValidator(1, 1000))
         self.cofiring_window_size.setText("30")
         self.cofiring_chkbox = QCheckBox("Show Cofiring")
+        self.cofiring_shareA_chkbox = QCheckBox("Share A")
+        self.cofiring_shareA_chkbox.setChecked(True)
+        self.cofiring_shareA_chkbox.clicked.connect(lambda: self.update_cofiring_window(reset_list=True))
+        self.cofiring_shareB_chkbox = QCheckBox("Share B")
+        self.cofiring_shareB_chkbox.setChecked(True)
+        self.cofiring_shareB_chkbox.clicked.connect(lambda: self.update_cofiring_window(reset_list=True))
+        self.cofiring_direction_dropdown = QComboBox()
+        self.cofiring_direction_dropdown.addItems(["Bidirectional", "Forward", "Backward"])
+        self.cofiring_direction_dropdown.currentIndexChanged.connect(lambda: self.update_cofiring_window(reset_list=True))
         self.cofiring_chkbox.clicked.connect(self.visualize_cofiring)
         self.cofiring_list = QListWidget()
-        # On selection fire event
         self.cofiring_list.itemChanged.connect(lambda: self.update_cofiring_window(reset_list=False))
+        btn_cofiring_2d_show = QPushButton("Show 2D Representation")
+        btn_cofiring_2d_show.clicked.connect(self.show_2D_cofiring)
 
         # Smoothing
         frame_smoothing = QFrame()
@@ -712,11 +723,18 @@ class ExplorationWidget(QWidget):
         visualization_3D_tools = QWidget()
         visualization_3D_tools.setLayout(visualization_3D_layout)
 
+        # Co-Firing Checkbox layout
+        cofiring_chkbox_layout = QHBoxLayout()
+        cofiring_chkbox_layout.addWidget(self.cofiring_chkbox)
+        cofiring_chkbox_layout.addWidget(self.cofiring_shareA_chkbox)
+        cofiring_chkbox_layout.addWidget(self.cofiring_shareB_chkbox)
 
         # Co-Firing Tools
         cofiring_layout.addLayout(cofiring_window_layout)
-        cofiring_layout.addWidget(self.cofiring_chkbox)
+        cofiring_layout.addLayout(cofiring_chkbox_layout)
+        cofiring_layout.addWidget(self.cofiring_direction_dropdown)
         cofiring_layout.addWidget(self.cofiring_list)
+        cofiring_layout.addWidget(btn_cofiring_2d_show)
         cofiring_layout.addStretch()
         cofiring_tools = QWidget()
         cofiring_tools.setLayout(cofiring_layout)
@@ -1153,7 +1171,11 @@ class ExplorationWidget(QWidget):
     def update_cofiring_window(self, reset_list=True):
         window_size = int(self.cofiring_window_size.text())
         visualize_cofiring = self.cofiring_chkbox.isChecked()
+
         cells_for_cofiring = self.list_3D_which_cells.currentText()
+        shareA = self.cofiring_shareA_chkbox.isChecked()
+        shareB = self.cofiring_shareB_chkbox.isChecked()
+        direction = self.cofiring_direction_dropdown.currentText().lower()
 
         # Get items that are checked
         cofiring_nums = set()
@@ -1162,11 +1184,13 @@ class ExplorationWidget(QWidget):
             if item.checkState() == Qt.CheckState.Checked:
                 cofiring_nums.add(int(item.text().split(" ")[1]))
 
+        kwargs = {"nums_to_visualize": cells_for_cofiring, "visualize": visualize_cofiring, "cofiring_nums": cofiring_nums, "shareA": shareA, "shareB": shareB, "direction": direction}
+
         # When we reset the list we want to visualize all cofiring connections
         if reset_list:
             cofiring_nums.add("all")
 
-        cofiring_nums = self.visualization_3D.change_cofiring_window(window_size, visualize=visualize_cofiring, nums_to_visualize=cells_for_cofiring, cofiring_nums=cofiring_nums)
+        cofiring_nums = self.visualization_3D.change_cofiring_window(window_size, **kwargs)
 
         if reset_list:
             # Populate the list
@@ -1182,6 +1206,38 @@ class ExplorationWidget(QWidget):
                 item.setCheckState(Qt.CheckState.Checked)           
                 self.cofiring_list.addItem(item)
             self.cofiring_list.itemChanged.connect(lambda: self.update_cofiring_window(reset_list=False))
+
+    def show_2D_cofiring(self):
+        window_size = int(self.cofiring_window_size.text())
+        visualize_cofiring = self.cofiring_chkbox.isChecked()
+
+        cells_for_cofiring = self.list_3D_which_cells.currentText()
+        shareA = self.cofiring_shareA_chkbox.isChecked()
+        shareB = self.cofiring_shareB_chkbox.isChecked()
+        direction = self.cofiring_direction_dropdown.currentText().lower()
+
+        # Get items that are checked
+        cofiring_nums = set()
+        for i in range(self.cofiring_list.count()):
+            item = self.cofiring_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                cofiring_nums.add(int(item.text().split(" ")[1]))
+
+        kwargs = {"nums_to_visualize": cells_for_cofiring, "visualize": visualize_cofiring,
+                  "cofiring_nums": cofiring_nums, "shareA": shareA, "shareB": shareB, 
+                  "direction": direction}
+        
+        cofiring_data = self.visualization_3D.extract_cofiring_data(window_size, **kwargs)
+
+        kwargs["cofiring_data"] = cofiring_data
+        
+        cofiring2d_window = Cofiring2DWidget(self.session, self.name, **kwargs)
+
+        if cofiring2d_window.name not in self.windows:
+            self.windows[cofiring2d_window.name ] = cofiring2d_window        
+            cofiring2d_window.show()
+
+
 
     def changed_3D_data_type(self):
         if self.dropdown_3D_data_types.currentText() == "Transient Count":
@@ -2468,8 +2524,11 @@ class ExplorationWidget(QWidget):
             i += 1
 
     def closeEvent(self, event):
-        super(ExplorationWidget, self).closeEvent(event)
+        windows_to_close = list(self.windows.values())
+        for window in windows_to_close:
+            window.close()
         self.main_window_ref.remove_window(self.name)
+        event.accept()
     
     def clear_selected_events(self):
         accumulated_selected_events = {}
