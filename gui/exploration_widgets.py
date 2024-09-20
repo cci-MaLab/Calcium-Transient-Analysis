@@ -1231,7 +1231,7 @@ class ExplorationWidget(QWidget):
 
         kwargs["cofiring_data"] = cofiring_data
         
-        cofiring2d_window = Cofiring2DWidget(self.session, self.name, **kwargs)
+        cofiring2d_window = Cofiring2DWidget(self.session, self.name, parent=self, **kwargs)
 
         if cofiring2d_window.name not in self.windows:
             self.windows[cofiring2d_window.name ] = cofiring2d_window        
@@ -2529,6 +2529,9 @@ class ExplorationWidget(QWidget):
             window.close()
         self.main_window_ref.remove_window(self.name)
         event.accept()
+
+    def remove_cofire_window(self, name):
+        del self.windows[name]
     
     def clear_selected_events(self):
         accumulated_selected_events = {}
