@@ -118,7 +118,7 @@ class GeneralStatsWidget(StatsWidget):
         self.table = QTableWidget(len(unit_ids), 11)
 
         self.pd_table = pd.DataFrame(index=unit_ids, columns=["Cell Size(pixel)", "Location (x,y)", "Total Ca2+ transient #", 
-                                       "Average Frequency (Hz)", "Average Amplitude (ΔF/F)", "Average Rising (# of frames)",
+                                       "Average Frequency (Hz)", "Average Peak Amplitude (ΔF/F)", "Average Rising (# of frames)",
                                        "Average Rising Time (seconds)", "Average Ca2+ transient-interval (# of frames)", "Average interval (seconds)",
                                        "Std(ΔF/F)", "MAD(ΔF/F)"])
         
