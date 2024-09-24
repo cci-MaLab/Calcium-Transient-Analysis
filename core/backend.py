@@ -209,7 +209,7 @@ class Event:
     '''
     def __init__(
         self,
-        event_type:str,  # ALP, IALP, RNFS
+        event_type:str,  # ALP, ILP, RNF
         data:xr.DataArray,
         timesteps:List[int]
            
@@ -365,7 +365,7 @@ class DataInstance:
         self,
         dpath: str
     ):  
-        self.events_type = ['ALP','IALP','RNFS','ALP_Timeout']
+        self.events_type = ['ALP','ILP','RNF','ALP_Timeout']
         self.dpath = dpath  
         self.mouseID : str
         self.day : str
@@ -373,7 +373,7 @@ class DataInstance:
         self.group: str
         self.minian_path: str
         self.data:dict # Original data, key:'A', 'C', 'S','unit_ids'
-        self.events:dict # {"ALP": Event, "IALP" : Event, "RNFS": Event}
+        self.events:dict # {"ALP": Event, "ILP" : Event, "RNF": Event}
         self.A: dict    #key is unit_id,value is A. Just keep same uniform with self.value
         self.value: dict #key is the unit_id,value is the numpy array
         self.outliers_list: List[int] = []
@@ -452,7 +452,7 @@ class DataInstance:
         self.group = group
         self.minian_path = minian_path
         behavior_data = pd.read_csv(behavior_path,sep=',')
-        data_types = ['RNFS', 'ALP', 'IALP', 'ALP_Timeout','Time Stamp (ms)']
+        data_types = ['RNF', 'ALP', 'ILP', 'ALP_Timeout','Time Stamp (ms)']
         self.data = {}
         for dt in data_types:            
             if dt in behavior_data:
@@ -798,7 +798,7 @@ class DataInstance:
     def set_vector(self):
         '''
         event :  str, list
-            event can be ALP/IALP/RNFS
+            event can be ALP/ILP/RNF
         '''
         values = {}
         for uid in self.data['unit_ids']:
@@ -807,12 +807,12 @@ class DataInstance:
         if 'ALP' in self.events.keys():
             for key in self.events['ALP'].values:
                 values[key] = np.r_['-1', values[key], self.events['ALP'].values[key]]            
-        if 'IALP' in self.events.keys():
-            for key in self.events['IALP'].values:
-                values[key] = np.r_['-1', values[key], self.events['IALP'].values[key]]
-        if 'RNFS' in self.events.keys():
-            for key in self.events['RNFS'].values:
-                values[key] = np.r_['-1', values[key], self.events['RNFS'].values[key]]
+        if 'ILP' in self.events.keys():
+            for key in self.events['ILP'].values:
+                values[key] = np.r_['-1', values[key], self.events['ILP'].values[key]]
+        if 'RNF' in self.events.keys():
+            for key in self.events['RNF'].values:
+                values[key] = np.r_['-1', values[key], self.events['RNF'].values[key]]
         if 'ALP_Timeout' in self.events.keys():
             for key in self.events['ALP_Timeout'].values:
                 values[key] = np.r_['-1', values[key], self.events['ALP_Timeout'].values[key]]

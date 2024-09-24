@@ -32,8 +32,8 @@ class MainWindow(QMainWindow):
 
         # Event defaults:
         self.event_defaults = {"ALP": {"window": 20, "delay": 0},
-                               "IALP": {"window": 20, "delay": 0},
-                               "RNFS": {"window": 20, "delay": 0},
+                               "ILP": {"window": 20, "delay": 0},
+                               "RNF": {"window": 20, "delay": 0},
                                "ALP_Timeout": {"window": 20, "delay": 0},
                                "distance_metric": "euclidean"}
 

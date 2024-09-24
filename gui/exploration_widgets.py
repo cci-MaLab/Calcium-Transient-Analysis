@@ -249,13 +249,13 @@ class ExplorationWidget(QWidget):
         # Plot utility
         self.auto_label = QLabel("Automatic Transient Detection")
         self.manual_label = QLabel("Manual Transient Detection")
-        self.min_height_label = QLabel("Height Threshold (ΔF/F)")
+        self.min_height_label = QLabel("Peak Threshold (ΔF/F)")
         local_stats_label = QLabel("Local Statistics")
         self.min_height_input = QLineEdit()
         self.min_height_input.setValidator(QDoubleValidator(0, 1000, 3))
         self.min_height_input.setText("0")
 
-        self.dist_label = QLabel("Min IEI")
+        self.dist_label = QLabel("Interval Threshold (frame)")
         self.dist_input = QLineEdit()
         self.dist_input.setValidator(QIntValidator(0, 1000))
         self.dist_input.setText("10")
@@ -463,18 +463,18 @@ class ExplorationWidget(QWidget):
         self.chkbox_plot_global_YrA.clicked.connect(lambda: self.visualize_global_signals(reset_view=False))
         self.chkbox_plot_global_dff.clicked.connect(lambda: self.visualize_global_signals(reset_view=False))
 
-        if "RNFS" in self.session.data:
-            self.chkbox_plot_options_RNFS = QCheckBox("RNFS")
-            self.chkbox_plot_options_RNFS.setStyleSheet("background-color: rgb(250, 200, 20); border: 1px solid black; width: 15px; height: 15px;")
-            self.chkbox_plot_options_RNFS.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        if "RNF" in self.session.data:
+            self.chkbox_plot_options_RNF = QCheckBox("RNF")
+            self.chkbox_plot_options_RNF.setStyleSheet("background-color: rgb(250, 200, 20); border: 1px solid black; width: 15px; height: 15px;")
+            self.chkbox_plot_options_RNF.clicked.connect(lambda: self.visualize_signals(reset_view=False))
         if "ALP" in self.session.data:
             self.chkbox_plot_options_ALP = QCheckBox("ALP")
             self.chkbox_plot_options_ALP.setStyleSheet("background-color: rgb(100, 50, 150); border: 1px solid black; width: 15px; height: 15px;")
             self.chkbox_plot_options_ALP.clicked.connect(lambda: self.visualize_signals(reset_view=False))
-        if "IALP" in self.session.data:
-            self.chkbox_plot_options_IALP = QCheckBox("IALP")
-            self.chkbox_plot_options_IALP.setStyleSheet("background-color: rgb(50, 150, 100); border: 1px solid black; width: 15px; height: 15px;")
-            self.chkbox_plot_options_IALP.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        if "ILP" in self.session.data:
+            self.chkbox_plot_options_ILP = QCheckBox("ILP")
+            self.chkbox_plot_options_ILP.setStyleSheet("background-color: rgb(50, 150, 100); border: 1px solid black; width: 15px; height: 15px;")
+            self.chkbox_plot_options_ILP.clicked.connect(lambda: self.visualize_signals(reset_view=False))
         if "ALP_Timeout" in self.session.data:
             self.chkbox_plot_options_ALP_Timeout = QCheckBox("ALP Timeout")
             self.chkbox_plot_options_ALP_Timeout.setStyleSheet("background-color: rgb(60, 200, 250); border: 1px solid black; width: 15px; height: 15px;")
@@ -490,9 +490,9 @@ class ExplorationWidget(QWidget):
             "SavGol": (154,205,50), # Greenish/Yellow
             "noise": (0,191,255), # Deep Sky Blue
             "SNR": (255,105,180), # Hot Pink
-            "RNFS": (250, 200, 20),
+            "RNF": (250, 200, 20),
             "ALP": (100, 50, 150),
-            "IALP": (50, 150, 100),
+            "ILP": (50, 150, 100),
             "ALP_Timeout": (60, 200, 250)
         }
 
@@ -1057,12 +1057,12 @@ class ExplorationWidget(QWidget):
         layout_plot_options.addStretch()
         layout_plot_options.setDirection(3)
         layout_plot_options.addWidget(self.btn_reset_view)
-        if "RNFS" in self.session.data:
-            layout_plot_options.addWidget(self.chkbox_plot_options_RNFS)
+        if "RNF" in self.session.data:
+            layout_plot_options.addWidget(self.chkbox_plot_options_RNF)
         if "ALP" in self.session.data:
             layout_plot_options.addWidget(self.chkbox_plot_options_ALP)
-        if "IALP" in self.session.data:
-            layout_plot_options.addWidget(self.chkbox_plot_options_IALP)
+        if "ILP" in self.session.data:
+            layout_plot_options.addWidget(self.chkbox_plot_options_ILP)
         if "ALP_Timeout" in self.session.data:
             layout_plot_options.addWidget(self.chkbox_plot_options_ALP_Timeout)
         layout_plot_options.addWidget(self.chkbox_plot_options_snr)
@@ -2083,15 +2083,15 @@ class ExplorationWidget(QWidget):
     
     def get_selected_events(self):
         selected_events = []
-        if "RNFS" in self.session.data:
-            if self.chkbox_plot_options_RNFS.isChecked():
-                selected_events.append('RNFS')
+        if "RNF" in self.session.data:
+            if self.chkbox_plot_options_RNF.isChecked():
+                selected_events.append('RNF')
         if "ALP" in self.session.data:
             if self.chkbox_plot_options_ALP.isChecked():
                 selected_events.append('ALP')
-        if "IALP" in self.session.data:
-            if self.chkbox_plot_options_IALP.isChecked():
-                selected_events.append('IALP')
+        if "ILP" in self.session.data:
+            if self.chkbox_plot_options_ILP.isChecked():
+                selected_events.append('ILP')
         if "ALP_Timeout" in self.session.data:
             if self.chkbox_plot_options_ALP_Timeout.isChecked():
                 selected_events.append('ALP_Timeout')
