@@ -1059,19 +1059,19 @@ class ExplorationWidget(QWidget):
         layout_plot_options.addWidget(self.btn_reset_view)
         if "RNF" in self.session.data:
             layout_plot_options.addWidget(self.chkbox_plot_options_RNF)
-        if "ALP" in self.session.data:
-            layout_plot_options.addWidget(self.chkbox_plot_options_ALP)
         if "ILP" in self.session.data:
             layout_plot_options.addWidget(self.chkbox_plot_options_ILP)
+        if "ALP" in self.session.data:
+            layout_plot_options.addWidget(self.chkbox_plot_options_ALP)
         if "ALP_Timeout" in self.session.data:
             layout_plot_options.addWidget(self.chkbox_plot_options_ALP_Timeout)
         layout_plot_options.addWidget(self.chkbox_plot_options_snr)
         layout_plot_options.addWidget(self.chkbox_plot_options_noise)
-        layout_plot_options.addWidget(self.chkbox_plot_options_C)
-        layout_plot_options.addWidget(self.chkbox_plot_options_S)
-        layout_plot_options.addWidget(self.chkbox_plot_options_YrA)
-        layout_plot_options.addWidget(self.chkbox_plot_options_dff)
         layout_plot_options.addWidget(self.chkbox_plot_options_savgol)
+        layout_plot_options.addWidget(self.chkbox_plot_options_dff)
+        layout_plot_options.addWidget(self.chkbox_plot_options_S)
+        layout_plot_options.addWidget(self.chkbox_plot_options_C)
+        layout_plot_options.addWidget(self.chkbox_plot_options_YrA)
 
         # Global plot options
         frame_global_plot_options = QFrame()
