@@ -97,7 +97,16 @@ class ExplorationWidget(QWidget):
                 button_video_type.setChecked(True)
             else:
                 button_video_type.setChecked(False)
-            self.submenu_videos.addAction(button_video_type)   
+            self.submenu_videos.addAction(button_video_type)
+        
+        submenu_add_group = self.imv_cell.getView().menu.addMenu('&Add Group')
+        button_add_group_rect = QAction("Rectangle", submenu_add_group)
+        submenu_add_group.addAction(button_add_group_rect)
+        button_add_group_rect.triggered.connect(lambda: self.add_group_start(type="rectangle"))
+        button_add_group_ellipse = QAction("Ellipse", submenu_add_group)
+        submenu_add_group.addAction(button_add_group_ellipse)
+        button_add_group_ellipse.triggered.connect(lambda: self.add_group_start(type="ellipse"))
+        
 
         # Menu Bar for statistics
         menu = QMenuBar()
@@ -193,6 +202,8 @@ class ExplorationWidget(QWidget):
         tabs_signal_parent.setWidget(tabs_signal)
         tabs_signal_parent.setFixedWidth(350)
         self.tabs_global_cell_switch = QTabWidget() # This is for the bottom half of the screen
+
+        tabs_cofiring_options = QTabWidget()
 
 
         # Rejected Cells
@@ -635,6 +646,8 @@ class ExplorationWidget(QWidget):
         self.cofiring_chkbox.clicked.connect(self.visualize_cofiring)
         self.cofiring_list = QListWidget()
         self.cofiring_list.itemChanged.connect(lambda: self.update_cofiring_window(reset_list=False))
+        self.cofiring_individual_cell_list = QListWidget()
+        self.cofiring_individual_cell_list.itemChanged.connect(lambda: self.update_cofiring_window(reset_list=False))
         btn_cofiring_2d_show = QPushButton("Show 2D Representation")
         btn_cofiring_2d_show.clicked.connect(self.show_2D_cofiring)
 
@@ -729,11 +742,15 @@ class ExplorationWidget(QWidget):
         cofiring_chkbox_layout.addWidget(self.cofiring_shareA_chkbox)
         cofiring_chkbox_layout.addWidget(self.cofiring_shareB_chkbox)
 
+        # Tab Co-Firing Options
+        tabs_cofiring_options.addTab(self.cofiring_list, "Group Co-Firing")
+        tabs_cofiring_options.addTab(self.cofiring_individual_cell_list, "Individual Cells")
+
         # Co-Firing Tools
         cofiring_layout.addLayout(cofiring_window_layout)
         cofiring_layout.addLayout(cofiring_chkbox_layout)
         cofiring_layout.addWidget(self.cofiring_direction_dropdown)
-        cofiring_layout.addWidget(self.cofiring_list)
+        cofiring_layout.addWidget(tabs_cofiring_options)
         cofiring_layout.addWidget(btn_cofiring_2d_show)
         cofiring_layout.addStretch()
         cofiring_tools = QWidget()
@@ -1159,6 +1176,15 @@ class ExplorationWidget(QWidget):
 
         self.imv_cell.scene.sigMouseMoved.connect(self.detect_cell_hover)
 
+    def add_group_start(self, type="ellipse"):
+        if type == "ellipse":
+            roi = pg.EllipseROI([0, 0], [0, 0], pen=pg.mkPen(color='r', width=2), removable=True)
+        elif type == "rectangle":
+            roi = pg.RectROI([20, 20], [40, 40], pen=pg.mkPen(color='r', width=2), removable=True)
+        else:
+            raise ValueError("Invalid ROI type")
+        self.imv_cell.addItem(roi)
+
     def visualize_cofiring(self):
         visualize_cofiring = self.cofiring_chkbox.isChecked()
         
@@ -1184,28 +1210,51 @@ class ExplorationWidget(QWidget):
             if item.checkState() == Qt.CheckState.Checked:
                 cofiring_nums.add(int(item.text().split(" ")[1]))
 
-        kwargs = {"nums_to_visualize": cells_for_cofiring, "visualize": visualize_cofiring, "cofiring_nums": cofiring_nums, "shareA": shareA, "shareB": shareB, "direction": direction}
-
         # When we reset the list we want to visualize all cofiring connections
         if reset_list:
             cofiring_nums.add("all")
+        
+        cofiring_cells = set()
+        for i in range(self.cofiring_individual_cell_list.count()):
+            item = self.cofiring_individual_cell_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                cofiring_cells.add(int(item.text().split(" ")[1]))
 
-        cofiring_nums = self.visualization_3D.change_cofiring_window(window_size, **kwargs)
+        kwargs = {"nums_to_visualize": cells_for_cofiring, "visualize": visualize_cofiring, "cofiring_nums": cofiring_nums,
+                   "shareA": shareA, "shareB": shareB, "direction": direction, "cofiring_cells": cofiring_cells}
 
+        precalculated_values = self.visualization_3D.change_cofiring_window(window_size, **kwargs)
         if reset_list:
-            # Populate the list
-            self.cofiring_list.clear()
-            # Add cofiring numbers to the list and make them checkable
-            cofiring_nums.sort()
-            # Remove 0 if it exists because we are not interested in no cofiring connections.
-            cofiring_nums = cofiring_nums[1:] if cofiring_nums[0] == 0 else cofiring_nums
-            self.cofiring_list.itemChanged.disconnect()
-            for num in cofiring_nums:
-                item = QListWidgetItem(f"Cofiring {num}")
-                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                item.setCheckState(Qt.CheckState.Checked)           
-                self.cofiring_list.addItem(item)
-            self.cofiring_list.itemChanged.connect(lambda: self.update_cofiring_window(reset_list=False))
+            self.reset_list(precalculated_values)
+            
+
+    def reset_list(self, precalculated_values):
+        cofiring_nums = list(precalculated_values["number"].keys())
+        # Populate the list
+        self.cofiring_list.clear()
+        # Add cofiring numbers to the list and make them checkable
+        cofiring_nums.sort()
+        # Remove 0 if it exists because we are not interested in no cofiring connections.
+        cofiring_nums = cofiring_nums[1:] if cofiring_nums[0] == 0 else cofiring_nums
+        self.cofiring_list.itemChanged.disconnect()
+        for num in cofiring_nums:
+            item = QListWidgetItem(f"Cofiring {num}")
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked)           
+            self.cofiring_list.addItem(item)
+        self.cofiring_list.itemChanged.connect(lambda: self.update_cofiring_window(reset_list=False))
+
+        self.cofiring_individual_cell_list.clear()
+        cells_to_visualize = self.list_global_which_cells.currentText()
+        cells = self.session.get_cell_ids(cells_to_visualize, verified=True)
+        for cell in cells:
+            item = QListWidgetItem(f"Cell {cell}")
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked)           
+            self.cofiring_individual_cell_list.addItem(item)
+        self.cofiring_individual_cell_list.itemChanged.connect(lambda: self.update_cofiring_window(reset_list=False))
+
+
 
     def show_2D_cofiring(self):
         window_size = int(self.cofiring_window_size.text())

@@ -601,9 +601,9 @@ class MayaviQWidget(QWidget):
             # This means the checkbox is checked and we need to visualize the data
             self.visualize_arrows(unit_ids, window_size, **kwargs)
         
-        return list(self.precalculated_values[name]["number"].keys())
+        return self.precalculated_values[name]
 
-    def visualize_arrows(self, nums_to_visualize, window_size, cofiring_nums=[], shareA=True, shareB=True, direction="bidirectional", **kwargs):
+    def visualize_arrows(self, nums_to_visualize, window_size, cofiring_nums=set(), cofiring_cells=set(), shareA=True, shareB=True, direction="bidirectional", **kwargs):
         
         name = f"cofiring_{window_size}"
         name += "_shared_A" if shareA else ""
@@ -632,6 +632,9 @@ class MayaviQWidget(QWidget):
                     continue
                 if value not in cofiring_nums and "all" not in cofiring_nums:
                     continue
+                if id1 not in cofiring_cells and id2 not in cofiring_cells and "all" not in cofiring_nums:
+                    continue
+
                 coords1 = cell_id_coords[id1]
                 coords2 = cell_id_coords[id2]
                 z_offset = 0.5 # We need to offset the arrows slightly above the surface

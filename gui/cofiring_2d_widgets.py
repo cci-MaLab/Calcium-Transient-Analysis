@@ -19,6 +19,7 @@ class Cofiring2DWidget(QWidget):
         
         self.name = name
         self.setWindowTitle(self.name)
+        layout_view_2d = QHBoxLayout()
         self.view_2d = pg.GraphicsLayoutWidget()
         self.overlap_2d = pg.GraphicsLayoutWidget()
         tabs = QTabWidget()

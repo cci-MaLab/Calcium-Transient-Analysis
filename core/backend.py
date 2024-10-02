@@ -1174,6 +1174,7 @@ class DataInstance:
             intersection = np.intersect1d(unit_ids, verified_cells)
             unit_ids = list(intersection)
         
+        unit_ids.sort()
         return unit_ids
 
         
