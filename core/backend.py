@@ -378,6 +378,7 @@ class DataInstance:
         self.value: dict #key is the unit_id,value is the numpy array
         self.outliers_list: List[int] = []
         self.centroids: dict
+        self.centroids_to_cell_ids: dict
         self.centroids_max: dict
         self.load_data(dpath=dpath)
         self.no_of_clusters = 4     
@@ -512,6 +513,8 @@ class DataInstance:
             self.A[i] = self.data['A'].sel(unit_id = i)
             self.centroids[i] = tuple(cent.loc[cent['unit_id'] == i].values[0][1:])
             self.centroids_max[i] = tuple(cent_max.loc[cent_max['unit_id'] == i].values[0][1:])
+        
+        self.centroids_to_cell_ids = {v: k for k, v in self.centroids.items()}
         
         
         output_dpath = "/N/project/Cortical_Calcium_Image/analysis"
@@ -1056,6 +1059,16 @@ class DataInstance:
         for cell in cells:
             E['verified'].loc[dict(unit_id=cell)] = (E['verified'].loc[dict(unit_id=cell)].values.item() + 1) % 2
         save_xarray(self.data['E'], self.minian_path)
+    
+    def prune_non_verified(self, cells: set):
+        # Keep only verified cells in cells
+        all_unit_ids = self.data['E'].unit_id.values
+        verified_idxs = self.data['E'].verified.values.astype(int)
+        verified_unit_ids = all_unit_ids[verified_idxs==1]
+
+        return cells.intersection(verified_unit_ids)
+
+
     
     def check_E(self):
         """

@@ -102,10 +102,10 @@ class ExplorationWidget(QWidget):
         submenu_add_group = self.imv_cell.getView().menu.addMenu('&Add Group')
         button_add_group_rect = QAction("Rectangle", submenu_add_group)
         submenu_add_group.addAction(button_add_group_rect)
-        button_add_group_rect.triggered.connect(lambda: self.add_group_start(type="rectangle"))
+        button_add_group_rect.triggered.connect(lambda: self.highlight_roi_selection(type="rectangle"))
         button_add_group_ellipse = QAction("Ellipse", submenu_add_group)
         submenu_add_group.addAction(button_add_group_ellipse)
-        button_add_group_ellipse.triggered.connect(lambda: self.add_group_start(type="ellipse"))
+        button_add_group_ellipse.triggered.connect(lambda: self.highlight_roi_selection(type="ellipse"))
         
 
         # Menu Bar for statistics
@@ -1176,14 +1176,171 @@ class ExplorationWidget(QWidget):
 
         self.imv_cell.scene.sigMouseMoved.connect(self.detect_cell_hover)
 
-    def add_group_start(self, type="ellipse"):
+    def highlight_roi_selection(self, type="ellipse"):
+        # Get mouse position
+        pos = self.imv_cell.last_pos
         if type == "ellipse":
-            roi = pg.EllipseROI([0, 0], [0, 0], pen=pg.mkPen(color='r', width=2), removable=True)
+            roi = pg.EllipseROI(pos, [40, 40], pen=pg.mkPen(color='r', width=2), removable=True)
         elif type == "rectangle":
-            roi = pg.RectROI([20, 20], [40, 40], pen=pg.mkPen(color='r', width=2), removable=True)
+            roi = pg.RectROI(pos, [40, 40], pen=pg.mkPen(color='r', width=2), removable=True)
         else:
             raise ValueError("Invalid ROI type")
+        
+        def remove_roi(roi):
+            self.imv_cell.removeItem(roi)
+
+        def add_group_roi(roi, verified=False):
+            # From the ROI we'll get the values of the position, height and width and angle to calculate whether the centroids are contained
+            # in the ROI
+            pos = roi.pos()
+            size = roi.size()
+            angle = roi.angle()
+
+            # Now check if we're dealing with an ellipse or a rectangle
+            roi_type = roi.__class__.__name__
+            ids = set()
+            for centroid in self.session.centroids_to_cell_ids.keys():
+                id = self.session.centroids_to_cell_ids[centroid]
+                if roi_type == "EllipseROI":
+                    if self.within_ellipse(centroid, pos, size, angle):
+                        ids.add(id)
+                elif roi_type == "RectROI":
+                    if self.within_rectangle(centroid, pos, size, angle):
+                        ids.add(id)
+
+            if verified:
+                # Prune out non-verified cells
+                self.session.prune_non_verified(ids)
+
+
+            # Now that we have the ids we will clear the selections in the cell list and select the cells that are within the ROI
+            self.list_cell.clearSelection()
+            for i in range(self.list_cell.count()):
+                item = self.list_cell.item(i)
+                cell_id = int(item.text().split(" ")[0])
+                if cell_id in ids:
+                    item.setSelected(True)
+            
+            # Now Focus on the cells
+            self.focus_mask()
+                
+
         self.imv_cell.addItem(roi)
+
+        roi.sigRemoveRequested.connect(remove_roi)
+
+        # Add action to the ROI menu
+        menu = roi.getMenu()
+        action_verified = QAction("Highlight Selection Verified", self)
+        action_verified.triggered.connect(lambda: add_group_roi(roi, verified=True))
+        menu.addAction(action_verified)
+        action_standard = QAction("Highlight Selection", self)
+        action_standard.triggered.connect(lambda: add_group_roi(roi, verified=False))
+        menu.addAction(action_standard)
+
+
+
+    def within_rectangle(self, point, center, size, angle):
+        """
+        Check if a point is within a rectangle.
+        
+        Parameters:
+        - point: The point to check (x, y).
+        - center: The center of the rectangle (cx, cy).
+        - size: The size of the rectangle (width, height).
+        - angle: The rotation angle of the rectangle in degrees.
+        
+        Returns:
+        - True if the point is within the rectangle, False otherwise.
+        """
+        # Calculate the center of the bounding box
+        center = np.array(center) + np.array(size) / 2
+        
+        # Convert angle to radians
+        angle_rad = np.radians(angle)
+        
+        # Rotate the center by the given angle
+        rotation_matrix = np.array([
+            [np.cos(angle_rad), -np.sin(angle_rad)],
+            [np.sin(angle_rad), np.cos(angle_rad)]
+        ])
+        rotated_center = np.dot(rotation_matrix, center)
+        
+        # Flip the coordinates of the point
+        point = [point[1], point[0]]
+        
+        # Translate the point to the origin
+        translated_point = np.array(point) - rotated_center
+        
+        # Rotate the point by the negative of the rectangle's angle
+        rotation_matrix = np.array([
+            [np.cos(-angle_rad), -np.sin(-angle_rad)],
+            [np.sin(-angle_rad), np.cos(-angle_rad)]
+        ])
+        rotated_point = np.dot(rotation_matrix, translated_point)
+        
+        # Get the half-width and half-height
+        half_width = size[0] / 2
+        half_height = size[1] / 2
+        
+        # Check if the point is within the rectangle
+        x, y = rotated_point
+        if -half_width <= x <= half_width and -half_height <= y <= half_height:
+            return True
+        else:
+            return False
+    
+    def within_ellipse(self, point, center, size, angle):
+        """
+        Check if a point is within an ellipse.
+        
+        Parameters:
+        - point: The point to check (x, y).
+        - center: The center of the ellipse (cx, cy).
+        - size: The size of the ellipse (width, height).
+        - angle: The rotation angle of the ellipse in degrees.
+        
+        Returns:
+        - True if the point is within the ellipse, False otherwise.
+        """
+        # Calculate the center of the bounding box
+        center = np.array(center) + np.array(size) / 2
+        
+        # Convert angle to radians
+        angle_rad = np.radians(angle)
+        
+        # Rotate the center by the given angle
+        rotation_matrix = np.array([
+            [np.cos(angle_rad), -np.sin(angle_rad)],
+            [np.sin(angle_rad), np.cos(angle_rad)]
+        ])
+        rotated_center = np.dot(rotation_matrix, center)
+        
+        # Flip the coordinates of the point
+        point = [point[1], point[0]]
+        
+        # Translate the point to the origin
+        translated_point = np.array(point) - rotated_center
+        
+        # Rotate the point by the negative of the ellipse's angle
+        rotation_matrix = np.array([
+            [np.cos(-angle_rad), -np.sin(-angle_rad)],
+            [np.sin(-angle_rad), np.cos(-angle_rad)]
+        ])
+        rotated_point = np.dot(rotation_matrix, translated_point)
+        
+        # Get the semi-major and semi-minor axes
+        a = size[0] / 2
+        b = size[1] / 2
+        
+        # Check the ellipse equation
+        x, y = rotated_point
+        if (x**2 / a**2) + (y**2 / b**2) <= 1:
+            return True
+        else:
+            return False
+            
+
 
     def visualize_cofiring(self):
         visualize_cofiring = self.cofiring_chkbox.isChecked()
