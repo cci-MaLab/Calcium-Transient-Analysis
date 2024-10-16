@@ -1210,7 +1210,7 @@ class ExplorationWidget(QWidget):
 
             if verified:
                 # Prune out non-verified cells
-                self.session.prune_non_verified(ids)
+                ids = self.session.prune_non_verified(ids)
 
 
             # Now that we have the ids we will clear the selections in the cell list and select the cells that are within the ROI
@@ -1240,105 +1240,86 @@ class ExplorationWidget(QWidget):
 
 
 
-    def within_rectangle(self, point, center, size, angle):
+    def within_rectangle(self, point, upper_left, size, angle):
         """
         Check if a point is within a rectangle.
         
         Parameters:
         - point: The point to check (x, y).
-        - center: The center of the rectangle (cx, cy).
+        - upper_left: The point indicating the top left corner of the ROI.
         - size: The size of the rectangle (width, height).
         - angle: The rotation angle of the rectangle in degrees.
         
         Returns:
         - True if the point is within the rectangle, False otherwise.
         """
-        # Calculate the center of the bounding box
-        center = np.array(center) + np.array(size) / 2
-        
-        # Convert angle to radians
-        angle_rad = np.radians(angle)
-        
-        # Rotate the center by the given angle
-        rotation_matrix = np.array([
-            [np.cos(angle_rad), -np.sin(angle_rad)],
-            [np.sin(angle_rad), np.cos(angle_rad)]
-        ])
-        rotated_center = np.dot(rotation_matrix, center)
-        
-        # Flip the coordinates of the point
         point = [point[1], point[0]]
-        
-        # Translate the point to the origin
-        translated_point = np.array(point) - rotated_center
-        
-        # Rotate the point by the negative of the rectangle's angle
+        angle = np.radians(angle)
+
+        point_local = np.array(point) - upper_left
+
+        # Create the rotation matrix for the inverse rotation (to unrotate the point)
         rotation_matrix = np.array([
-            [np.cos(-angle_rad), -np.sin(-angle_rad)],
-            [np.sin(-angle_rad), np.cos(-angle_rad)]
+            [np.cos(-angle), -np.sin(-angle)],
+            [np.sin(-angle),  np.cos(-angle)]
         ])
-        rotated_point = np.dot(rotation_matrix, translated_point)
-        
-        # Get the half-width and half-height
-        half_width = size[0] / 2
-        half_height = size[1] / 2
-        
-        # Check if the point is within the rectangle
-        x, y = rotated_point
-        if -half_width <= x <= half_width and -half_height <= y <= half_height:
+
+        # Apply the rotation to the translated point
+        rotated_point = np.dot(rotation_matrix, point_local)
+
+        # Check if the point is within the axis-aligned rectangle (after unrotating)
+        if 0 <= rotated_point[0] <= size[0] and 0 <= rotated_point[1] <= size[1]:
             return True
-        else:
-            return False
+        return False
     
-    def within_ellipse(self, point, center, size, angle):
+    def within_ellipse(self, point, upper_left, size, angle):
         """
         Check if a point is within an ellipse.
         
         Parameters:
         - point: The point to check (x, y).
-        - center: The center of the ellipse (cx, cy).
+        - upper_left: The point indicating the top left corner of the ROI.
         - size: The size of the ellipse (width, height).
         - angle: The rotation angle of the ellipse in degrees.
         
         Returns:
         - True if the point is within the ellipse, False otherwise.
         """
-        # Calculate the center of the bounding box
-        center = np.array(center) + np.array(size) / 2
-        
-        # Convert angle to radians
-        angle_rad = np.radians(angle)
-        
-        # Rotate the center by the given angle
+        point = np.array([point[1], point[0]])
+        angle = np.radians(angle)
         rotation_matrix = np.array([
-            [np.cos(angle_rad), -np.sin(angle_rad)],
-            [np.sin(angle_rad), np.cos(angle_rad)]
+            [np.cos(-angle), -np.sin(-angle)],
+            [np.sin(-angle),  np.cos(-angle)]
         ])
-        rotated_center = np.dot(rotation_matrix, center)
         
-        # Flip the coordinates of the point
-        point = [point[1], point[0]]
+        # Step 1: Calculate the center of the ellipse (not upper_left)
+        center = np.array(upper_left) + np.array(size) / 2.0
+
+        # Step 1.1: Rotate the center where upper_left is the origin
+        center_local = center - upper_left
+        center_rotated = np.dot(rotation_matrix, center_local)
+        center_adjusted = center_rotated + upper_left
+
+        # Step 1.2: Get the vector from center to center_adjusted
+        center_vector = center_adjusted - center
+
         
-        # Translate the point to the origin
-        translated_point = np.array(point) - rotated_center
-        
-        # Rotate the point by the negative of the ellipse's angle
-        rotation_matrix = np.array([
-            [np.cos(-angle_rad), -np.sin(-angle_rad)],
-            [np.sin(-angle_rad), np.cos(-angle_rad)]
-        ])
-        rotated_point = np.dot(rotation_matrix, translated_point)
-        
-        # Get the semi-major and semi-minor axes
-        a = size[0] / 2
-        b = size[1] / 2
-        
-        # Check the ellipse equation
-        x, y = rotated_point
-        if (x**2 / a**2) + (y**2 / b**2) <= 1:
-            return True
-        else:
-            return False
+        # Step 2: Translate the point relative to the center of the bounding box
+        point_local = point - center
+
+        # Step 3: Apply the rotation to the translated point
+        rotated_point = np.dot(rotation_matrix, point_local)
+        rotated_point += center_vector
+
+        # Step 4: Treat it like a rectangle until now, but now apply the ellipse boundary check
+        semi_major = size[0] / 2.0  # a (semi-major axis)
+        semi_minor = size[1] / 2.0  # b (semi-minor axis)
+
+        x_prime, y_prime = rotated_point
+        ellipse_eq = (x_prime / semi_major) ** 2 + (y_prime / semi_minor) ** 2
+
+        # Step 5: Check if the point lies within the ellipse
+        return ellipse_eq <= 1
             
 
 
