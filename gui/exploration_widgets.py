@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAc
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
                             QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar, QCheckBox,
                             QTextEdit, QComboBox, QGraphicsTextItem, QMessageBox, QFileDialog,
-                            QScrollArea, QListWidgetItem)
+                            QScrollArea, QListWidgetItem, QInputDialog)
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5 import QtCore
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont)
@@ -2599,7 +2599,7 @@ class ExplorationWidget(QWidget):
         for i, cell_id in enumerate(self.session.data['E']['unit_id'].values):
             if good_bad_cells[i]:
                 if cell_id in cell_ids_to_groups:
-                    self.list_cell.addItem(f"{cell_id} G{cell_ids_to_groups[cell_id]}")
+                    self.list_cell.addItem(f"{cell_id} G {', '.join(cell_ids_to_groups[cell_id])}")
                 else:
                     self.list_cell.addItem(str(cell_id))
                 if self.session.data['E']['verified'].loc[{'unit_id': cell_id}].values.item():
@@ -2619,7 +2619,14 @@ class ExplorationWidget(QWidget):
     def add_to_group(self):
         cell_ids = [self.extract_id(item) for item in self.list_cell.selectedItems()]
 
-        self.session.add_cell_id_group(cell_ids)
+        # Ask the user for the group id
+        group_id, ok = QInputDialog.getText(self, "Group ID", "Enter the group ID")
+        group_id = str(group_id)
+
+        if not ok:
+            return
+
+        self.session.add_cell_id_group(cell_ids, group_id)
         unique_groups = self.session.get_group_ids()
         self.list_3D_which_cells.clear()
         self.list_3D_which_cells.addItems(["All Cells", "Verified Cells"])
