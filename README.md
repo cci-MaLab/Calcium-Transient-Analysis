@@ -1,4 +1,4 @@
-# Post Calcium Imaging Analysis Toolbox
+# Calcium Transient Analysis Toolbox
 
 ![Full View of CalTrig](docs/images/full_view.png)
 
