@@ -1,3 +1,4 @@
+!docs/
 *.pyc
 *.json
 *.pdf
@@ -10,3 +11,7 @@ backup/*
 *.pkl
 *.csv
 *.svg
+
+# Include the following files
+!docs/
+!docs/**
