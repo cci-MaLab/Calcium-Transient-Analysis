@@ -1131,25 +1131,52 @@ class DataInstance:
 
         return got_data
 
-    def add_cell_id_group(self, cell_id_group):
-        # First remove any cell ids that are already in the group
-        self.remove_cell_id_group(cell_id_group)
-        # First find the lowest available group id
-        current_ids = set(self.cell_ids_to_groups.values())
-        new_group_id = 1
-        while new_group_id in current_ids:
-            new_group_id += 1
+    def add_cell_id_group(self, cell_ids: List, group_id: str):
+        """
+        Allocate specific cell ids to a group id
 
-        for id in cell_id_group:
-            self.cell_ids_to_groups[id] = new_group_id
+        This function will allocate the cell ids to a group id. This will
+        be stored in a dictionary where the key is the cell id and the value
+        is a set of group ids. If group_id is an empty string, we will
+        allocate a number as the group id.
+
+        Parameters
+        ----------
+        cell_ids : list
+            List of cell ids to allocate to the group
+        group_id : str
+        """
+        if group_id == "":
+            # First find the lowest available group id
+            current_ids = set(self.cell_ids_to_groups.values())
+            group_id = 1
+            while group_id in current_ids:
+                group_id += 1
+
+        for id in cell_ids:
+            if id not in self.cell_ids_to_groups:
+                self.cell_ids_to_groups[id] = [group_id]
+            else:
+                self.cell_ids_to_groups[id] += [group_id]
     
-    def remove_cell_id_group(self, cell_id_group):
+    def remove_cell_id_group(self, cell_id_group: List):
+        """
+        Remove the cell ids from the group id.
+        
+        Parameters
+        ----------
+        cell_id_group : list
+            List of cell ids to remove from the group id
+        """
         for id in cell_id_group:
             if id in self.cell_ids_to_groups:
                 del self.cell_ids_to_groups[id]
 
     def get_group_ids(self):
-        return np.unique(list(self.cell_ids_to_groups.values()))
+        all_group_ids = []
+        for group_ids in self.cell_ids_to_groups.values():
+            all_group_ids += group_ids
+        return np.unique(all_group_ids)
 
     def get_video_interval(self):
         timestamps = self.data['timestamp(ms)'].values
@@ -1178,7 +1205,7 @@ class DataInstance:
             # Extract the group id from the string
             group_id = int(group_id.split(" ")[1])
             # Find the corresponding cell ids
-            unit_ids = [key for key, value in self.cell_ids_to_groups.items() if value == group_id]
+            unit_ids = [key for key, value in self.cell_ids_to_groups.items() if group_id in value]
 
         if verified:
             all_unit_ids = self.data['E'].unit_id.values
