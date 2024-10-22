@@ -27,4 +27,4 @@ included a basic yml file that omits ml.
 
 ## Brief Point About Inputs
 
-This Toolbox was built for the purpose of processing output from [Minian](https://github.com/denisecailab/minian), with a few minor changes as well. The tool should also be compatible with out CNMF output from other Tools such as [Caiman](https://github.com/flatironinstitute/CaImAn), however they will need to be translated to the proper dimensionality and format (like Minian we use xarrays), for a more detailed overview of the data types used please refer to the get_your_data_ready document in the docs.
+This Toolbox was built for the purpose of processing output from [Minian](https://github.com/denisecailab/minian), with a few minor changes as well. The tool should also be compatible with any CNMF output from other Tools such as [Caiman](https://github.com/flatironinstitute/CaImAn), however they will need to be translated to the proper dimensionality and format (like Minian we use xarrays), for a more detailed overview of the data types used please refer to the get_your_data_ready document in the docs.
