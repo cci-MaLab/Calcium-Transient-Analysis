@@ -1,10 +1,10 @@
 # Configuration file for the Sphinx documentation builder.
-
+import datetime
 # -- Project information
 
-project = 'Lumache'
-copyright = '2021, Graziella'
-author = 'Graziella'
+project = 'Calcium Transient Analysis'
+copyright = '2023-%s, CCI Ma Lab Team' % datetime.datetime.now().year
+author = 'Michal Lange'
 
 release = '0.1'
 version = '0.1.0'
