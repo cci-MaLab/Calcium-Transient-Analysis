@@ -1,3 +1,6 @@
+Welcome to CalTrig Documentation!
+===================================
+
 .. toctree::
    :maxdepth: 3
 
