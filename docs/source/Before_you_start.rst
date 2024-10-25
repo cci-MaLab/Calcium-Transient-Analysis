@@ -5,6 +5,8 @@ This project was built in mind with integrating `Minian <https://github.com/deni
 output files. Below will be two sections delineating what to do if you're coming from a Minian
 project and a more comprehensive guide if you come from a different CNMF related project.
 
+.. _non-minian projects:
+
 Non-Minian Projects
 -------------------
 
@@ -29,6 +31,8 @@ The calculation of DFF if initially omitted will require the following additiona
 
 - `f.zarr`: A 1D array of shape `(frame)`. Estimation of background flourescence at each frame.
 - `b.zarr`: A 2D array of shape `(height, width)`. Spatial background component.
+
+.. _numpy to xarray:
 
 How to convert numpy to xarray
 ______________________________
@@ -76,6 +80,8 @@ If you have your data in numpy format, you can convert it to an xarray using the
 
 Repeat the process above for other variables.
 
+.. _video files:
+
 Video files
 ___________
 
@@ -94,8 +100,10 @@ and to have it chunked correctly, you can follow the steps in the `Minian docume
 
 Once you have your data in the correct format, you can proceed to the `Minian` section below.
 
-Minian
-------
+.. _minian projects:
+
+Minian Projects
+---------------
 
 Loading in your data will require 2 folders and a csv file:
 
@@ -108,7 +116,7 @@ Loading in your data will require 2 folders and a csv file:
 - `videos`: This folder should contain the following files:
     - `varr.zarr`
     - `Y_fm_chk.zarr`
-    - `behavior_video.zarr` (Optional, look at the non-Minian, `Video files` section for more information)
+    - `behavior_video.zarr` (Optional, look at the `video files`_ section for more information)
 - `behavior.csv`: This file contains both millisecond time information as well as the behavior data, where 0 represents no event occurred and 1 represents that an event happened. The following indicates the column information:
     - `Frame Number`: The frame number of the video
     - `Time Stamp (ms)`: The time in milliseconds
