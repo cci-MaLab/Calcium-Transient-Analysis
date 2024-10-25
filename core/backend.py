@@ -355,7 +355,7 @@ class Event:
 class DataInstance:
     '''
         Tips:
-        1. load_data and load_events will be automatically excuted.
+        1. load_data and load_events will be automatically executed.
         2. You may call function set_vector,each time you change the switch of the events.
         3. After you set vectors, call the function compute_clustering, self.linkage_data will be updated. Then you can draw the dendrogram.
         4. Footprint in A. A is a dict. the key is the cell ID.
@@ -484,19 +484,7 @@ class DataInstance:
         self.unit_id_consistency()
 
         self.data['unit_ids'] = self.data['C'].coords['unit_id'].values
-        self.dpath = dpath
-
-        #zscore 
-        # zscore_data = xr.apply_ufunc(
-        #     zscore,
-        #     self.data['C'].chunk(dict(frame=-1, unit_id="auto")),
-        #     input_core_dims=[["frame"]],
-        #     output_core_dims=[["frame"]],
-        #     dask="parallelized",
-        #     output_dtypes=[self.data['C'].dtype],
-        # )
-        # self.data['C'] = zscore_data
-        # self.data['C'] = zscore(self.data['C'], axis = 0)    
+        self.dpath = dpath   
     
         self.data['filtered_C'] = self.get_filtered_C
 
