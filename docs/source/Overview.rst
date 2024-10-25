@@ -6,4 +6,9 @@ Overview
 Installation
 ------------
 
-To use this project, first install it using pip:
+To install with conda do ...
+
+.. _how to use:
+
+How To Use
+----------
