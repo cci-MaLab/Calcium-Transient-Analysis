@@ -13,7 +13,7 @@ To install, clone the repository and run the following command:
     conda env create -f environment.yml
 
 For machine learning purposes we use pytorch. We are aware of the relatively large install requirement for this package and that not all users require the machine learning parts of the GUI, hence we've also
-included a basic yml file that omits ml.
+included a basic yml file that omits ml. 
 
 .. code-block:: bash
 
