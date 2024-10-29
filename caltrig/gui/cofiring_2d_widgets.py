@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QTabWidget
 import pyqtgraph as pg
-from core.backend import DataInstance
+from ..core.backend import DataInstance
 from typing import List
 import numpy as np
 from matplotlib import cm

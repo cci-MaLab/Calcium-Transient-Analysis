@@ -16,10 +16,10 @@ from scipy.signal import find_peaks
 from skimage.segmentation import flood_fill
 from skimage.feature import canny
 from skimage.measure import find_contours
-from core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget, MetricsWidget)
-from core.pyqtgraph_override import ImageViewOverride
-from gui.cofiring_2d_widgets import Cofiring2DWidget
-from gui.sda_widgets import (MayaviQWidget, base_visualization)
+from ..core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget, MetricsWidget)
+from .pyqtgraph_override import ImageViewOverride
+from .cofiring_2d_widgets import Cofiring2DWidget
+from .sda_widgets import (MayaviQWidget, base_visualization)
 import os
 import matplotlib.pyplot as plt
 import pickle
@@ -146,20 +146,22 @@ class ExplorationWidget(QWidget):
         
 
         # We'll load in a copy of the visualization of the cells we are monitoring
-        self.A = self.session.A.copy()
+        self.A = self.session.data["A"].copy()
         for outlier in self.session.outliers_list:
             self.A.pop(outlier)
 
 
         self.A_pos_to_missed_cell = {}
         self.A_pos_to_cell = {}
-        for cell_id, cell_ROI in self.A.items():
+        unit_ids = self.A.coords["unit_id"].values
+        for unit_id in unit_ids:
+            cell_ROI = self.A.sel(unit_id=unit_id)
             indices = np.argwhere(cell_ROI.values > 0)
             for pair in indices:
                 if tuple(pair) in self.A_pos_to_cell:
-                    self.A_pos_to_cell[tuple(pair)].append(cell_id)
+                    self.A_pos_to_cell[tuple(pair)].append(unit_id)
                 else:
-                    self.A_pos_to_cell[tuple(pair)] = [cell_id]
+                    self.A_pos_to_cell[tuple(pair)] = [unit_id]
                     
 
 

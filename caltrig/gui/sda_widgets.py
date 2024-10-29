@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import QMessageBox
 import numpy as np
 from scipy.interpolate import interp1d
 import xarray as xr
-from gui.pop_up_messages import print_error
+from .pop_up_messages import print_error
 from matplotlib import cm
 from typing import List
 

@@ -8,14 +8,14 @@ import xarray as xr
 from os.path import isdir, isfile
 from os.path import join as pjoin
 from os import listdir
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Union, Dict
 import os
 import re
 import json
 import shutil
 from dask.diagnostics import ProgressBar
 
-from core.caiman_utils import detrend_df_f, minian_to_caiman
+from .caiman_utils import detrend_df_f, minian_to_caiman
 
 from scipy.signal import welch, savgol_filter
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
@@ -33,6 +33,9 @@ def open_minian(
     dpath: str, post_process: Optional[Callable] = None, return_dict=True
 ) -> Union[dict, xr.Dataset]:
     """
+    Taken from https://github.com/denisecailab/minian/blob/f64c456ca027200e19cf40a80f0596106918fd09/minian/utilities.py#L278. 
+    The current version of minian has outdated dependencies and is not compatible with this project.
+
     Load an existing minian dataset.
 
     If `dpath` is a file, then it is assumed that the full dataset is saved as a
@@ -100,19 +103,37 @@ def open_minian(
 
 
 def save_xarray(
-    var: xr.DataArray,
+    varr: xr.DataArray,
     dpath: str,
-    compute=True,
 ) -> xr.DataArray:
     """
-    Was having issues with saving xarray to zarr, I think it may have something to do with the
-    overwriting data that is not loaded into memory first. Therefore we will first save the data
-    as temp then delete the original data and rename the temp data to the original name.
+    Save an xarray DataArray to a zarr file.
+
+    This function creates a temporary zarr file in the same directory as the
+    existing zarr file, and then renames the temporary file to the original. 
+    This is due to the fact that certain errors would occur whenever I would
+    try to save the zarr file directly to the original file, loading the zarr
+    array into memory would also cause the same error. This is a workaround
+    to avoid the error.
+
+    Parameters
+    ----------
+
+    varr : xr.DataArray
+        The xarray DataArray that should be saved.
+    dpath : str
+        The path to the zarr file that should be saved.
+
+    Returns
+    -------
+    arr : xr.DataArray
+        The saved xarray DataArray. It will identical to the input `varr` but
+        it will read from a new zarr file.
     """
     dpath = os.path.normpath(dpath)
-    fp_temp = os.path.join(dpath, var.name + "_temp.zarr")
-    fp_orig = os.path.join(dpath, var.name + ".zarr")
-    arr = var.to_zarr(fp_temp, compute=compute, mode="w", consolidated=False)
+    fp_temp = os.path.join(dpath, varr.name + "_temp.zarr")
+    fp_orig = os.path.join(dpath, varr.name + ".zarr")
+    arr = varr.to_zarr(fp_temp, compute=True, mode="w", consolidated=False)
     try:
         shutil.rmtree(fp_orig)
     except FileNotFoundError:
@@ -121,95 +142,49 @@ def save_xarray(
     # Rename the temp file to the original file
     os.rename(fp_temp, fp_orig)
     
-    if compute:
-        arr = xr.open_zarr(fp_orig, consolidated=False)[var.name]
-        arr.data = darr.from_zarr(os.path.join(fp_orig, var.name), inline_array=True)
     return arr
 
-def delete_missing_xarray(
+def delete_xarray(
         dpath: str,
-        var_name: str = "M"):
+        var_name: str = "M") -> None:
     """
-    This is necessary for missing cells as there might be added and removed.
+    Delete the specified xarray DataArray by removing the zarr file.
+
+    The function serves as a convenience method to deal with "Missing" DataArrays.
+    It will be necessary to call this whenever all missing cells have been removed.
+
+    Parameters
+    ----------
+    dpath : str
+        The path to the zarr file that should be deleted.
+    var_name : str, optional
+        The name of the DataArray that should be deleted. By default "M",
+        as we expect this to be the missing data array.
     """
     fp = os.path.join(dpath, var_name + ".zarr")
     try:
         shutil.rmtree(fp)
     except FileNotFoundError:
         pass
-
-
-def match_information(dpath):# Add by HF
-    '''
-    Parameters 
-    ----------
-    str: dpath
-        The Session dirctory of mice video
-    '''
-    pattern_mouseID = "[A-Z]+[0-9]+"
-    pattern_day = "D[0-9]+"
-    pattern_session = "S\d+"
-    pattern1 = r"(/N/project/Cortical_Calcium_Image/Miniscope data/.*?/(?P<mouse_folder_name>.*?))/.*?/.*?/Miniscope_2/(?P<session>S\d+)"
-    pattern2 = r"(/N/project/Cortical_Calcium_Image/Miniscope data/.*?/(?P<mouse_folder_name>.*?))/.*?/.*?/Miniscope_2"
-    if (re.match(pattern1, dpath)):
-        result = re.match(pattern1, dpath)
-        mouse_folder_name = result.group("mouse_folder_name")
-        mouse_folder_names = mouse_folder_name.split("_")
-        if(re.match(pattern_mouseID, mouse_folder_names[0])):
-            mouseID = mouse_folder_names[0]
-        else:
-            raise FileNotFoundError("Wrong mouseID!")
-        if(re.match(pattern_day, mouse_folder_names[1])):
-            day = mouse_folder_names[1]
-        elif(re.match(pattern_day, mouse_folder_names[2])):
-            day = mouse_folder_names[2]
-        else:
-            raise FileNotFoundError("Cannot find mouseID")
-        if(re.match(pattern_session, result.group("session"))):
-            session = result.group("session")
-        else:
-            raise FileNotFoundError("Wrong session name!")
-        return mouseID, day, session
-    elif (re.match(pattern2, dpath)):
-        result = re.match(pattern2, dpath)
-        mouse_folder_name = result.group("mouse_folder_name")
-        mouse_folder_names = mouse_folder_name.split("_")
-        if(re.match(pattern_mouseID, mouse_folder_names[0])):
-            mouseID = mouse_folder_names[0]
-        else:
-            raise FileNotFoundError("Wrong mouse name!")
-        if(re.match(pattern_day, mouse_folder_names[1])):
-            day = mouse_folder_names[1]
-        elif(re.match(pattern_day, mouse_folder_names[2])):
-            day = mouse_folder_names[2]
-        else:
-            raise FileNotFoundError("Cannot find mouseID") 
-        session = None
-        return mouseID, day, session
-    else:
-        raise FileNotFoundError("Wrong path!")        
-
-
-def match_path(dpath):# Add by HF
-    pattern = r"(?P<video_path>(?P<mouse_path>/N/project/Cortical_Calcium_Image/Miniscope data/.*?/.*?)/.*?/.*?/Miniscope_2)"
-    result = re.match(pattern, dpath)
-    video_path = result.group("video_path")
-    mouse_path = result.group("mouse_path")
-    return mouse_path, video_path
-
-
-        
+      
 
 class Event:
     '''
-    Tips:
-    1. Use function set_delay_and_duration to set a delay value and a duration value (seconds)
-    2. Call function set_switch to set up True or False
-    3. Call set_values to pick up the part we want to analysis( Maybe use it on a 'OK' button, or if you want me to change it as automatically, let me know)
+    An event in this context refers to external behavioral events, such as RNFs, ALPs, ILPs, etc...
+    This class also contains various methods to extract relevant information for each Event.
+
+    Parameters
+    ----------
+    event_type : str
+        The type of behavioral event, e.g. "ALP", "ILP", "RNF", etc...
+    data : xr.DataArray
+        The data array that contains the all CNMF output related data.
+    timesteps : List[int]
+        A list of timesteps where the event occurs.
     '''
     def __init__(
         self,
-        event_type:str,  # ALP, ILP, RNF
+        event_type:str,
         data:xr.DataArray,
         timesteps:List[int]
            
@@ -230,17 +205,17 @@ class Event:
     def set_binSize(self, binSize: int):
         self.binSize = binSize
 
-    def set_preBinNum(self, preBinNum : int):
+    def set_preBinNum(self, preBinNum: int):
         self.preBinNum = preBinNum
 
-    def set_postBinNum(self, postBinNum : int):
+    def set_postBinNum(self, postBinNum: int):
         self.postBinNum = postBinNum
 
-    def get_binList(self,event_frame,preBinNum,postBinNum,binSize,value_type):
+    def get_binList(self, event_frame: int, preBinNum: int, postBinNum: int,
+                    binSize: int,value_type: int):
         binList = []
-        total_num = preBinNum + postBinNum
         for i in range(-preBinNum,postBinNum):
-            bin, start_frame, end_frame, integrity= self.get_interval_section(event_frame,binSize,i*binSize,0,value_type)
+            bin = self.get_interval_section(event_frame, binSize, i*binSize, 0, value_type)[0]
             binList.append(bin)
         return binList
 
@@ -259,14 +234,16 @@ class Event:
 
         Parameter
         ------------------
-        event_frame: int, event time stamp
-        duration : float, last time (seconds)
-        delay: float, before or after (seconds)
+        event_frame: int
+            event time stamp
+        duration : float
+            last time (seconds)
+        delay: float
+            before or after (seconds)
         """
         # duration is in seconds convert to ms
         duration *= 1000
         delay *= 1000
-        start = self.data['Time Stamp (ms)'][event_frame]
         max_length = len(self.data['Time Stamp (ms)'])
         if delay > 0:
             frame_gap = 1
@@ -289,13 +266,27 @@ class Event:
 
     def get_interval_section(self, event_frame: int, duration: float, delay: float = 0.0, interval:int = 100, type: str = "C") -> xr.Dataset:
         '''
-        interval: 100 ms
+        Return the selection of the data that is within the given time frame.
+
+        Parameters
+        ----------
+        event_frame: int
+            Frame at which the event occurs
+        duration : float
+            Duration of the event in seconds
+        delay: float
+            Specifies how much time from the event frame should be included in the selection. 
+            If delay is positive, then the selection will start from the event frame + delay. 
+            If delay is negative, then the selection will start from the event frame - delay.
+        interval: int
+            The interval at which the data should be sampled. This is in milliseconds.
+        type: str
+            Specfies which data type to extract from the minian file. Default is "C".
         '''
-         # duration is in seconds convert to ms
+        # duration is in seconds convert to ms
         integrity = True
         duration *= 1000
         delay *= 1000
-        start = self.data['Time Stamp (ms)'][event_frame]
         frame_list = []
         max_length = len(self.data['Time Stamp (ms)'])
         if delay > 0:
@@ -325,14 +316,16 @@ class Event:
                 frame_list.append(event_frame + frame_gap)
             frame_gap += 1
         if type in self.data:
-            return self.data[type].sel(frame = frame_list) , event_frame,event_frame + frame_gap, integrity
+            return self.data[type].sel(frame = frame_list) , event_frame, event_frame + frame_gap, integrity
         else:
             print("No %s data found in minian file" % (type))
             return None
-    
-        return 
 
     def set_values(self):
+        """
+        Update the values dictionary with the values of the event data and
+        the corresponding windows.
+        """
         values={}
         event_list= []
         windows = []
@@ -354,40 +347,62 @@ class Event:
 
 class DataInstance:
     '''
-        Tips:
-        1. load_data and load_events will be automatically executed.
-        2. You may call function set_vector,each time you change the switch of the events.
-        3. After you set vectors, call the function compute_clustering, self.linkage_data will be updated. Then you can draw the dendrogram.
-        4. Footprint in A. A is a dict. the key is the cell ID.
+    This class is used to store all the data related to a single experiment/recording.
+    This includes all CNMF output data, behavioral/timestamp data and video data.
+
+    Parameters
+    ----------
+    config_path : str
+        The path to the configuration file that contains the paths to the minian, behavior and video files.
+    
+    
+    Attributes
+    ----------
+    events_type : List[str]
+        A list of all the event types that are supported by the program.
+    mouseID : str
+        The mouse ID for the experiment.
+    day : str
+        The day of the experiment.
+    session : str
+        The session of the experiment.
+    group : str
+        The group of the experiment.
+    data : dict
+        A dictionary that contains all the CNMF output data. The keys are 'A', 'C', 'S', 'E', 'b', 'f', 'DFF', 'YrA', 'M', 'timestamp(ms)'.
+    video_data : dict
+        A dictionary that contains all the video data. The keys are 'Y_fm_chk', 'varr', 'Y_hw_chk', 'behavior_video'.
+    events : dict
+        A dictionary that contains all the behavior event data. The keys are the event types and the values are Event objects.
     '''
     distance_metric_list = ['euclidean','cosine'] # Static variable so parameters can be read before initiating instance
     def __init__(
         self,
-        dpath: str
+        config_path: str
     ):  
         self.events_type = ['ALP','ILP','RNF','ALP_Timeout']
-        self.dpath = dpath  
+        self.config_path = config_path  
         self.mouseID : str
         self.day : str
         self.session: str
         self.group: str
-        self.minian_path: str
-        self.data:dict # Original data, key:'A', 'C', 'S','unit_ids'
-        self.events:dict # {"ALP": Event, "ILP" : Event, "RNF": Event}
-        self.A: dict    #key is unit_id,value is A. Just keep same uniform with self.value
-        self.value: dict #key is the unit_id,value is the numpy array
+
+        self.data: dict # Original data, key:'A', 'C', 'S','unit_ids'
+        self.video_data: dict # Video data, key: 'Y_fm_chk', 'varr', 'Y_hw_chk', 'behavior_video'
+        self.events: dict # {"ALP": Event, "ILP" : Event, "RNF": Event}
         self.outliers_list: List[int] = []
+
         self.centroids: dict
         self.centroids_to_cell_ids: dict
         self.centroids_max: dict
-        self.load_data(dpath=dpath)
+
+        self.load_data(config_path=config_path)
         self.no_of_clusters = 4     
         self.distance_metric = 'euclidean'
         self.missed_signals = {}
         self.load_events(self.events_type)
         self.noise_values = {}
         self.cell_ids_to_groups = {} # This differs from self.group as it is used for preselected groups by the user
-
         # Create the default image
         self.clustering_result = {"basic": {"image": np.stack((self.data['A'].sum("unit_id").values,)*3, axis=-1)}}
 
@@ -399,7 +414,7 @@ class DataInstance:
             M = xr.concat([M_old, M], dim="missed_id")
             
 
-        self.data["M"] = save_xarray(M, self.minian_path, compute=True)
+        self.data["M"] = save_xarray(M, self.cnmf_path, compute=True)
         return id
 
     def remove_missed(self, ids: List[int]):
@@ -407,17 +422,17 @@ class DataInstance:
         M = M.drop_sel(missed_id=ids)
 
         if M.size == 0:
-            delete_missing_xarray(self.minian_path, "M")
+            delete_xarray(self.cnmf_path, "M")
             self.data["M"] = None
         else:
-            self.data["M"] = save_xarray(M, self.minian_path, compute=True)
+            self.data["M"] = save_xarray(M, self.cnmf_path, compute=True)
 
 
 
-    def parse_file(self,dpath):# set up configure file
+    def parse_file(self, config_path):# set up configure file
         config = configparser.ConfigParser()
         try:
-            config.read(dpath)
+            config.read(config_path)
         except:
             print("ERROR: ini file is either not in the correct format or empty, did you make sure to save the ini file?")
         if len(config.sections())==1 and config.sections()[0]=='Session_Info':
@@ -433,7 +448,7 @@ class DataInstance:
 
     def load_videos(self):
         # We're setting this up as a seperate function as is takes up a lot of space and we only want to load the video info when we need to
-        data = open_minian(self.minian_path + "_intermediate")
+        data = open_minian(self.cnmf_path + "_intermediate")
         video_types = ["Y_fm_chk", "varr", "Y_hw_chk", "behavior_video"]
         video_data = {}
         for video_type in video_types:
@@ -445,13 +460,13 @@ class DataInstance:
         
         self.video_data = video_data       
 
-    def load_data(self,dpath):
-        mouseID, day, session, group,minian_path,behavior_path = self.parse_file(dpath)
+    def load_data(self, config_path):
+        mouseID, day, session, group,minian_path,behavior_path = self.parse_file(config_path)
         self.mouseID = mouseID
         self.day = day
         self.session = session
         self.group = group
-        self.minian_path = minian_path
+        self.cnmf_path = minian_path
         behavior_data = pd.read_csv(behavior_path,sep=',')
         data_types = ['RNF', 'ALP', 'ILP', 'ALP_Timeout','Time Stamp (ms)']
         self.data = {}
@@ -484,7 +499,7 @@ class DataInstance:
         self.unit_id_consistency()
 
         self.data['unit_ids'] = self.data['C'].coords['unit_id'].values
-        self.dpath = dpath   
+        self.config_path = config_path   
     
         self.data['filtered_C'] = self.get_filtered_C
 
@@ -494,11 +509,9 @@ class DataInstance:
         cent_max = self.centroid_max(self.data['A'])
 
         
-        self.A = {}
         self.centroids = {}
         self.centroids_max = {}
         for i in cells:
-            self.A[i] = self.data['A'].sel(unit_id = i)
             self.centroids[i] = tuple(cent.loc[cent['unit_id'] == i].values[0][1:])
             self.centroids_max[i] = tuple(cent_max.loc[cent_max['unit_id'] == i].values[0][1:])
         
@@ -555,7 +568,7 @@ class DataInstance:
     def get_pdf_format(self, unit_ids, cluster, path):
         contours = []
         for id in unit_ids:
-            cell = self.A[id].values
+            cell = self.data['A'].sel(unit_id=id).values
             yaoying_param = 6
             thresholded_roi = 1 * cell > (np.mean(cell) + yaoying_param * np.std(cell))
             contours.append(find_contours(thresholded_roi, 0)[0])
@@ -826,7 +839,7 @@ class DataInstance:
         self.no_of_clusters = number
 
     def compute_clustering(self):
-        self.cellClustering = CellClustering(self.values,self.outliers_list,self.A,distance_metric = self.distance_metric)
+        self.cellClustering = CellClustering(self.values, self.outliers_list, self.data["A"], distance_metric = self.distance_metric)
         self.linkage_data = self.cellClustering.linkage_data
         self.clustering_result = self.cellClustering.visualize_clusters(self.no_of_clusters)
 
@@ -979,13 +992,13 @@ class DataInstance:
                 
         E.loc[dict(unit_id=unit_id)] = new_e
         # Now save the E array to disk
-        save_xarray(E, self.minian_path)
+        save_xarray(E, self.cnmf_path)
 
     def clear_E(self, unit_id):
         E = self.data['E']
         E.load()
         E.loc[dict(unit_id=unit_id)] = 0
-        save_xarray(E, self.minian_path)
+        save_xarray(E, self.cnmf_path)
 
     def backup_E(self):
         """
@@ -994,37 +1007,37 @@ class DataInstance:
         E = self.data['E']
         E.load()
         # Save to backup folder but first check if it exists
-        if not os.path.exists(os.path.join(self.minian_path, "backup")):
-            os.makedirs(os.path.join(self.minian_path, "backup"))
+        if not os.path.exists(os.path.join(self.cnmf_path, "backup")):
+            os.makedirs(os.path.join(self.cnmf_path, "backup"))
         t = time.localtime()
         current_time = time.strftime("%m_%d_%H_%M_%S", t)
 
         
-        save_xarray(E, os.path.join(self.minian_path, "backup", "E_" + current_time))
+        save_xarray(E, os.path.join(self.cnmf_path, "backup", "E_" + current_time))
 
-    def remove_from_E(self, clear_selected_events_local: {}):
+    def remove_from_E(self, clear_selected_events_local: Dict[int, List[int]]):
         E = self.data['E']
         E.load()
         for unit_id, x_values in clear_selected_events_local.items():
             events = E.sel(unit_id=unit_id).values
             events[x_values] = 0          
             E.loc[dict(unit_id=unit_id)] = events
-        save_xarray(E, self.minian_path)
+        save_xarray(E, self.cnmf_path)
 
-    def add_to_E(self, add_selected_events_local: {}):
+    def add_to_E(self, add_selected_events_local: Dict[int, List[int]]):
         E = self.data['E']
         E.load()
         for unit_id, x_values in add_selected_events_local.items():
             events = E.sel(unit_id=unit_id)
             events[x_values] = 1          
             E.loc[dict(unit_id=unit_id)] = events
-        save_xarray(E, self.minian_path)
+        save_xarray(E, self.cnmf_path)
     
     def save_E(self):
         """
         Save the E array to disk
         """
-        save_xarray(self.data['E'], self.minian_path)
+        save_xarray(self.data['E'], self.cnmf_path)
 
     def reject_cells(self, cells: List[int]):
         """
@@ -1033,20 +1046,20 @@ class DataInstance:
         E = self.data['E']
         E.load()
         E['good_cells'].loc[dict(unit_id=cells)] = 0
-        save_xarray(self.data['E'], self.minian_path)
+        save_xarray(self.data['E'], self.cnmf_path)
 
     def approve_cells(self, cells: List[int]):
         E = self.data['E']
         E.load()
         E['good_cells'].loc[dict(unit_id=cells)] = 1
-        save_xarray(self.data['E'], self.minian_path)
+        save_xarray(self.data['E'], self.cnmf_path)
 
     def update_verified(self, cells: List[int]):
         E = self.data['E']
         E.load()
         for cell in cells:
             E['verified'].loc[dict(unit_id=cell)] = (E['verified'].loc[dict(unit_id=cell)].values.item() + 1) % 2
-        save_xarray(self.data['E'], self.minian_path)
+        save_xarray(self.data['E'], self.cnmf_path)
     
     def prune_non_verified(self, cells: set):
         # Keep only verified cells in cells
@@ -1075,13 +1088,13 @@ class DataInstance:
             )
             E = E.assign_coords(good_cells=("unit_id", np.ones(len(self.data['unit_ids']))), verified=("unit_id", np.zeros(len(self.data['unit_ids']))))
             E.coords['timestamp(ms)'] = self.data['timestamp(ms)']
-            self.data['E'] = save_xarray(E, self.minian_path)
+            self.data['E'] = save_xarray(E, self.cnmf_path)
             
 
         # For backwards compatibility check if the verified values exist and if not create them
         elif "verified" not in self.data['E'].coords:
             self.data['E'] = self.data['E'].assign_coords(verified=("unit_id", np.zeros(len(self.data['unit_ids']))))
-            save_xarray(self.data['E'], self.minian_path)
+            save_xarray(self.data['E'], self.cnmf_path)
 
     def check_DFF(self):
         """
@@ -1102,7 +1115,7 @@ class DataInstance:
                 ),
                 name="DFF"
             ).chunk(dict(frame=-1, unit_id="auto"))
-            self.data['DFF'] = save_xarray(DFF, self.minian_path)
+            self.data['DFF'] = save_xarray(DFF, self.cnmf_path)
 
 
     def check_essential_data(self):

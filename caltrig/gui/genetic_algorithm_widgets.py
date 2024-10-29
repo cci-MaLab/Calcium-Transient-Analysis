@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (QVBoxLayout, QLabel, QHBoxLayout, QWidget, QComboBo
                              QTableWidgetItem, QMainWindow, QGridLayout, QPushButton,QGroupBox,QCheckBox,QMenu,QMenuBar)
 from PyQt5 import QtCore
 import pyqtgraph as pg
-from core.genetic_algorithm import Genetic_Algorithm  
+from ..core.genetic_algorithm import Genetic_Algorithm  
 import pandas as pd
 import numpy as np
 

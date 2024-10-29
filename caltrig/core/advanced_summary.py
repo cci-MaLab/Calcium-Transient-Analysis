@@ -46,7 +46,7 @@ class advanced:
             for instance_index,instance in enumerate(self.dataInstances):
                 timestamps = instance.get_timestep(event_type) # need to double check frame number or real time
                 print(instance_index,':',instance.group)
-                unit_ids = instance.A.keys()
+                unit_ids = instance.data['C'].coords['unit_id'].values
                 # print(timestamps)
                 for single_time in timestamps:
                     print(single_time)
@@ -78,7 +78,7 @@ class advanced:
             for instance_index,instance in enumerate(self.dataInstances):
                 timestamps = instance.get_timestep(event_type) # need to double-check frame number or real time
                 print(instance_index,':',instance.group)
-                unit_ids = instance.A.keys()
+                unit_ids = instance.data['C'].coords['unit_id'].values
                 # print(timestamps)
                 for single_time in timestamps:
                     delay = 0-self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['preNum']
@@ -134,7 +134,7 @@ class advanced:
             for instance_index,instance in enumerate(self.dataInstances):
                 timestamps = instance.get_timestep(event_type) # need to double check frame number or real time
                 print(instance_index,':',instance.group)
-                unit_ids = instance.A.keys()
+                unit_ids = instance.data['C'].coords['unit_id'].values
                 # print(timestamps)
                 for single_time in timestamps:
                     delay = 0-self.behavior_timewindow_dict['binSize']*self.behavior_timewindow_dict['preNum']

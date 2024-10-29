@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import QFileDialog
 
 import matplotlib.pyplot as plt
 import numpy as np
-from gui.clustering_inspection_widgets import MplCanvas
+from ..gui.clustering_inspection_widgets import MplCanvas
 import pandas as pd
 from scipy.fftpack import fft
 

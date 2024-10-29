@@ -4,9 +4,9 @@ from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLi
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QImage, QPixmap)
 from PyQt5.QtCore import (Qt)
 import bisect
-from core.backend import DataInstance
+from ..core.backend import DataInstance
 
-from core.genetic_algorithm import Genetic_Algorithm
+from ..core.genetic_algorithm import Genetic_Algorithm
 
 
 class ParamDialog(QDialog):
