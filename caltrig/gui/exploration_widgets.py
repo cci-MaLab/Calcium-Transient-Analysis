@@ -176,7 +176,8 @@ class ExplorationWidget(QWidget):
 
         self.btn_cell_focus = QPushButton("Focus Selection")
         self.btn_cell_focus.clicked.connect(self.focus_mask)
-        self.btn_cell_
+        self.btn_cell_focus_and_trace = QPushButton("Focus and Trace")
+        self.btn_cell_focus_and_trace.clicked.connect(self.focus_and_trace)
         self.btn_cell_reset = QPushButton("Reset Mask")
         self.btn_cell_reset.clicked.connect(self.reset_mask)
         cell_highlight_mode_label = QLabel("Highlight Mode:")
@@ -591,10 +592,14 @@ class ExplorationWidget(QWidget):
         layout_add_remove_group.addWidget(self.btn_add_to_group)
         layout_add_remove_group.addWidget(self.btn_remove_from_group)
 
+        layout_focus_buttons = QHBoxLayout()
+        layout_focus_buttons.addWidget(self.btn_cell_focus)
+        layout_focus_buttons.addWidget(self.btn_cell_focus_and_trace)
+
         layout_cells = QVBoxLayout()
         layout_cells.addWidget(w_cell_label)
         layout_cells.addWidget(self.list_cell)
-        layout_cells.addWidget(self.btn_cell_focus)
+        layout_cells.addLayout(layout_focus_buttons)
         layout_cells.addWidget(self.btn_cell_reset)
         layout_cells.addLayout(layout_highlight_mode)
         layout_cells.addLayout(layout_add_remove_group)
@@ -818,6 +823,17 @@ class ExplorationWidget(QWidget):
         # Clear Events Button
         btn_clear_events = QPushButton("Clear All Events")
         btn_clear_events.clicked.connect(self.clear_all_events)
+
+        # Approve/Reject Traces Green/Red Colors
+        btn_approve_traces = QPushButton("Approve Selected Traces")
+        btn_approve_traces.setStyleSheet("background-color: green")
+        btn_approve_traces.clicked.connect(self.verify_selected_traces)
+        btn_reject_traces = QPushButton("Reject Selected Traces")
+        btn_reject_traces.setStyleSheet("background-color: red")
+        btn_reject_traces.clicked.connect(self.reject_selected_traces)
+        layout_reject_approve_traces = QHBoxLayout()
+        layout_reject_approve_traces.addWidget(btn_approve_traces)
+        layout_reject_approve_traces.addWidget(btn_reject_traces)
 
 
 
@@ -1136,6 +1152,7 @@ class ExplorationWidget(QWidget):
         layout_plot_utility = QVBoxLayout()
         layout_plot_utility.addWidget(btn_clear_traces)
         layout_plot_utility.addWidget(btn_clear_events)
+        layout_plot_utility.addLayout(layout_reject_approve_traces)
         layout_plot_utility.addWidget(tabs_signal_parent)
 
         layout_plot = QHBoxLayout()
@@ -1964,6 +1981,38 @@ class ExplorationWidget(QWidget):
         self.selected_event_change(False)
         self.visualization_3D.update_selected_cells(self.video_cell_selection)
 
+    def verify_selected_traces(self):
+        # Approve only the selected signals
+        i = 0
+        to_approve = []
+        while self.w_signals.getItem(i,0) is not None:
+            item = self.w_signals.getItem(i,0)
+            if isinstance(item, PlotItemEnhanced):
+                if item.selected and not item.cell_type == "Missed":
+                    to_approve.append(item.id)
+            i += 1
+        if to_approve:
+            # We'll firsts approve to account for any cells that may have been rejected
+            self.session.approve_cells(to_approve)
+            # Now verify the cells
+            self.session.update_verified(to_approve, force_verified=True)
+            self.refresh_cell_list()
+
+    def reject_selected_traces(self):
+        i = 0
+        to_reject = []
+        while self.w_signals.getItem(i,0) is not None:
+            item = self.w_signals.getItem(i,0)
+            if isinstance(item, PlotItemEnhanced):
+                if item.selected and not item.cell_type == "Missed":
+                    to_reject.append(item.id)
+            i += 1
+
+        if to_reject:
+            self.session.reject_cells(to_reject)
+            self.refresh_cell_list()
+
+        
 
     def switch_missed_cell_mode(self):
         if self.select_missed_mode:
@@ -2476,6 +2525,25 @@ class ExplorationWidget(QWidget):
             if not self.btn_play.isChecked():
                 self.current_frame -= 1
                 self.next_frame()
+    
+    def focus_and_trace(self):
+        self.focus_mask()
+
+        cell_ids = [self.extract_id(item) for item in self.list_cell.selectedItems()]
+        self.video_cell_selection = set(cell_ids)
+        self.video_cell_mask = np.zeros(self.mask.shape)
+        for id in self.video_cell_selection:
+            self.video_cell_mask  += self.A[id].values
+        self.video_cell_mask[self.video_cell_mask  > 0] = 1
+        self.visualize_signals(reset_view=False)
+        if not self.btn_play.isChecked():
+            self.current_frame -= 1
+            self.next_frame()
+        
+        self.selected_event_change(False)
+        self.visualization_3D.update_selected_cells(self.video_cell_selection)
+
+
 
     def reset_mask(self):
         self.mask = np.ones(self.mask.shape)

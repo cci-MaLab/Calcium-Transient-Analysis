@@ -1046,6 +1046,7 @@ class DataInstance:
         E = self.data['E']
         E.load()
         E['good_cells'].loc[dict(unit_id=cells)] = 0
+        E['verified'].loc[dict(unit_id=cells)] = 0
         save_xarray(self.data['E'], self.cnmf_path)
 
     def approve_cells(self, cells: List[int]):
@@ -1054,11 +1055,14 @@ class DataInstance:
         E['good_cells'].loc[dict(unit_id=cells)] = 1
         save_xarray(self.data['E'], self.cnmf_path)
 
-    def update_verified(self, cells: List[int]):
+    def update_verified(self, cells: List[int], force_verified: bool = False):
         E = self.data['E']
         E.load()
         for cell in cells:
-            E['verified'].loc[dict(unit_id=cell)] = (E['verified'].loc[dict(unit_id=cell)].values.item() + 1) % 2
+            if force_verified:
+                E['verified'].loc[dict(unit_id=cell)] = 1
+            else:
+                E['verified'].loc[dict(unit_id=cell)] = (E['verified'].loc[dict(unit_id=cell)].values.item() + 1) % 2
         save_xarray(self.data['E'], self.cnmf_path)
     
     def prune_non_verified(self, cells: set):
