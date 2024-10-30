@@ -146,16 +146,19 @@ class ExplorationWidget(QWidget):
         
 
         # We'll load in a copy of the visualization of the cells we are monitoring
-        self.A = self.session.data["A"].copy()
+        self.A = {}
+        unit_ids = self.session.data["A"].coords["unit_id"].values
+        for unit_id in unit_ids:
+            self.A[unit_id] = self.session.data["A"].sel(unit_id=unit_id)
+
         for outlier in self.session.outliers_list:
             self.A.pop(outlier)
 
 
         self.A_pos_to_missed_cell = {}
         self.A_pos_to_cell = {}
-        unit_ids = self.A.coords["unit_id"].values
         for unit_id in unit_ids:
-            cell_ROI = self.A.sel(unit_id=unit_id)
+            cell_ROI = self.A[unit_id]
             indices = np.argwhere(cell_ROI.values > 0)
             for pair in indices:
                 if tuple(pair) in self.A_pos_to_cell:
@@ -173,6 +176,7 @@ class ExplorationWidget(QWidget):
 
         self.btn_cell_focus = QPushButton("Focus Selection")
         self.btn_cell_focus.clicked.connect(self.focus_mask)
+        self.btn_cell_
         self.btn_cell_reset = QPushButton("Reset Mask")
         self.btn_cell_reset.clicked.connect(self.reset_mask)
         cell_highlight_mode_label = QLabel("Highlight Mode:")
