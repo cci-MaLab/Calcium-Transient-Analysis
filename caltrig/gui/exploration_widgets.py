@@ -56,6 +56,7 @@ class ExplorationWidget(QWidget):
         self.pre_images = None
         self.pre_bimages = None
         self.windows = {}
+        self.single_plot_options = {"enabled": False, "inter_distance": 0, "intra_distance": 0}
 
 
 
@@ -402,6 +403,15 @@ class ExplorationWidget(QWidget):
         self.view_window_input = QLineEdit()
         self.view_window_input.setValidator(QIntValidator(100, 100000))
         self.view_window_input.setText("1000")
+        self.view_chkbox_single_plot = QCheckBox("Single Plot View")
+        self.view_inter_distance_label = QLabel("Inter Cell Distance")
+        self.view_inter_distance_input = QLineEdit()
+        self.view_inter_distance_input.setValidator(QIntValidator(0, 100))
+        self.view_inter_distance_input.setText("0")
+        self.view_intra_distance_label = QLabel("Intra Cell Distance")
+        self.view_intra_distance_input = QLineEdit()
+        self.view_intra_distance_input.setValidator(QIntValidator(0, 100))
+        self.view_intra_distance_input.setText("0")
         self.view_btn_update = QPushButton("Update View")
         self.view_btn_update.clicked.connect(self.update_plot_view)
 
@@ -1073,9 +1083,18 @@ class ExplorationWidget(QWidget):
         layout_plot_view_window = QHBoxLayout()
         layout_plot_view_window.addWidget(self.view_window_label)
         layout_plot_view_window.addWidget(self.view_window_input)
+        layout_plot_view_inter = QHBoxLayout()
+        layout_plot_view_inter.addWidget(self.view_inter_distance_label)
+        layout_plot_view_inter.addWidget(self.view_inter_distance_input)
+        layout_plot_view_intra = QHBoxLayout()
+        layout_plot_view_intra.addWidget(self.view_intra_distance_label)
+        layout_plot_view_intra.addWidget(self.view_intra_distance_input)
         layout_plot_view.addLayout(layout_plot_view_y_start)
         layout_plot_view.addLayout(layout_plot_view_y_end)
         layout_plot_view.addLayout(layout_plot_view_window)
+        layout_plot_view.addWidget(self.view_chkbox_single_plot)
+        layout_plot_view.addLayout(layout_plot_view_inter)
+        layout_plot_view.addLayout(layout_plot_view_intra)
         layout_plot_view.addWidget(self.view_btn_update)
         layout_plot_view.addStretch()
         
@@ -1803,6 +1822,22 @@ class ExplorationWidget(QWidget):
         y_start = float(self.view_y_start_input.text())
         y_end = float(self.view_y_end_input.text())
         window = int(self.view_window_input.text())
+
+        is_enabled = self.view_chkbox_single_plot.isChecked()
+        inter_distance = int(self.view_inter_distance_input.text())
+        intra_distance = int(self.view_intra_distance_input.text())
+
+        # We have to check if there is a discrepancy between the
+        # single plot options and the current variables
+        if (is_enabled != self.single_plot_options["enabled"]) or \
+            (inter_distance != self.single_plot_options["inter_distance"]) or \
+            (intra_distance != self.single_plot_options["intra_distance"]):
+                self.single_plot_options["enabled"] = is_enabled
+                self.single_plot_options["inter_distance"] = inter_distance
+                self.single_plot_options["intra_distance"] = intra_distance
+                self.visualize_signals(reset_view=True)
+
+
         i = 0
         while self.w_signals.getItem(i,0) is not None:
             item = self.w_signals.getItem(i,0)
@@ -2371,14 +2406,18 @@ class ExplorationWidget(QWidget):
 
             global_window_size = int(self.global_window_size_input.text()) if self.global_window_preview_chkbox.isChecked() else 1
 
-            p.add_main_curve(data, custom_indices=custom_indices, is_C=False, pen=self.color_mapping[data_type], window_preview=global_window_size)
+            p.add_main_curve(data, custom_indices=custom_indices, is_C=False, pen=self.color_mapping[data_type], window_preview=global_window_size, name=f"{data_type} Global")
 
 
     def visualize_signals(self, reset_view=False):
         cell_ids = self.video_cell_selection
         missed_ids = self.missed_cells_selection
+        inter_cell_distance = self.single_plot_options["inter_distance"]
+        intra_cell_distance = self.single_plot_options["intra_distance"]
+        single_plot_mode = self.single_plot_options["enabled"]
+
         # Before clear the plots and get viewRect
-        idx = 0
+
         views = {"Standard": {}, "Missed": {}} # We'll store the viewRect for each cell type
         if not reset_view:
             i = 0
@@ -2402,15 +2441,17 @@ class ExplorationWidget(QWidget):
         if cell_ids:
             self.w_signals.scene().sigMouseClicked.connect(self.find_subplot)
             for i, id in enumerate(cell_ids):
-                p = PlotItemEnhanced(id=id, cell_type="Standard")
-                p.signalChangedSelection.connect(self.selected_event_change)
-                p.plotLine.setPos(self.scroll_video.value())
-                p.plotLine.sigDragged.connect(self.pause_video)
-                p.plotLine.sigPositionChangeFinished.connect(self.update_slider_pos)
-                p.setTitle(f"Cell {id}")
-                self.w_signals.addItem(p, row=i, col=0)
+                if not single_plot_mode or i == 0:
+                    p = PlotItemEnhanced(id=id, cell_type="Standard")
+                    p.signalChangedSelection.connect(self.selected_event_change)
+                    p.plotLine.setPos(self.scroll_video.value())
+                    p.plotLine.sigDragged.connect(self.pause_video)
+                    p.plotLine.sigPositionChangeFinished.connect(self.update_slider_pos)
+                    if not single_plot_mode:
+                        p.setTitle(f"Cell {id}")
+                    self.w_signals.addItem(p, row=i, col=0)
                 selected_types = self.get_selected_data_type()
-                for data_type in selected_types:
+                for j, data_type in enumerate(selected_types):
                     if data_type in self.session.data:
                         data = self.session.data[data_type].sel(unit_id=id).values
                     elif data_type == 'SavGol' or data_type == 'noise' or data_type == 'SNR':
@@ -2422,8 +2463,11 @@ class ExplorationWidget(QWidget):
                                 noise = data
                                 data = self.session.get_SNR(sav_data, noise)
 
-                    p.add_main_curve(data, is_C=(data_type == 'C'), pen=self.color_mapping[data_type])
-                    if 'E' in self.session.data and data_type == 'C':
+                    # If we are in single plot mode we'll need to add to the height of the plot first
+                    y_boost = i * inter_cell_distance + j * intra_cell_distance if single_plot_mode else 0
+
+                    p.add_main_curve(data + y_boost, is_C=(data_type == 'C'), pen=self.color_mapping[data_type], name=f"{data_type} {id}")
+                    if 'E' in self.session.data and data_type == 'C' and not single_plot_mode:
                         events = self.session.data['E'].sel(unit_id=id).values
                         events = np.nan_to_num(events, nan=0) # Sometimes saving errors can cause NaNs
                         indices = events.nonzero()[0]
@@ -2443,12 +2487,13 @@ class ExplorationWidget(QWidget):
 
 
                     selected_events = self.get_selected_events()
-                    for event_type in selected_events:
-                        if event_type in self.session.data:
-                            events = self.session.data[event_type].values
-                            # Get indices where == 1
-                            indices = np.argwhere(events == 1)
-                            p.draw_behavior_events(indices, self.color_mapping[event_type])
+                    if not single_plot_mode or i == 0:
+                        for event_type in selected_events:
+                            if event_type in self.session.data:
+                                events = self.session.data[event_type].values
+                                # Get indices where == 1
+                                indices = np.argwhere(events == 1)
+                                p.draw_behavior_events(indices, self.color_mapping[event_type])
 
                 if selected_types and id in views["Standard"]:
                     p.getViewBox().setRange(xRange=views["Standard"][id][0], yRange=views["Standard"][id][1], padding=0)
@@ -2456,7 +2501,7 @@ class ExplorationWidget(QWidget):
 
                 last_i += 1
 
-        if missed_ids:
+        if missed_ids and not self.single_plot_mode:
             for i, id in enumerate(missed_ids):
                 p = PlotItemEnhanced(id=id, cell_type="Missed")
                 p.plotLine.setPos(self.scroll_video.value())
@@ -2466,7 +2511,7 @@ class ExplorationWidget(QWidget):
                 self.w_signals.addItem(p, row=i+last_i, col=0)
                 if "YrA" in self.get_selected_data_type():
                     data = self.session.get_missed_signal(id)
-                    p.add_main_curve(data)
+                    p.add_main_curve(data, name=f"YrA {id}", pen=self.color_mapping["YrA"])
                 if id in views["Missed"]:
                     p.getViewBox().setRange(xRange=views["Missed"][id][0], yRange=views["Missed"][id][1], padding=0)
 
@@ -2984,13 +3029,13 @@ class PlotItemEnhanced(PlotItem):
                 event_curve = PlotCurveItemEnhanced(np.arange(beg, end), self.C_signal[beg:end], pen=color, is_event=False, main_plot=self)
                 self.addItem(event_curve)
 
-    def add_main_curve(self, data, custom_indices=None, is_C=False, pen='w', window_preview=1):
+    def add_main_curve(self, data, custom_indices=None, is_C=False, pen='w', window_preview=1, name=""):
         if is_C:
             self.C_signal = data
         if custom_indices is None:
-            curve = PlotCurveItemEnhanced(np.arange(len(data)), data, pen=pen, is_event=False)
+            curve = PlotCurveItemEnhanced(np.arange(len(data)), data, pen=pen, is_event=False, name=name)
         else:
-            curve = PlotCurveItemEnhanced(custom_indices, data, pen=pen, is_event=False)
+            curve = PlotCurveItemEnhanced(custom_indices, data, pen=pen, is_event=False, name=name)
         if window_preview > 1:
             total_frames = len(data) if custom_indices is None else custom_indices[-1]
             # Add vertical lines every window_preview frames in red
