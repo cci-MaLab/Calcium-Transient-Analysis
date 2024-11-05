@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAc
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5 import QtCore
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont)
-from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem, InfiniteLine)
+from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem, InfiniteLine, TextItem)
 import pyqtgraph as pg
 import numpy as np
 from scipy.signal import find_peaks
@@ -2466,7 +2466,7 @@ class ExplorationWidget(QWidget):
                     # If we are in single plot mode we'll need to add to the height of the plot first
                     y_boost = i * inter_cell_distance + j * intra_cell_distance if single_plot_mode else 0
 
-                    p.add_main_curve(data + y_boost, is_C=(data_type == 'C'), pen=self.color_mapping[data_type], name=f"{data_type} {id}")
+                    p.add_main_curve(data + y_boost, is_C=(data_type == 'C'), pen=self.color_mapping[data_type], name=f"{data_type} {id}", display_name=single_plot_mode)
                     if 'E' in self.session.data and data_type == 'C' and not single_plot_mode:
                         events = self.session.data['E'].sel(unit_id=id).values
                         events = np.nan_to_num(events, nan=0) # Sometimes saving errors can cause NaNs
@@ -3022,14 +3022,14 @@ class PlotItemEnhanced(PlotItem):
         else:
             for beg, end in spikes:
                 color = (255,140,0)
-                for i, (beg_temp, end_temp) in enumerate(indices):
+                for beg_temp, end_temp in indices:
                     if beg_temp <= beg <= end_temp or beg_temp <= end <= end_temp or beg <= beg_temp <= end or beg <= end_temp <= end: # This can be optimized!
                         color = 'g'
                         break
                 event_curve = PlotCurveItemEnhanced(np.arange(beg, end), self.C_signal[beg:end], pen=color, is_event=False, main_plot=self)
                 self.addItem(event_curve)
 
-    def add_main_curve(self, data, custom_indices=None, is_C=False, pen='w', window_preview=1, name=""):
+    def add_main_curve(self, data, custom_indices=None, is_C=False, pen='w', window_preview=1, name="", display_name=False):
         if is_C:
             self.C_signal = data
         if custom_indices is None:
@@ -3042,6 +3042,13 @@ class PlotItemEnhanced(PlotItem):
             for i in range(0, total_frames + window_preview, window_preview):
                 self.addItem(InfiniteLine(pos=i, angle=90, pen='r'))
         self.addItem(curve)
+
+        if display_name:
+            # Add text a little to the right of the curve
+            text = TextItem(name, anchor=(0, 0.5), color=pen)
+            text.setPos(len(data) + 50, data[-1])
+            self.addItem(text)
+
 
     def clear_selected_events_local(self):
         accumulated_selected_events = np.array([], dtype=int)
