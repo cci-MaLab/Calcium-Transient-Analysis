@@ -232,8 +232,8 @@ class Event:
         Return the selection of the data that is within the given time frame.
         duration indicates the number of frames.
 
-        Parameter
-        ------------------
+        Parameters
+        ----------
         event_frame: int
             event time stamp
         duration : float
@@ -406,7 +406,16 @@ class DataInstance:
         # Create the default image
         self.clustering_result = {"basic": {"image": np.stack((self.data['A'].sum("unit_id").values,)*3, axis=-1)}}
 
-    def add_missed(self, A: np.array):          
+    def add_missed(self, A: np.array):
+        """
+        Adds a missed cell to the data. The missed cell is represented by a footprint mask and
+        added to the M data array and saved to the data folder. A unique missed_id is assigned to the missed cell.
+
+        Parameters
+        ----------
+        A : np.array
+            The footprint mask of the missed cell.
+        """  
         id = max(self.data["M"].coords["missed_id"].values) + 1 if self.data["M"] is not None else 1
         M = xr.DataArray(np.expand_dims(A, axis=0), dims=["missed_id", "height", "width"], coords={"missed_id": [id], "height": self.data['A'].coords["height"].values, "width": self.data['A'].coords["width"].values}, name="M")
         if self.data["M"] is not None:
@@ -418,6 +427,14 @@ class DataInstance:
         return id
 
     def remove_missed(self, ids: List[int]):
+        """
+        Removes the missed cells from the data. The missed cells are identified by their missed_id.
+
+        Parameters
+        ----------
+        ids : List[int]
+            A list of missed_ids that should be removed.
+        """
         M = self.data["M"].load()
         M = M.drop_sel(missed_id=ids)
 
@@ -436,7 +453,14 @@ class DataInstance:
         except:
             print("ERROR: ini file is either not in the correct format or empty, did you make sure to save the ini file?")
         if len(config.sections())==1 and config.sections()[0]=='Session_Info':
-            return config['Session_Info']['mouseID'],config['Session_Info']['day'],config['Session_Info']['session'],config['Session_Info']['group'], config['Session_Info']['data_path'], config['Session_Info']['behavior_path']
+            mouseID = config['Session_Info']['mouseID']
+            day = config['Session_Info']['day']
+            session = config['Session_Info']['session']
+            group = config['Session_Info']['group']
+            data_path = config['Session_Info']['data_path']
+            behavior_path = config['Session_Info']['behavior_path']
+            video_path = config['Session_Info'].get('video_path', None)
+            return mouseID, day, session, group, data_path, behavior_path, video_path
         else:
             print("Error! Section name should be 'Session_Info'!")
 
@@ -448,7 +472,10 @@ class DataInstance:
 
     def load_videos(self):
         # We're setting this up as a seperate function as is takes up a lot of space and we only want to load the video info when we need to
-        data = open_minian(self.cnmf_path + "_intermediate")
+        if self.video_path is None:
+            data = open_minian(self.cnmf_path + "_intermediate")
+        else:
+            data = open_minian(self.video_path)
         video_types = ["Y_fm_chk", "varr", "Y_hw_chk", "behavior_video"]
         video_data = {}
         for video_type in video_types:
@@ -456,17 +483,26 @@ class DataInstance:
             if exists:
                 video_data[video_type] = data[data_type]
             else:
-                print("No %s data found in minian intermediate folder" % (video_type))
+                print("No %s data found in video folder" % (video_type))
         
         self.video_data = video_data       
 
     def load_data(self, config_path):
-        mouseID, day, session, group,minian_path,behavior_path = self.parse_file(config_path)
+        """
+        Load the data from the data path specified in the config file.
+
+        Parameters
+        ----------
+        config_path : str
+            The path to the configuration file that contains the paths to the minian, behavior and video files.
+        """
+        mouseID, day, session, group, cnmf_path, behavior_path, video_path = self.parse_file(config_path)
         self.mouseID = mouseID
         self.day = day
         self.session = session
         self.group = group
-        self.cnmf_path = minian_path
+        self.cnmf_path = cnmf_path
+        self.video_path = video_path
         behavior_data = pd.read_csv(behavior_path,sep=',')
         data_types = ['RNF', 'ALP', 'ILP', 'ALP_Timeout','Time Stamp (ms)']
         self.data = {}
@@ -477,7 +513,7 @@ class DataInstance:
                 print("No %s data found in minian file" % (dt))
                 self.data[dt] = None
 
-        data = open_minian(minian_path)
+        data = open_minian(cnmf_path)
         data_types = ['A', 'C', 'S', 'E', 'b', 'f', 'DFF', 'YrA', 'M','timestamp(ms)']
         timestamp = behavior_data[["Time Stamp (ms)"]]
         timestamp.index.name = "frame"
@@ -546,6 +582,10 @@ class DataInstance:
         
 
     def get_filtered_C(self) -> None:
+        """
+        This function will filter the C data array by multiplying it with the normalized S data array.
+        This has the effect of removing non-event related signals from the C data array.
+        """
         normalized_S = xr.apply_ufunc(
             self.normalize_events,
             self.data['S'].chunk(dict(frame=-1, unit_id="auto")),
@@ -558,9 +598,7 @@ class DataInstance:
         return filtered_C
         
     def normalize_events(self, a: np.ndarray) -> np.ndarray:
-        """
-        All positive values are converted to 1.
-        """
+        # All positive values will be set to 1
         a = a.copy()
         a[a > 0] = 1
         return a
@@ -586,7 +624,12 @@ class DataInstance:
     def get_timestep(self, type: str):
         """
         Return a list that contains contains the a list of the frames where
-        the ALP occurs
+        the ALP occurs.
+
+        Parameters
+        ----------
+        type : str
+            The type of event to extract the timesteps from.
         """
         return np.flatnonzero(self.data[type])
 
@@ -648,6 +691,15 @@ class DataInstance:
             return total_transients.compute()
     
     def get_average_peak_dff(self):
+        """
+        Calculate the average peak dff for each cell. The peak dff is calculated by taking the maximum
+        value of the DFF signal of each transient. Then calculate the average of all the peak dffs.
+
+        Returns
+        -------
+        results : dict
+            A dictionary where the keys are the unit_ids and the values are the average peak dffs.
+        """
         E = self.data["E"].compute()
         DFF = self.data["DFF"].compute()
         results = {}
@@ -676,6 +728,14 @@ class DataInstance:
         return self.data["DFF"].std(dim="frame").compute()
     
     def get_mad(self, id=None):
+        """
+        Get the median absolute deviation.
+
+        Parameters
+        ----------
+        id : int
+            The unit_id of the cell for which the MAD should be calculated. If None, then the MAD will be calculated for all cells.
+        """
         if id is None:
             median = self.data["DFF"].median(dim="frame").compute()
             mad = abs(self.data["DFF"] - median).median(dim="frame").compute()
@@ -687,6 +747,26 @@ class DataInstance:
         return (1 / 0.6745) * mad
     
     def get_savgol(self, id, params={}):
+        """
+        Calculate the Savitzky-Golay filter for the DFF signal, this will be used to estimate the noise.
+
+        Parameters
+        ----------
+        id : int
+            The unit_id of the cell for which the Savitzky-Golay filter should be calculated.
+        params : dict
+            A dictionary that contains the parameters for the Savitzky-Golay filter. The parameters are:
+            - win_len : int, optional
+                The length of the filter window. Must be an odd integer. Default is 10.
+            - poly_order : int, optional
+                The polynomial order. Default is 2.
+            - deriv : int, optional
+                The order of the derivative to compute. Default is 0.
+            - delta : float, optional
+                The spacing of the samples to which the filter will be applied. Default is 1.0.
+            - mode : str, optional
+                The mode parameter for the savgol_filter function. Default is "interp".
+        """
         window_length = params.get("win_len", 10)
         poly_order = params.get("poly_order", 2)
         deriv = params.get("deriv", 0)
@@ -702,6 +782,13 @@ class DataInstance:
         """
         Noise will be estimated by taking the absolute value difference between the dff data and savgol_smoothed signal.
         The noise will be then estimated with a rolling window approach where the mean, median or maximum value will be taken.
+
+        Parameters
+        ----------
+        savgol_data : np.array
+            The Savitzky-Golay smoothed data.
+        id : int
+            The unit_id of the cell for which the noise should be calculated.
         """
         noise_type = params.get("type", "Mean")
         win_len = params.get("win_len", 10)
@@ -735,6 +822,13 @@ class DataInstance:
         """
         We will simply calculate the ratio. However, we will need to make sure that the noise is not 0.
         Any 0 value will be replaced with the lowest non-zero value.
+
+        Parameters
+        ----------
+        savgol_data : np.array
+            The Savitzky-Golay smoothed data.
+        noise : np.array
+            The noise data.
         """
         # First check if the noise is 0
         if noise.sum() == 0:
@@ -771,6 +865,11 @@ class DataInstance:
     
     def get_mean_iei_per_cell(self, transient_frames, cell_id, total_transients, frame_rate=None):
         '''
+        Calculate the mean inter-event interval for a single cell. The mean inter-event interval is calculated by taking the
+        difference between the start of each transient. The mean is then calculated from the differences.
+
+        Parameters
+        ----------
         start_of_transients: xr.DataArray
             The start of each transient for all cells taken as an output of get_mean_iei().
         cell_id: int
@@ -800,10 +899,6 @@ class DataInstance:
 
 
     def set_vector(self):
-        '''
-        event :  str, list
-            event can be ALP/ILP/RNF
-        '''
         values = {}
         for uid in self.data['unit_ids']:
             values[uid] = np.array([])
@@ -973,6 +1068,18 @@ class DataInstance:
     def update_and_save_E(self, unit_id: int, spikes: Union[list, np.ndarray], update_type: str = "Accept Incoming Only"):
         """
         Update the E array with the final peaks and save it to the minian file.
+
+        Parameters
+        ----------
+        unit_id : int
+            The unit_id of the cell for which the E array should be updated.
+        spikes : Union[list, np.ndarray]
+            The final peaks that should be added to the E array.
+        update_type : str, optional
+            The type of update that should be performed. The options are:
+            - Accept Incoming Only : Only accept the incoming spikes and ignore any overlapping spikes.
+            - Accept Overlapping Only : Accept all spikes including overlapping spikes.
+            - Accept All : Accept all spikes and set the E array to 1 for all the spikes.
         """
         # First convert final peaks into a numpy array
         E = self.data['E']
@@ -1198,6 +1305,16 @@ class DataInstance:
         return "{}.{:02.0f}".format(datetime.timedelta(seconds=isec), fsec)
 
     def get_cell_ids(self, group_id, verified=False):
+        """
+        Get the cell ids for the group id.
+
+        Parameters
+        ----------
+        group_id : str
+            The group id to extract the cell ids from.
+        verified : bool
+            If True, only extract the verified cells.
+        """
         if group_id == "All Cells":
             unit_ids = self.data['E'].unit_id.values
         elif group_id == "Verified Cells":
@@ -1228,6 +1345,46 @@ class CellClustering:
     """
     Cell clustering class. This class is used to cluster cells based on their
     temporal activity, using FFT and agglomerative clustering.
+
+    Parameters
+    ----------
+    section : dict
+        A dictionary containing the cell ids as keys and the temporal activity
+        as values.
+    outliers_list : list
+        A list of cell ids that should be excluded from the clustering.
+    A : xr.DataArray
+        The spatial footprints of the cells.
+    fft : bool, optional
+        Whether to use FFT to compute the PSD. By default `True`.
+    distance_metric : str, optional
+        The distance metric to use for the clustering. The options are:
+        - euclidean
+        - cosine
+    
+    Attributes
+    ----------
+    A : xr.DataArray
+        The spatial footprints of the cells.
+    psd_list_pre : dict
+        A dictionary containing the cell ids as keys and the PSD as values.
+    psd_list : list
+        A list of the PSD values.
+    outliers_list : list
+        A list of cell ids that should be excluded from the clustering.
+    special_unit : list
+        A list of cell ids that have no activity.
+    distance_metric : str
+        The distance metric to use for the clustering.
+    signals : dict
+        A dictionary containing the cell ids as keys and the temporal activity
+        as values.
+    linkage_data : np.array
+        The linkage data for the clustering.
+    dendro : dict
+        The dendrogram data.
+    cluster_indices : np.array
+        The cluster indices.
     """
 
     def __init__(

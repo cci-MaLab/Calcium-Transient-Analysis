@@ -228,5 +228,6 @@ Below is a template that you can adjust to your needs:
     day = D1
     session = S4
     group = None
-    data_path = C:\path\to\folder\that\contains\data\and\videos
+    data_path = C:\path\to\folder\that\contains\data
+    video_path = C:\path\to\folder\that\contains\videos
     behavior_path = C:\path\to\folder\that\contains\behavior.csv
