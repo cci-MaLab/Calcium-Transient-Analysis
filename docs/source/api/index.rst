@@ -5,3 +5,4 @@ API Reference
    :maxdepth: 1
 
    caltrig.core.backend
+   caltrig.start_gui

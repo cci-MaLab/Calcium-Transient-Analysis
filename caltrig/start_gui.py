@@ -16,6 +16,10 @@ from .gui.clustering_inspection_widgets import InspectionWidget
 import dask
 
 class MainWindow(QMainWindow):
+    """
+    Main window of the application. It displays a window with a menu bar and a central widget, 
+    that contains the visualization of imported data and the tools to interact with it.
+    """
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__(*args, **kwargs)
         self.setWindowTitle("Cell Exploration Tool")
@@ -379,6 +383,9 @@ class MainWindow(QMainWindow):
                     json.dump(extended_json, f)
 
     def closeEvent(self, event):
+        """
+        Calls the parent closeEvent and closes all other windows.
+        """
         windows_to_close = list(self.windows.values())
         for window in windows_to_close:
             window.close()

@@ -756,15 +756,16 @@ class DataInstance:
             The unit_id of the cell for which the Savitzky-Golay filter should be calculated.
         params : dict
             A dictionary that contains the parameters for the Savitzky-Golay filter. The parameters are:
-            - win_len : int, optional
+
+            * win_len : int, optional
                 The length of the filter window. Must be an odd integer. Default is 10.
-            - poly_order : int, optional
+            * poly_order : int, optional
                 The polynomial order. Default is 2.
-            - deriv : int, optional
+            * deriv : int, optional
                 The order of the derivative to compute. Default is 0.
-            - delta : float, optional
+            * delta : float, optional
                 The spacing of the samples to which the filter will be applied. Default is 1.0.
-            - mode : str, optional
+            * mode : str, optional
                 The mode parameter for the savgol_filter function. Default is "interp".
         """
         window_length = params.get("win_len", 10)
@@ -1077,9 +1078,9 @@ class DataInstance:
             The final peaks that should be added to the E array.
         update_type : str, optional
             The type of update that should be performed. The options are:
-            - Accept Incoming Only : Only accept the incoming spikes and ignore any overlapping spikes.
-            - Accept Overlapping Only : Accept all spikes including overlapping spikes.
-            - Accept All : Accept all spikes and set the E array to 1 for all the spikes.
+            * Accept Incoming Only : Only accept the incoming spikes and ignore any overlapping spikes.
+            * Accept Overlapping Only : Accept all spikes including overlapping spikes.
+            * Accept All : Accept all spikes and set the E array to 1 for all the spikes.
         """
         # First convert final peaks into a numpy array
         E = self.data['E']
@@ -1425,6 +1426,14 @@ class CellClustering:
             self.linkage_data = linkage(self.psd_list, method='average', metric='cosine')
 
     def compute_psd(self, unit: int):
+        """
+        Compute the power spectral density of the signal for a given cell.
+
+        Parameters
+        ----------
+        unit : int
+            The cell id.
+        """
         val = self.signals[unit]
         f, psd = welch(val,
                fs=1./30,
@@ -1434,10 +1443,40 @@ class CellClustering:
         self.psd_list_pre[unit] = psd
     
     def visualize_dendrogram(self, color_threshold=None, ax=None):
+        """
+        Apply dendrogram from scipy.cluster.hierarchy and save result to class attribute.
+
+        Parameters
+        ----------
+        color_threshold : float, optional
+            The color threshold for the dendrogram. By default `None`.
+        ax : matplotlib.axes.Axes, optional
+            The axes to plot the dendrogram. By default `None`.
+        
+        Returns
+        -------
+        dendro : dict
+            The dendrogram data.
+        """
         self.dendro = dendrogram(self.linkage_data,labels=list(self.signals.keys()), color_threshold=color_threshold, ax=ax)
         return self.dendro
 
     def visualize_clusters(self, t):
+        """
+        Visualize the clusters by assigning a color to each cluster and looking up the corresponding
+        footprint of each cell.
+
+        Parameters
+        ----------
+        t : int
+            The number of clusters to create.
+        
+        Returns
+        -------
+        cluster_result : dict
+            A dictionary containing the cluster results. The keys are the cluster indices and the values
+            are dictionaries containing the cell ids and the image of the cluster.
+        """
         self.cluster_indices = fcluster(self.linkage_data, t=t, criterion='maxclust')
         
         viridis = cm.get_cmap('jet', self.cluster_indices.max()+1)        
@@ -1464,6 +1503,15 @@ class CellClustering:
         return cluster_result
     
     def visualize_clusters_color(self):
+        """
+        Slightly different approach to visualize the clusters. This will color the cells based on the cluster
+        the dendrogram results.
+
+        Returns
+        -------
+        matplotlib.image.AxesImage
+            The image of the clustered cells.
+        """
         viridis = cm.get_cmap('viridis', len(np.unique(self.dendro["leaves_color_list"])))
         
         color_mapping= {}
