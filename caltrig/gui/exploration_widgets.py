@@ -5,21 +5,21 @@ from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAc
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
                             QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar, QCheckBox,
                             QTextEdit, QComboBox, QGraphicsTextItem, QMessageBox, QFileDialog,
-                            QScrollArea)
+                            QScrollArea, QListWidgetItem, QInputDialog)
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5 import QtCore
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont)
-from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem)
+from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem, InfiniteLine, TextItem)
 import pyqtgraph as pg
 import numpy as np
-from pyqtgraph import InfiniteLine
 from scipy.signal import find_peaks
-from core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget, MetricsWidget)
-from core.pyqtgraph_override import ImageViewOverride
-from gui.sda_widgets import (MayaviQWidget, base_visualization)
 from skimage.segmentation import flood_fill
 from skimage.feature import canny
 from skimage.measure import find_contours
+from ..core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget, MetricsWidget)
+from .pyqtgraph_override import ImageViewOverride
+from .cofiring_2d_widgets import Cofiring2DWidget
+from .sda_widgets import (MayaviQWidget, base_visualization)
 import os
 import matplotlib.pyplot as plt
 import pickle
@@ -55,6 +55,8 @@ class ExplorationWidget(QWidget):
         self.show_temp_picks = True
         self.pre_images = None
         self.pre_bimages = None
+        self.windows = {}
+        self.single_plot_options = {"enabled": False, "inter_distance": 0, "intra_distance": 0}
 
 
 
@@ -96,7 +98,16 @@ class ExplorationWidget(QWidget):
                 button_video_type.setChecked(True)
             else:
                 button_video_type.setChecked(False)
-            self.submenu_videos.addAction(button_video_type)   
+            self.submenu_videos.addAction(button_video_type)
+        
+        submenu_add_group = self.imv_cell.getView().menu.addMenu('&Add Group')
+        button_add_group_rect = QAction("Rectangle", submenu_add_group)
+        submenu_add_group.addAction(button_add_group_rect)
+        button_add_group_rect.triggered.connect(lambda: self.highlight_roi_selection(type="rectangle"))
+        button_add_group_ellipse = QAction("Ellipse", submenu_add_group)
+        submenu_add_group.addAction(button_add_group_ellipse)
+        button_add_group_ellipse.triggered.connect(lambda: self.highlight_roi_selection(type="ellipse"))
+        
 
         # Menu Bar for statistics
         menu = QMenuBar()
@@ -136,20 +147,25 @@ class ExplorationWidget(QWidget):
         
 
         # We'll load in a copy of the visualization of the cells we are monitoring
-        self.A = self.session.A.copy()
+        self.A = {}
+        unit_ids = self.session.data["A"].coords["unit_id"].values
+        for unit_id in unit_ids:
+            self.A[unit_id] = self.session.data["A"].sel(unit_id=unit_id)
+
         for outlier in self.session.outliers_list:
             self.A.pop(outlier)
 
 
         self.A_pos_to_missed_cell = {}
         self.A_pos_to_cell = {}
-        for cell_id, cell_ROI in self.A.items():
+        for unit_id in unit_ids:
+            cell_ROI = self.A[unit_id]
             indices = np.argwhere(cell_ROI.values > 0)
             for pair in indices:
                 if tuple(pair) in self.A_pos_to_cell:
-                    self.A_pos_to_cell[tuple(pair)].append(cell_id)
+                    self.A_pos_to_cell[tuple(pair)].append(unit_id)
                 else:
-                    self.A_pos_to_cell[tuple(pair)] = [cell_id]
+                    self.A_pos_to_cell[tuple(pair)] = [unit_id]
                     
 
 
@@ -161,6 +177,8 @@ class ExplorationWidget(QWidget):
 
         self.btn_cell_focus = QPushButton("Focus Selection")
         self.btn_cell_focus.clicked.connect(self.focus_mask)
+        self.btn_cell_focus_and_trace = QPushButton("Focus and Trace")
+        self.btn_cell_focus_and_trace.clicked.connect(self.focus_and_trace)
         self.btn_cell_reset = QPushButton("Reset Mask")
         self.btn_cell_reset.clicked.connect(self.reset_mask)
         cell_highlight_mode_label = QLabel("Highlight Mode:")
@@ -192,6 +210,8 @@ class ExplorationWidget(QWidget):
         tabs_signal_parent.setWidget(tabs_signal)
         tabs_signal_parent.setFixedWidth(350)
         self.tabs_global_cell_switch = QTabWidget() # This is for the bottom half of the screen
+
+        tabs_cofiring_options = QTabWidget()
 
 
         # Rejected Cells
@@ -248,13 +268,13 @@ class ExplorationWidget(QWidget):
         # Plot utility
         self.auto_label = QLabel("Automatic Transient Detection")
         self.manual_label = QLabel("Manual Transient Detection")
-        self.min_height_label = QLabel("Height Threshold (ΔF/F)")
+        self.min_height_label = QLabel("Peak Threshold (ΔF/F)")
         local_stats_label = QLabel("Local Statistics")
         self.min_height_input = QLineEdit()
         self.min_height_input.setValidator(QDoubleValidator(0, 1000, 3))
         self.min_height_input.setText("0")
 
-        self.dist_label = QLabel("Min IEI")
+        self.dist_label = QLabel("Interval Threshold (frame)")
         self.dist_input = QLineEdit()
         self.dist_input.setValidator(QIntValidator(0, 1000))
         self.dist_input.setText("10")
@@ -383,6 +403,15 @@ class ExplorationWidget(QWidget):
         self.view_window_input = QLineEdit()
         self.view_window_input.setValidator(QIntValidator(100, 100000))
         self.view_window_input.setText("1000")
+        self.view_chkbox_single_plot = QCheckBox("Single Plot View")
+        self.view_inter_distance_label = QLabel("Inter Cell Distance")
+        self.view_inter_distance_input = QLineEdit()
+        self.view_inter_distance_input.setValidator(QIntValidator(0, 100))
+        self.view_inter_distance_input.setText("0")
+        self.view_intra_distance_label = QLabel("Intra Cell Distance")
+        self.view_intra_distance_input = QLineEdit()
+        self.view_intra_distance_input.setValidator(QIntValidator(0, 100))
+        self.view_intra_distance_input.setText("0")
         self.view_btn_update = QPushButton("Update View")
         self.view_btn_update.clicked.connect(self.update_plot_view)
 
@@ -441,6 +470,7 @@ class ExplorationWidget(QWidget):
         self.global_window_size_btn = QPushButton("Update Size")
         self.global_window_size_btn.clicked.connect(lambda: self.visualize_global_signals(reset_view=False))
         self.layout_global_window_size = QHBoxLayout()
+
         self.layout_global_window_size.addWidget(global_window_size_label)
         self.layout_global_window_size.addWidget(self.global_window_size_input)
         self.layout_global_window_size.addWidget(self.global_window_preview_chkbox)
@@ -461,18 +491,18 @@ class ExplorationWidget(QWidget):
         self.chkbox_plot_global_YrA.clicked.connect(lambda: self.visualize_global_signals(reset_view=False))
         self.chkbox_plot_global_dff.clicked.connect(lambda: self.visualize_global_signals(reset_view=False))
 
-        if "RNFS" in self.session.data:
-            self.chkbox_plot_options_RNFS = QCheckBox("RNFS")
-            self.chkbox_plot_options_RNFS.setStyleSheet("background-color: rgb(250, 200, 20); border: 1px solid black; width: 15px; height: 15px;")
-            self.chkbox_plot_options_RNFS.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        if "RNF" in self.session.data:
+            self.chkbox_plot_options_RNF = QCheckBox("RNF")
+            self.chkbox_plot_options_RNF.setStyleSheet("background-color: rgb(250, 200, 20); border: 1px solid black; width: 15px; height: 15px;")
+            self.chkbox_plot_options_RNF.clicked.connect(lambda: self.visualize_signals(reset_view=False))
         if "ALP" in self.session.data:
             self.chkbox_plot_options_ALP = QCheckBox("ALP")
             self.chkbox_plot_options_ALP.setStyleSheet("background-color: rgb(100, 50, 150); border: 1px solid black; width: 15px; height: 15px;")
             self.chkbox_plot_options_ALP.clicked.connect(lambda: self.visualize_signals(reset_view=False))
-        if "IALP" in self.session.data:
-            self.chkbox_plot_options_IALP = QCheckBox("IALP")
-            self.chkbox_plot_options_IALP.setStyleSheet("background-color: rgb(50, 150, 100); border: 1px solid black; width: 15px; height: 15px;")
-            self.chkbox_plot_options_IALP.clicked.connect(lambda: self.visualize_signals(reset_view=False))
+        if "ILP" in self.session.data:
+            self.chkbox_plot_options_ILP = QCheckBox("ILP")
+            self.chkbox_plot_options_ILP.setStyleSheet("background-color: rgb(50, 150, 100); border: 1px solid black; width: 15px; height: 15px;")
+            self.chkbox_plot_options_ILP.clicked.connect(lambda: self.visualize_signals(reset_view=False))
         if "ALP_Timeout" in self.session.data:
             self.chkbox_plot_options_ALP_Timeout = QCheckBox("ALP Timeout")
             self.chkbox_plot_options_ALP_Timeout.setStyleSheet("background-color: rgb(60, 200, 250); border: 1px solid black; width: 15px; height: 15px;")
@@ -488,9 +518,9 @@ class ExplorationWidget(QWidget):
             "SavGol": (154,205,50), # Greenish/Yellow
             "noise": (0,191,255), # Deep Sky Blue
             "SNR": (255,105,180), # Hot Pink
-            "RNFS": (250, 200, 20),
+            "RNF": (250, 200, 20),
             "ALP": (100, 50, 150),
-            "IALP": (50, 150, 100),
+            "ILP": (50, 150, 100),
             "ALP_Timeout": (60, 200, 250)
         }
 
@@ -572,10 +602,14 @@ class ExplorationWidget(QWidget):
         layout_add_remove_group.addWidget(self.btn_add_to_group)
         layout_add_remove_group.addWidget(self.btn_remove_from_group)
 
+        layout_focus_buttons = QHBoxLayout()
+        layout_focus_buttons.addWidget(self.btn_cell_focus)
+        layout_focus_buttons.addWidget(self.btn_cell_focus_and_trace)
+
         layout_cells = QVBoxLayout()
         layout_cells.addWidget(w_cell_label)
         layout_cells.addWidget(self.list_cell)
-        layout_cells.addWidget(self.btn_cell_focus)
+        layout_cells.addLayout(layout_focus_buttons)
         layout_cells.addWidget(self.btn_cell_reset)
         layout_cells.addLayout(layout_highlight_mode)
         layout_cells.addLayout(layout_add_remove_group)
@@ -587,7 +621,7 @@ class ExplorationWidget(QWidget):
         # 3D Visualization Tools
         visualization_3D_layout = QVBoxLayout()
         
-        label_which_cells = QLabel("Which Cells to Visualize")
+        label_3D_which_cells = QLabel("Which Cells to Visualize")
         self.list_3D_which_cells = QComboBox()
         self.list_3D_which_cells.addItems(["All Cells", "Verified Cells"])
         self.list_3D_which_cells.addItems([f"Group {group}" for group in unique_groups])
@@ -621,7 +655,22 @@ class ExplorationWidget(QWidget):
         self.cofiring_window_size.setValidator(QIntValidator(1, 1000))
         self.cofiring_window_size.setText("30")
         self.cofiring_chkbox = QCheckBox("Show Cofiring")
+        self.cofiring_shareA_chkbox = QCheckBox("Share A")
+        self.cofiring_shareA_chkbox.setChecked(True)
+        self.cofiring_shareA_chkbox.clicked.connect(lambda: self.update_cofiring_window(reset_list=True))
+        self.cofiring_shareB_chkbox = QCheckBox("Share B")
+        self.cofiring_shareB_chkbox.setChecked(True)
+        self.cofiring_shareB_chkbox.clicked.connect(lambda: self.update_cofiring_window(reset_list=True))
+        self.cofiring_direction_dropdown = QComboBox()
+        self.cofiring_direction_dropdown.addItems(["Bidirectional", "Forward", "Backward"])
+        self.cofiring_direction_dropdown.currentIndexChanged.connect(lambda: self.update_cofiring_window(reset_list=True))
+        self.cofiring_chkbox.clicked.connect(self.visualize_cofiring)
         self.cofiring_list = QListWidget()
+        self.cofiring_list.itemChanged.connect(lambda: self.update_cofiring_window(reset_list=False))
+        self.cofiring_individual_cell_list = QListWidget()
+        self.cofiring_individual_cell_list.itemChanged.connect(lambda: self.update_cofiring_window(reset_list=False))
+        btn_cofiring_2d_show = QPushButton("Show 2D Representation")
+        btn_cofiring_2d_show.clicked.connect(self.show_2D_cofiring)
 
         # Smoothing
         frame_smoothing = QFrame()
@@ -695,8 +744,6 @@ class ExplorationWidget(QWidget):
         layout_colormap.addWidget(dropdown_3D_colormap)
 
 
-        visualization_3D_layout.addWidget(label_which_cells)
-        visualization_3D_layout.addWidget(self.list_3D_which_cells)
         visualization_3D_layout.addWidget(label_3D_functions)
         visualization_3D_layout.addWidget(self.dropdown_3D_functions)
         visualization_3D_layout.addWidget(self.dropdown_3D_data_types)
@@ -710,11 +757,22 @@ class ExplorationWidget(QWidget):
         visualization_3D_tools = QWidget()
         visualization_3D_tools.setLayout(visualization_3D_layout)
 
+        # Co-Firing Checkbox layout
+        cofiring_chkbox_layout = QHBoxLayout()
+        cofiring_chkbox_layout.addWidget(self.cofiring_chkbox)
+        cofiring_chkbox_layout.addWidget(self.cofiring_shareA_chkbox)
+        cofiring_chkbox_layout.addWidget(self.cofiring_shareB_chkbox)
+
+        # Tab Co-Firing Options
+        tabs_cofiring_options.addTab(self.cofiring_list, "Group Co-Firing")
+        tabs_cofiring_options.addTab(self.cofiring_individual_cell_list, "Individual Cells")
 
         # Co-Firing Tools
         cofiring_layout.addLayout(cofiring_window_layout)
-        cofiring_layout.addWidget(self.cofiring_chkbox)
-        cofiring_layout.addWidget(self.cofiring_list)
+        cofiring_layout.addLayout(cofiring_chkbox_layout)
+        cofiring_layout.addWidget(self.cofiring_direction_dropdown)
+        cofiring_layout.addWidget(tabs_cofiring_options)
+        cofiring_layout.addWidget(btn_cofiring_2d_show)
         cofiring_layout.addStretch()
         cofiring_tools = QWidget()
         cofiring_tools.setLayout(cofiring_layout)
@@ -749,11 +807,19 @@ class ExplorationWidget(QWidget):
         self.tabs_video.addTab(w_missed_cells, "Missed Cells")
         self.tabs_video.currentChanged.connect(self.switched_tabs)
 
+        tabs_visualization_layout = QVBoxLayout()
+        tabs_visualization_layout.addWidget(label_3D_which_cells)
+        tabs_visualization_layout.addWidget(self.list_3D_which_cells)
+        tabs_visualization_layout.addWidget(self.tabs_visualization)
+        tabs_visualization_parent = QWidget()
+        tabs_visualization_parent.setLayout(tabs_visualization_layout)
+        
+
         self.tabs_visualization.addTab(visualization_3D_tools, "Signal Settings")
         self.tabs_visualization.addTab(cofiring_tools, "Co-Firing")
 
         self.tabs_video_tools.addTab(self.tabs_video, "Cell Video")
-        self.tabs_video_tools.addTab(self.tabs_visualization, "3D Visualization")
+        self.tabs_video_tools.addTab(tabs_visualization_parent, "3D Visualization")
 
         # General plot utility
         layout_plot_utility = QVBoxLayout()
@@ -767,6 +833,17 @@ class ExplorationWidget(QWidget):
         # Clear Events Button
         btn_clear_events = QPushButton("Clear All Events")
         btn_clear_events.clicked.connect(self.clear_all_events)
+
+        # Approve/Reject Traces Green/Red Colors
+        btn_approve_traces = QPushButton("Approve Selected Traces")
+        btn_approve_traces.setStyleSheet("background-color: green")
+        btn_approve_traces.clicked.connect(self.verify_selected_traces)
+        btn_reject_traces = QPushButton("Reject Selected Traces")
+        btn_reject_traces.setStyleSheet("background-color: red")
+        btn_reject_traces.clicked.connect(self.reject_selected_traces)
+        layout_reject_approve_traces = QHBoxLayout()
+        layout_reject_approve_traces.addWidget(btn_approve_traces)
+        layout_reject_approve_traces.addWidget(btn_reject_traces)
 
 
 
@@ -1006,9 +1083,18 @@ class ExplorationWidget(QWidget):
         layout_plot_view_window = QHBoxLayout()
         layout_plot_view_window.addWidget(self.view_window_label)
         layout_plot_view_window.addWidget(self.view_window_input)
+        layout_plot_view_inter = QHBoxLayout()
+        layout_plot_view_inter.addWidget(self.view_inter_distance_label)
+        layout_plot_view_inter.addWidget(self.view_inter_distance_input)
+        layout_plot_view_intra = QHBoxLayout()
+        layout_plot_view_intra.addWidget(self.view_intra_distance_label)
+        layout_plot_view_intra.addWidget(self.view_intra_distance_input)
         layout_plot_view.addLayout(layout_plot_view_y_start)
         layout_plot_view.addLayout(layout_plot_view_y_end)
         layout_plot_view.addLayout(layout_plot_view_window)
+        layout_plot_view.addWidget(self.view_chkbox_single_plot)
+        layout_plot_view.addLayout(layout_plot_view_inter)
+        layout_plot_view.addLayout(layout_plot_view_intra)
         layout_plot_view.addWidget(self.view_btn_update)
         layout_plot_view.addStretch()
         
@@ -1029,21 +1115,21 @@ class ExplorationWidget(QWidget):
         layout_plot_options.addStretch()
         layout_plot_options.setDirection(3)
         layout_plot_options.addWidget(self.btn_reset_view)
-        if "RNFS" in self.session.data:
-            layout_plot_options.addWidget(self.chkbox_plot_options_RNFS)
+        if "RNF" in self.session.data:
+            layout_plot_options.addWidget(self.chkbox_plot_options_RNF)
+        if "ILP" in self.session.data:
+            layout_plot_options.addWidget(self.chkbox_plot_options_ILP)
         if "ALP" in self.session.data:
             layout_plot_options.addWidget(self.chkbox_plot_options_ALP)
-        if "IALP" in self.session.data:
-            layout_plot_options.addWidget(self.chkbox_plot_options_IALP)
         if "ALP_Timeout" in self.session.data:
             layout_plot_options.addWidget(self.chkbox_plot_options_ALP_Timeout)
         layout_plot_options.addWidget(self.chkbox_plot_options_snr)
         layout_plot_options.addWidget(self.chkbox_plot_options_noise)
-        layout_plot_options.addWidget(self.chkbox_plot_options_C)
-        layout_plot_options.addWidget(self.chkbox_plot_options_S)
-        layout_plot_options.addWidget(self.chkbox_plot_options_YrA)
-        layout_plot_options.addWidget(self.chkbox_plot_options_dff)
         layout_plot_options.addWidget(self.chkbox_plot_options_savgol)
+        layout_plot_options.addWidget(self.chkbox_plot_options_dff)
+        layout_plot_options.addWidget(self.chkbox_plot_options_S)
+        layout_plot_options.addWidget(self.chkbox_plot_options_C)
+        layout_plot_options.addWidget(self.chkbox_plot_options_YrA)
 
         # Global plot options
         frame_global_plot_options = QFrame()
@@ -1085,6 +1171,7 @@ class ExplorationWidget(QWidget):
         layout_plot_utility = QVBoxLayout()
         layout_plot_utility.addWidget(btn_clear_traces)
         layout_plot_utility.addWidget(btn_clear_events)
+        layout_plot_utility.addLayout(layout_reject_approve_traces)
         layout_plot_utility.addWidget(tabs_signal_parent)
 
         layout_plot = QHBoxLayout()
@@ -1131,10 +1218,255 @@ class ExplorationWidget(QWidget):
 
         self.imv_cell.scene.sigMouseMoved.connect(self.detect_cell_hover)
 
-    def update_cofiring_window(self):
+    def highlight_roi_selection(self, type="ellipse"):
+        # Get mouse position
+        pos = self.imv_cell.last_pos
+        if type == "ellipse":
+            roi = pg.EllipseROI(pos, [40, 40], pen=pg.mkPen(color='r', width=2), removable=True)
+        elif type == "rectangle":
+            roi = pg.RectROI(pos, [40, 40], pen=pg.mkPen(color='r', width=2), removable=True)
+        else:
+            raise ValueError("Invalid ROI type")
+        
+        def remove_roi(roi):
+            self.imv_cell.removeItem(roi)
+
+        def add_group_roi(roi, verified=False):
+            # From the ROI we'll get the values of the position, height and width and angle to calculate whether the centroids are contained
+            # in the ROI
+            pos = roi.pos()
+            size = roi.size()
+            angle = roi.angle()
+
+            # Now check if we're dealing with an ellipse or a rectangle
+            roi_type = roi.__class__.__name__
+            ids = set()
+            for centroid in self.session.centroids_to_cell_ids.keys():
+                id = self.session.centroids_to_cell_ids[centroid]
+                if roi_type == "EllipseROI":
+                    if self.within_ellipse(centroid, pos, size, angle):
+                        ids.add(id)
+                elif roi_type == "RectROI":
+                    if self.within_rectangle(centroid, pos, size, angle):
+                        ids.add(id)
+
+            if verified:
+                # Prune out non-verified cells
+                ids = self.session.prune_non_verified(ids)
+
+
+            # Now that we have the ids we will clear the selections in the cell list and select the cells that are within the ROI
+            self.list_cell.clearSelection()
+            for i in range(self.list_cell.count()):
+                item = self.list_cell.item(i)
+                cell_id = int(item.text().split(" ")[0])
+                if cell_id in ids:
+                    item.setSelected(True)
+            
+            # Now Focus on the cells
+            self.focus_mask()
+                
+
+        self.imv_cell.addItem(roi)
+
+        roi.sigRemoveRequested.connect(remove_roi)
+
+        # Add action to the ROI menu
+        menu = roi.getMenu()
+        action_verified = QAction("Highlight Selection Verified", self)
+        action_verified.triggered.connect(lambda: add_group_roi(roi, verified=True))
+        menu.addAction(action_verified)
+        action_standard = QAction("Highlight Selection", self)
+        action_standard.triggered.connect(lambda: add_group_roi(roi, verified=False))
+        menu.addAction(action_standard)
+
+
+
+    def within_rectangle(self, point, upper_left, size, angle):
+        """
+        Check if a point is within a rectangle.
+        
+        Parameters:
+        - point: The point to check (x, y).
+        - upper_left: The point indicating the top left corner of the ROI.
+        - size: The size of the rectangle (width, height).
+        - angle: The rotation angle of the rectangle in degrees.
+        
+        Returns:
+        - True if the point is within the rectangle, False otherwise.
+        """
+        point = [point[1], point[0]]
+        angle = np.radians(angle)
+
+        point_local = np.array(point) - upper_left
+
+        # Create the rotation matrix for the inverse rotation (to unrotate the point)
+        rotation_matrix = np.array([
+            [np.cos(-angle), -np.sin(-angle)],
+            [np.sin(-angle),  np.cos(-angle)]
+        ])
+
+        # Apply the rotation to the translated point
+        rotated_point = np.dot(rotation_matrix, point_local)
+
+        # Check if the point is within the axis-aligned rectangle (after unrotating)
+        if 0 <= rotated_point[0] <= size[0] and 0 <= rotated_point[1] <= size[1]:
+            return True
+        return False
+    
+    def within_ellipse(self, point, upper_left, size, angle):
+        """
+        Check if a point is within an ellipse.
+        
+        Parameters:
+        - point: The point to check (x, y).
+        - upper_left: The point indicating the top left corner of the ROI.
+        - size: The size of the ellipse (width, height).
+        - angle: The rotation angle of the ellipse in degrees.
+        
+        Returns:
+        - True if the point is within the ellipse, False otherwise.
+        """
+        point = np.array([point[1], point[0]])
+        angle = np.radians(angle)
+        rotation_matrix = np.array([
+            [np.cos(-angle), -np.sin(-angle)],
+            [np.sin(-angle),  np.cos(-angle)]
+        ])
+        
+        # Step 1: Calculate the center of the ellipse (not upper_left)
+        center = np.array(upper_left) + np.array(size) / 2.0
+
+        # Step 1.1: Rotate the center where upper_left is the origin
+        center_local = center - upper_left
+        center_rotated = np.dot(rotation_matrix, center_local)
+        center_adjusted = center_rotated + upper_left
+
+        # Step 1.2: Get the vector from center to center_adjusted
+        center_vector = center_adjusted - center
+
+        
+        # Step 2: Translate the point relative to the center of the bounding box
+        point_local = point - center
+
+        # Step 3: Apply the rotation to the translated point
+        rotated_point = np.dot(rotation_matrix, point_local)
+        rotated_point += center_vector
+
+        # Step 4: Treat it like a rectangle until now, but now apply the ellipse boundary check
+        semi_major = size[0] / 2.0  # a (semi-major axis)
+        semi_minor = size[1] / 2.0  # b (semi-minor axis)
+
+        x_prime, y_prime = rotated_point
+        ellipse_eq = (x_prime / semi_major) ** 2 + (y_prime / semi_minor) ** 2
+
+        # Step 5: Check if the point lies within the ellipse
+        return ellipse_eq <= 1
+            
+
+
+    def visualize_cofiring(self):
+        visualize_cofiring = self.cofiring_chkbox.isChecked()
+        
+        if not visualize_cofiring:
+            self.visualization_3D.remove_cofiring()
+            return
+        else:
+            self.update_cofiring_window()
+
+    def update_cofiring_window(self, reset_list=True):
         window_size = int(self.cofiring_window_size.text())
         visualize_cofiring = self.cofiring_chkbox.isChecked()
-        self.visualization_3D.change_cofiring_window(window_size, visualize_cofiring)
+
+        cells_for_cofiring = self.list_3D_which_cells.currentText()
+        shareA = self.cofiring_shareA_chkbox.isChecked()
+        shareB = self.cofiring_shareB_chkbox.isChecked()
+        direction = self.cofiring_direction_dropdown.currentText().lower()
+
+        # Get items that are checked
+        cofiring_nums = set()
+        for i in range(self.cofiring_list.count()):
+            item = self.cofiring_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                cofiring_nums.add(int(item.text().split(" ")[1]))
+
+        # When we reset the list we want to visualize all cofiring connections
+        if reset_list:
+            cofiring_nums.add("all")
+        
+        cofiring_cells = set()
+        for i in range(self.cofiring_individual_cell_list.count()):
+            item = self.cofiring_individual_cell_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                cofiring_cells.add(int(item.text().split(" ")[1]))
+
+        kwargs = {"nums_to_visualize": cells_for_cofiring, "visualize": visualize_cofiring, "cofiring_nums": cofiring_nums,
+                   "shareA": shareA, "shareB": shareB, "direction": direction, "cofiring_cells": cofiring_cells}
+
+        precalculated_values = self.visualization_3D.change_cofiring_window(window_size, **kwargs)
+        if reset_list:
+            self.reset_list(precalculated_values)
+            
+
+    def reset_list(self, precalculated_values):
+        cofiring_nums = list(precalculated_values["number"].keys())
+        # Populate the list
+        self.cofiring_list.clear()
+        # Add cofiring numbers to the list and make them checkable
+        cofiring_nums.sort()
+        # Remove 0 if it exists because we are not interested in no cofiring connections.
+        cofiring_nums = cofiring_nums[1:] if cofiring_nums[0] == 0 else cofiring_nums
+        self.cofiring_list.itemChanged.disconnect()
+        for num in cofiring_nums:
+            item = QListWidgetItem(f"Cofiring {num}")
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked)           
+            self.cofiring_list.addItem(item)
+        self.cofiring_list.itemChanged.connect(lambda: self.update_cofiring_window(reset_list=False))
+
+        self.cofiring_individual_cell_list.clear()
+        cells_to_visualize = self.list_global_which_cells.currentText()
+        cells = self.session.get_cell_ids(cells_to_visualize, verified=True)
+        for cell in cells:
+            item = QListWidgetItem(f"Cell {cell}")
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked)           
+            self.cofiring_individual_cell_list.addItem(item)
+        self.cofiring_individual_cell_list.itemChanged.connect(lambda: self.update_cofiring_window(reset_list=False))
+
+
+
+    def show_2D_cofiring(self):
+        window_size = int(self.cofiring_window_size.text())
+        visualize_cofiring = self.cofiring_chkbox.isChecked()
+
+        cells_for_cofiring = self.list_3D_which_cells.currentText()
+        shareA = self.cofiring_shareA_chkbox.isChecked()
+        shareB = self.cofiring_shareB_chkbox.isChecked()
+        direction = self.cofiring_direction_dropdown.currentText().lower()
+
+        # Get items that are checked
+        cofiring_nums = set()
+        for i in range(self.cofiring_list.count()):
+            item = self.cofiring_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                cofiring_nums.add(int(item.text().split(" ")[1]))
+
+        kwargs = {"nums_to_visualize": cells_for_cofiring, "visualize": visualize_cofiring,
+                  "cofiring_nums": cofiring_nums, "shareA": shareA, "shareB": shareB, 
+                  "direction": direction}
+        
+        cofiring_data = self.visualization_3D.extract_cofiring_data(window_size, **kwargs)
+
+        kwargs["cofiring_data"] = cofiring_data
+        
+        cofiring2d_window = Cofiring2DWidget(self.session, self.name, parent=self, **kwargs)
+
+        if cofiring2d_window.name not in self.windows:
+            self.windows[cofiring2d_window.name ] = cofiring2d_window        
+            cofiring2d_window.show()
+
+
 
     def changed_3D_data_type(self):
         if self.dropdown_3D_data_types.currentText() == "Transient Count":
@@ -1179,6 +1511,9 @@ class ExplorationWidget(QWidget):
 
         self.visualization_3D.change_func(base_visualization, data_type=visualization_type, scaling=scaling, cells_to_visualize=cells_to_visualize,
                                           smoothing_size=smoothing_size, smoothing_type=smoothing_type, window_size=window_size, normalize=normalize, average=average, cumulative=cumulative)
+        
+        self.cofiring_chkbox.setChecked(False)
+        self.visualization_3D.remove_cofiring()
 
     def check_if_results_exist(self):
         idx_to_cells = {"0":"1", "1":"2", "2":"5", "3":"10", "4":"15", "5":"20"}
@@ -1487,6 +1822,22 @@ class ExplorationWidget(QWidget):
         y_start = float(self.view_y_start_input.text())
         y_end = float(self.view_y_end_input.text())
         window = int(self.view_window_input.text())
+
+        is_enabled = self.view_chkbox_single_plot.isChecked()
+        inter_distance = int(self.view_inter_distance_input.text())
+        intra_distance = int(self.view_intra_distance_input.text())
+
+        # We have to check if there is a discrepancy between the
+        # single plot options and the current variables
+        if (is_enabled != self.single_plot_options["enabled"]) or \
+            (inter_distance != self.single_plot_options["inter_distance"]) or \
+            (intra_distance != self.single_plot_options["intra_distance"]):
+                self.single_plot_options["enabled"] = is_enabled
+                self.single_plot_options["inter_distance"] = inter_distance
+                self.single_plot_options["intra_distance"] = intra_distance
+                self.visualize_signals(reset_view=True)
+
+
         i = 0
         while self.w_signals.getItem(i,0) is not None:
             item = self.w_signals.getItem(i,0)
@@ -1665,6 +2016,38 @@ class ExplorationWidget(QWidget):
         self.selected_event_change(False)
         self.visualization_3D.update_selected_cells(self.video_cell_selection)
 
+    def verify_selected_traces(self):
+        # Approve only the selected signals
+        i = 0
+        to_approve = []
+        while self.w_signals.getItem(i,0) is not None:
+            item = self.w_signals.getItem(i,0)
+            if isinstance(item, PlotItemEnhanced):
+                if item.selected and not item.cell_type == "Missed":
+                    to_approve.append(item.id)
+            i += 1
+        if to_approve:
+            # We'll firsts approve to account for any cells that may have been rejected
+            self.session.approve_cells(to_approve)
+            # Now verify the cells
+            self.session.update_verified(to_approve, force_verified=True)
+            self.refresh_cell_list()
+
+    def reject_selected_traces(self):
+        i = 0
+        to_reject = []
+        while self.w_signals.getItem(i,0) is not None:
+            item = self.w_signals.getItem(i,0)
+            if isinstance(item, PlotItemEnhanced):
+                if item.selected and not item.cell_type == "Missed":
+                    to_reject.append(item.id)
+            i += 1
+
+        if to_reject:
+            self.session.reject_cells(to_reject)
+            self.refresh_cell_list()
+
+        
 
     def switch_missed_cell_mode(self):
         if self.select_missed_mode:
@@ -1977,15 +2360,15 @@ class ExplorationWidget(QWidget):
     
     def get_selected_events(self):
         selected_events = []
-        if "RNFS" in self.session.data:
-            if self.chkbox_plot_options_RNFS.isChecked():
-                selected_events.append('RNFS')
+        if "RNF" in self.session.data:
+            if self.chkbox_plot_options_RNF.isChecked():
+                selected_events.append('RNF')
         if "ALP" in self.session.data:
             if self.chkbox_plot_options_ALP.isChecked():
                 selected_events.append('ALP')
-        if "IALP" in self.session.data:
-            if self.chkbox_plot_options_IALP.isChecked():
-                selected_events.append('IALP')
+        if "ILP" in self.session.data:
+            if self.chkbox_plot_options_ILP.isChecked():
+                selected_events.append('ILP')
         if "ALP_Timeout" in self.session.data:
             if self.chkbox_plot_options_ALP_Timeout.isChecked():
                 selected_events.append('ALP_Timeout')
@@ -2023,14 +2406,18 @@ class ExplorationWidget(QWidget):
 
             global_window_size = int(self.global_window_size_input.text()) if self.global_window_preview_chkbox.isChecked() else 1
 
-            p.add_main_curve(data, custom_indices=custom_indices, is_C=False, pen=self.color_mapping[data_type], window_preview=global_window_size)
+            p.add_main_curve(data, custom_indices=custom_indices, is_C=False, pen=self.color_mapping[data_type], window_preview=global_window_size, name=f"{data_type} Global")
 
 
     def visualize_signals(self, reset_view=False):
         cell_ids = self.video_cell_selection
         missed_ids = self.missed_cells_selection
+        inter_cell_distance = self.single_plot_options["inter_distance"]
+        intra_cell_distance = self.single_plot_options["intra_distance"]
+        single_plot_mode = self.single_plot_options["enabled"]
+
         # Before clear the plots and get viewRect
-        idx = 0
+
         views = {"Standard": {}, "Missed": {}} # We'll store the viewRect for each cell type
         if not reset_view:
             i = 0
@@ -2054,15 +2441,17 @@ class ExplorationWidget(QWidget):
         if cell_ids:
             self.w_signals.scene().sigMouseClicked.connect(self.find_subplot)
             for i, id in enumerate(cell_ids):
-                p = PlotItemEnhanced(id=id, cell_type="Standard")
-                p.signalChangedSelection.connect(self.selected_event_change)
-                p.plotLine.setPos(self.scroll_video.value())
-                p.plotLine.sigDragged.connect(self.pause_video)
-                p.plotLine.sigPositionChangeFinished.connect(self.update_slider_pos)
-                p.setTitle(f"Cell {id}")
-                self.w_signals.addItem(p, row=i, col=0)
+                if not single_plot_mode or i == 0:
+                    p = PlotItemEnhanced(id=id, cell_type="Standard")
+                    p.signalChangedSelection.connect(self.selected_event_change)
+                    p.plotLine.setPos(self.scroll_video.value())
+                    p.plotLine.sigDragged.connect(self.pause_video)
+                    p.plotLine.sigPositionChangeFinished.connect(self.update_slider_pos)
+                    if not single_plot_mode:
+                        p.setTitle(f"Cell {id}")
+                    self.w_signals.addItem(p, row=i, col=0)
                 selected_types = self.get_selected_data_type()
-                for data_type in selected_types:
+                for j, data_type in enumerate(selected_types):
                     if data_type in self.session.data:
                         data = self.session.data[data_type].sel(unit_id=id).values
                     elif data_type == 'SavGol' or data_type == 'noise' or data_type == 'SNR':
@@ -2074,8 +2463,11 @@ class ExplorationWidget(QWidget):
                                 noise = data
                                 data = self.session.get_SNR(sav_data, noise)
 
-                    p.add_main_curve(data, is_C=(data_type == 'C'), pen=self.color_mapping[data_type])
-                    if 'E' in self.session.data and data_type == 'C':
+                    # If we are in single plot mode we'll need to add to the height of the plot first
+                    y_boost = i * inter_cell_distance + j * intra_cell_distance if single_plot_mode else 0
+
+                    p.add_main_curve(data + y_boost, is_C=(data_type == 'C'), pen=self.color_mapping[data_type], name=f"{data_type} {id}", display_name=single_plot_mode)
+                    if 'E' in self.session.data and data_type == 'C' and not single_plot_mode:
                         events = self.session.data['E'].sel(unit_id=id).values
                         events = np.nan_to_num(events, nan=0) # Sometimes saving errors can cause NaNs
                         indices = events.nonzero()[0]
@@ -2095,12 +2487,13 @@ class ExplorationWidget(QWidget):
 
 
                     selected_events = self.get_selected_events()
-                    for event_type in selected_events:
-                        if event_type in self.session.data:
-                            events = self.session.data[event_type].values
-                            # Get indices where == 1
-                            indices = np.argwhere(events == 1)
-                            p.draw_behavior_events(indices, self.color_mapping[event_type])
+                    if not single_plot_mode or i == 0:
+                        for event_type in selected_events:
+                            if event_type in self.session.data:
+                                events = self.session.data[event_type].values
+                                # Get indices where == 1
+                                indices = np.argwhere(events == 1)
+                                p.draw_behavior_events(indices, self.color_mapping[event_type])
 
                 if selected_types and id in views["Standard"]:
                     p.getViewBox().setRange(xRange=views["Standard"][id][0], yRange=views["Standard"][id][1], padding=0)
@@ -2108,7 +2501,7 @@ class ExplorationWidget(QWidget):
 
                 last_i += 1
 
-        if missed_ids:
+        if missed_ids and not self.single_plot_mode:
             for i, id in enumerate(missed_ids):
                 p = PlotItemEnhanced(id=id, cell_type="Missed")
                 p.plotLine.setPos(self.scroll_video.value())
@@ -2118,7 +2511,7 @@ class ExplorationWidget(QWidget):
                 self.w_signals.addItem(p, row=i+last_i, col=0)
                 if "YrA" in self.get_selected_data_type():
                     data = self.session.get_missed_signal(id)
-                    p.add_main_curve(data)
+                    p.add_main_curve(data, name=f"YrA {id}", pen=self.color_mapping["YrA"])
                 if id in views["Missed"]:
                     p.getViewBox().setRange(xRange=views["Missed"][id][0], yRange=views["Missed"][id][1], padding=0)
 
@@ -2177,6 +2570,25 @@ class ExplorationWidget(QWidget):
             if not self.btn_play.isChecked():
                 self.current_frame -= 1
                 self.next_frame()
+    
+    def focus_and_trace(self):
+        self.focus_mask()
+
+        cell_ids = [self.extract_id(item) for item in self.list_cell.selectedItems()]
+        self.video_cell_selection = set(cell_ids)
+        self.video_cell_mask = np.zeros(self.mask.shape)
+        for id in self.video_cell_selection:
+            self.video_cell_mask  += self.A[id].values
+        self.video_cell_mask[self.video_cell_mask  > 0] = 1
+        self.visualize_signals(reset_view=False)
+        if not self.btn_play.isChecked():
+            self.current_frame -= 1
+            self.next_frame()
+        
+        self.selected_event_change(False)
+        self.visualization_3D.update_selected_cells(self.video_cell_selection)
+
+
 
     def reset_mask(self):
         self.mask = np.ones(self.mask.shape)
@@ -2306,7 +2718,7 @@ class ExplorationWidget(QWidget):
         for i, cell_id in enumerate(self.session.data['E']['unit_id'].values):
             if good_bad_cells[i]:
                 if cell_id in cell_ids_to_groups:
-                    self.list_cell.addItem(f"{cell_id} G{cell_ids_to_groups[cell_id]}")
+                    self.list_cell.addItem(f"{cell_id} G {', '.join(cell_ids_to_groups[cell_id])}")
                 else:
                     self.list_cell.addItem(str(cell_id))
                 if self.session.data['E']['verified'].loc[{'unit_id': cell_id}].values.item():
@@ -2326,7 +2738,14 @@ class ExplorationWidget(QWidget):
     def add_to_group(self):
         cell_ids = [self.extract_id(item) for item in self.list_cell.selectedItems()]
 
-        self.session.add_cell_id_group(cell_ids)
+        # Ask the user for the group id
+        group_id, ok = QInputDialog.getText(self, "Group ID", "Enter the group ID")
+        group_id = str(group_id)
+
+        if not ok:
+            return
+
+        self.session.add_cell_id_group(cell_ids, group_id)
         unique_groups = self.session.get_group_ids()
         self.list_3D_which_cells.clear()
         self.list_3D_which_cells.addItems(["All Cells", "Verified Cells"])
@@ -2418,8 +2837,14 @@ class ExplorationWidget(QWidget):
             i += 1
 
     def closeEvent(self, event):
-        super(ExplorationWidget, self).closeEvent(event)
+        windows_to_close = list(self.windows.values())
+        for window in windows_to_close:
+            window.close()
         self.main_window_ref.remove_window(self.name)
+        event.accept()
+
+    def remove_cofire_window(self, name):
+        del self.windows[name]
     
     def clear_selected_events(self):
         accumulated_selected_events = {}
@@ -2597,26 +3022,33 @@ class PlotItemEnhanced(PlotItem):
         else:
             for beg, end in spikes:
                 color = (255,140,0)
-                for i, (beg_temp, end_temp) in enumerate(indices):
+                for beg_temp, end_temp in indices:
                     if beg_temp <= beg <= end_temp or beg_temp <= end <= end_temp or beg <= beg_temp <= end or beg <= end_temp <= end: # This can be optimized!
                         color = 'g'
                         break
                 event_curve = PlotCurveItemEnhanced(np.arange(beg, end), self.C_signal[beg:end], pen=color, is_event=False, main_plot=self)
                 self.addItem(event_curve)
 
-    def add_main_curve(self, data, custom_indices=None, is_C=False, pen='w', window_preview=1):
+    def add_main_curve(self, data, custom_indices=None, is_C=False, pen='w', window_preview=1, name="", display_name=False):
         if is_C:
             self.C_signal = data
         if custom_indices is None:
-            curve = PlotCurveItemEnhanced(np.arange(len(data)), data, pen=pen, is_event=False)
+            curve = PlotCurveItemEnhanced(np.arange(len(data)), data, pen=pen, is_event=False, name=name)
         else:
-            curve = PlotCurveItemEnhanced(custom_indices, data, pen=pen, is_event=False)
+            curve = PlotCurveItemEnhanced(custom_indices, data, pen=pen, is_event=False, name=name)
         if window_preview > 1:
             total_frames = len(data) if custom_indices is None else custom_indices[-1]
             # Add vertical lines every window_preview frames in red
             for i in range(0, total_frames + window_preview, window_preview):
                 self.addItem(InfiniteLine(pos=i, angle=90, pen='r'))
         self.addItem(curve)
+
+        if display_name:
+            # Add text a little to the right of the curve
+            text = TextItem(name, anchor=(0, 0.5), color=pen)
+            text.setPos(len(data) + 50, data[-1])
+            self.addItem(text)
+
 
     def clear_selected_events_local(self):
         accumulated_selected_events = np.array([], dtype=int)

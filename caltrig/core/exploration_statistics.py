@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import QFileDialog
 
 import matplotlib.pyplot as plt
 import numpy as np
-from gui.clustering_inspection_widgets import MplCanvas
+from ..gui.clustering_inspection_widgets import MplCanvas
 import pandas as pd
 from scipy.fftpack import fft
 
@@ -118,19 +118,19 @@ class GeneralStatsWidget(StatsWidget):
         self.table = QTableWidget(len(unit_ids), 11)
 
         self.pd_table = pd.DataFrame(index=unit_ids, columns=["Cell Size(pixel)", "Location (x,y)", "Total Ca2+ transient #", 
-                                       "Average Frequency (Hz)", "Average Amplitude (ΔF/F)", "Average Rising (# of frames)",
+                                       "Average Frequency (Hz)", "Average Peak Amplitude (ΔF/F)", "Average Rising (# of frames)",
                                        "Average Rising Time (seconds)", "Average Ca2+ transient-interval (# of frames)", "Average interval (seconds)",
                                        "Std(ΔF/F)", "MAD(ΔF/F)"])
         
         btn_stats_amp = QAction("&Amplitude Frequency Boxplot", self)
         btn_stats_amp.triggered.connect(self.generate_amp_boxplot)
 
-        btn_stats_iei = QAction("IEI Frequency Boxplot", self)
-        btn_stats_iei.triggered.connect(self.generate_iei_boxplot)      
+        btn_stats_iti = QAction("IEI Frequency Boxplot", self)
+        btn_stats_iti.triggered.connect(self.generate_iti_boxplot)      
         
         visualization_menu = self.menu.addMenu("&Visualization")
         visualization_menu.addAction(btn_stats_amp)
-        visualization_menu.addAction(btn_stats_iei)
+        visualization_menu.addAction(btn_stats_iti)
 
         # Fill out the self.table with data
         E = session.data['E']
@@ -180,11 +180,11 @@ class GeneralStatsWidget(StatsWidget):
                 self.pd_table.at[id, "Average Rising Time (seconds)"] = str(round(average_rising_time.sel(unit_id=id).item(), 3))
 
             # 8.) Average Ca2+ transient-interval (# of frames)
-            self.pd_table.at[id, "Average Ca2+ transient-interval (# of frames)"] = session.get_mean_iei_per_cell(transient_frames, id, total_transients)
+            self.pd_table.at[id, "Average Ca2+ transient-interval (# of frames)"] = session.get_mean_iti_per_cell(transient_frames, id, total_transients)
                 
             
             # 9.) Average interval (seconds)
-            self.pd_table.at[id, "Average interval (seconds)"] = session.get_mean_iei_per_cell(transient_frames, id, total_transients, frame_rate=frames_per_second)
+            self.pd_table.at[id, "Average interval (seconds)"] = session.get_mean_iti_per_cell(transient_frames, id, total_transients, frame_rate=frames_per_second)
 
             # 10.) Std(ΔF/F)
             self.pd_table.at[id, "Std(ΔF/F)"] = round(std_dff.sel(unit_id=id).item(), 3)
@@ -216,14 +216,14 @@ class GeneralStatsWidget(StatsWidget):
         self.amp_win.setWindowTitle("Amplitude Box Plot")
         self.amp_win.show()
 
-    def generate_iei_boxplot(self):
+    def generate_iti_boxplot(self):
         data = self.pd_table["Average interval (seconds)"].dropna()
         if data.empty:
             return
         data = data.drop(data[data == 'N/A'].index).astype(float)
-        self.iei_win = GeneralVizWidget(data, "IEI")
-        self.iei_win.setWindowTitle("IEI Box Plot")
-        self.iei_win.show()
+        self.iti_win = GeneralVizWidget(data, "ITI")
+        self.iti_win.setWindowTitle("ITI Box Plot")
+        self.iti_win.show()
 
     def pandas_to_table(self):
         super().pandas_to_table()
@@ -241,7 +241,7 @@ class GeneralVizWidget(QWidget):
     def __init__(self, data: pd.Series, viz_type: str, parent=None):
         super(GeneralVizWidget, self).__init__(parent)
         '''
-        The window will display either IEI or amplitude box plots for all cells.
+        The window will display either ITI or amplitude box plots for all cells.
         '''
         self.visualization = MplCanvas()
         btn_save_fig = QPushButton("Save Figure")
@@ -255,7 +255,7 @@ class GeneralVizWidget(QWidget):
         data = data.astype(float)
         bp = data.plot.box(ax=self.visualization.axes)
         bp.set_title(f"{viz_type} Box Plot")
-        bp.set_ylabel(f"Seconds" if viz_type == "IEI" else f"(ΔF/F)")
+        bp.set_ylabel(f"Seconds" if viz_type == "ITI" else f"(ΔF/F)")
         # Add jitter to the box plot
         for point in data:
             self.visualization.axes.plot([np.random.normal(1, 0.04)], point, 'r.', alpha=0.2)
@@ -310,7 +310,7 @@ class LocalStatsWidget(StatsWidget):
 
         total_transients = int(session.get_total_transients(unit_id=unit_id).item())
 
-        self.iei_win = None
+        self.iti_win = None
         self.amp_win = None
 
         E = session.data['E'].sel(unit_id=unit_id).values
@@ -335,20 +335,20 @@ class LocalStatsWidget(StatsWidget):
         btn_stats_amp = QAction("&Amplitude Frequency Histogram", self)
         btn_stats_amp.triggered.connect(self.generate_amp_histogram)
 
-        btn_stats_iei = QAction("IEI Frequency Histogram", self)
-        btn_stats_iei.triggered.connect(self.generate_iei_histogram)
+        btn_stats_iti = QAction("ITI Frequency Histogram", self)
+        btn_stats_iti.triggered.connect(self.generate_iti_histogram)
 
         btn_fft = QAction("FFT Frequency", self)
         btn_fft.triggered.connect(self.generate_fft_frequency)
 
         visualization_menu = self.menu.addMenu("&Visualization")
         visualization_menu.addAction(btn_stats_amp)
-        visualization_menu.addAction(btn_stats_iei)
+        visualization_menu.addAction(btn_stats_iti)
         visualization_menu.addAction(btn_fft)
 
         previous_transient = -1
         # Fill out the self.table with data
-        self.iei_msec = []
+        self.iti_msec = []
         self.total_amplitude_list = []
         for i, transient in enumerate(transients):
             rising_start = transient[0]+1
@@ -365,7 +365,7 @@ class LocalStatsWidget(StatsWidget):
             else:
                 interval_frames = transient[0]+1 - previous_transient
                 interval_seconds = (timestamps[transient[0]] - timestamps[previous_transient]) / 1000
-                self.iei_msec.append(interval_seconds * 1000)
+                self.iti_msec.append(interval_seconds * 1000)
                 interval_seconds = str(round(interval_seconds, 3))
                 previous_transient = transient[0]+1
 
@@ -389,10 +389,10 @@ class LocalStatsWidget(StatsWidget):
 
         self.finalize_window()
 
-    def generate_iei_histogram(self):
-        self.iei_win = LocalIEIWidget(self.iei_msec)
-        self.iei_win.setWindowTitle(f"IEI Histogram for cell {self.unit_id}")
-        self.iei_win.show()
+    def generate_iti_histogram(self):
+        self.iti_win = LocalITIWidget(self.iti_msec)
+        self.iti_win.setWindowTitle(f"ITI Histogram for cell {self.unit_id}")
+        self.iti_win.show()
 
     def generate_amp_histogram(self):
         self.amp_win = LocalAmpWidget(self.total_amplitude_list)
@@ -409,10 +409,10 @@ class LocalStatsWidget(StatsWidget):
 
 
 
-class LocalIEIWidget(QWidget):
-    def __init__(self, iei_msec, parent=None):
-        super(LocalIEIWidget, self).__init__(parent)
-        self.iei_msec = iei_msec
+class LocalITIWidget(QWidget):
+    def __init__(self, iti_msec, parent=None):
+        super(LocalITIWidget, self).__init__(parent)
+        self.iti_msec = iti_msec
 
         layout_type = QHBoxLayout()
         label_type = QLabel("Select type of visualization:")
@@ -455,15 +455,15 @@ class LocalIEIWidget(QWidget):
         if self.dropdown_type.currentText() == "Histogram":
             bin_size = int(self.input_bins.text()) if self.input_bins.text() else 1000
 
-            no_of_bins = int((max(self.iei_msec) - min(self.iei_msec)) / bin_size)
+            no_of_bins = int((max(self.iti_msec) - min(self.iti_msec)) / bin_size)
 
-            self.visualization.axes.hist(self.iei_msec, no_of_bins, rwidth=0.8)
+            self.visualization.axes.hist(self.iti_msec, no_of_bins, rwidth=0.8)
 
             self.visualization.axes.set_xlabel("IEI (msec)")
             self.visualization.axes.set_ylabel("No. of Events")
         
         elif self.dropdown_type.currentText() == "CDF":
-            self.visualization.axes.ecdf(self.iei_msec)
+            self.visualization.axes.ecdf(self.iti_msec)
 
             self.visualization.axes.set_xlabel("IEI (msec)")
             self.visualization.axes.set_ylabel("Cumulative Fraction")

@@ -5,6 +5,8 @@ import os
 import numpy as np
 import pickle
 
+"""MOVE THIS FILE TO THE ROOT DIRECTORY OF THE PROJECT TO RUN"""
+
 def standard_run():
     train_sizes = [1,2,5,10,15, 20]
     repeats = 5

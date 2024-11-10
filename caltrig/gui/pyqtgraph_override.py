@@ -27,8 +27,10 @@ class GraphicsSceneOverride(GraphicsScene):
     sigMousePressAltMove = QtCore.Signal(object)
     sigMouseMoved = QtCore.Signal(object)
     sigMouseRelease = QtCore.Signal(object)
+    sigMouseReleaseAlt = QtCore.Signal(object)
     def __init__(self, *args, **kwargs):
         super(GraphicsSceneOverride, self).__init__(*args, **kwargs)
+
 
     def mouseMoveEvent(self, ev):
         super(GraphicsSceneOverride, self).mouseMoveEvent(ev)
@@ -43,6 +45,8 @@ class GraphicsSceneOverride(GraphicsScene):
         super(GraphicsSceneOverride, self).mouseReleaseEvent(ev)
         if (ev.button() == QtCore.Qt.MouseButton.LeftButton):
             self.sigMouseRelease.emit(ev)
+        elif (ev.button() == QtCore.Qt.MouseButton.RightButton):
+            self.sigMouseReleaseAlt.emit(ev)
         
 
 class PlotROI(ROI):
@@ -127,6 +131,10 @@ class ImageViewOverride(ImageView):
         self.ui = Ui_Form_Override()
         self.ui.setupUi(self)
         self.scene = self.ui.graphicsView.scene()
+        self.last_pos = [1, 1]
+
+        self.scene.sigMouseReleaseAlt.connect(self.update_last_pos)
+        
         
         self.ignorePlaying = False
         
@@ -224,6 +232,10 @@ class ImageViewOverride(ImageView):
         self.noRepeatKeys = [QtCore.Qt.Key.Key_Right, QtCore.Qt.Key.Key_Left, QtCore.Qt.Key.Key_Up, QtCore.Qt.Key.Key_Down, QtCore.Qt.Key.Key_PageUp, QtCore.Qt.Key.Key_PageDown]
         
         self.roiClicked() ## initialize roi plot to correct shape / visibility
+
+    def update_last_pos(self, ev):
+        point = self.getImageItem().mapFromScene(ev.scenePos())
+        self.last_pos = [int(point.x()), int(point.y())]
 
 class Ui_Form_Override(object):
     def setupUi(self, Form):

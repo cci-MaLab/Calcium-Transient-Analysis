@@ -11,3 +11,7 @@ backup/*
 *.csv
 src/*
 *.svg
+
+# Include the following files
+!docs/
+!docs/**
