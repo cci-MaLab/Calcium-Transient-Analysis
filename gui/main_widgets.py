@@ -283,6 +283,8 @@ class EventComponent(QWidget):
         self.window_input.setEnabled(state == 2)
         self.delay_input.setEnabled(state == 2)
 
+
+# redesign the UI
 class ClusteringToolWidget(QWidget):
     def __init__(self, main_ref, event_defaults, parent=None):
         super().__init__(parent)
