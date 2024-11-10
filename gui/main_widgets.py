@@ -246,6 +246,43 @@ class UpdateDialog(QDialog):
         
         return result
 
+class EventComponent(QWidget):
+    def __init__(self,event_name):
+        super().__init__()
+        self.create_event_component(event_name)
+
+    def create_event_component(self,event_name):
+        layout = QVBoxLayout()
+        checkbox_layout = QHBoxLayout()
+        self.checkbox = QCheckBox(event_name)
+        self.checkbox.setChecked(False)
+        checkbox_layout.addWidget(self.checkbox)
+
+        self.window_input_label = QLabel("Window:")
+        self.window_input = QLineEdit()
+        self.window_input.setEnabled(False)
+
+
+        self.delay_input_label = QLabel("Delay:")
+        self.delay_input = QLineEdit()
+        self.delay_input.setEnabled(False)
+        input_layout = QHBoxLayout()
+        input_layout.addWidget(self.window_input_label)
+        input_layout.addWidget(self.window_input)
+        input_layout.addWidget(self.delay_input_label)
+        input_layout.addWidget(self.delay_input)
+
+
+        layout.addLayout(checkbox_layout)
+        layout.addLayout(input_layout)
+
+        self.checkbox.stateChanged.connect(self.update_input_state)
+        self.setLayout(layout)
+
+    def update_input_state(self,state):
+        self.window_input.setEnabled(state == 2)
+        self.delay_input.setEnabled(state == 2)
+
 class ClusteringToolWidget(QWidget):
     def __init__(self, main_ref, event_defaults, parent=None):
         super().__init__(parent)
@@ -274,8 +311,11 @@ class ClusteringToolWidget(QWidget):
         self.button_delete.setStyleSheet("background-color : red")
         self.button_delete.clicked.connect(self.delete)
 
-
         self.event_chkboxes = []
+        self.event_component1 = EventComponent('ALP')
+        self.event_component2 = EventComponent('IALP')
+        self.event_component3 = EventComponent('RNFS')
+        self.event_component4 = EventComponent('ALP_Timeout')
         for idx,i in enumerate(self.events):
             single_chkbox = QCheckBox(i)
             single_chkbox.stateChanged.connect(lambda: hide_unhide(self.event_chkboxes[idx],self.event_param[idx]))
@@ -441,8 +481,12 @@ class ClusteringToolWidget(QWidget):
 
         self.layout_tools = QVBoxLayout()
         self.layout_tools.addWidget(self.wid_sub)
-        self.layout_tools.addLayout(layout_event_ALP)       
-        self.layout_tools.addWidget(self.btn_clustering) 
+        # self.layout_tools.addLayout(layout_event_ALP)
+        self.layout_tools.addWidget(self.event_component1)
+        self.layout_tools.addWidget(self.event_component2)
+        self.layout_tools.addWidget(self.event_component3)
+        self.layout_tools.addWidget(self.event_component4)
+        self.layout_tools.addWidget(self.btn_clustering)
 
 
         self.setLayout(self.layout_tools)
