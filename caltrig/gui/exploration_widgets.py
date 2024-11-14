@@ -2501,7 +2501,7 @@ class ExplorationWidget(QWidget):
 
                 last_i += 1
 
-        if missed_ids and not self.single_plot_mode:
+        if missed_ids and not single_plot_mode:
             for i, id in enumerate(missed_ids):
                 p = PlotItemEnhanced(id=id, cell_type="Missed")
                 p.plotLine.setPos(self.scroll_video.value())

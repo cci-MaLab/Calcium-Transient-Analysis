@@ -5,12 +5,17 @@ import dask.array as darr
 import numpy as np
 import pandas as pd
 import xarray as xr
+import zarr as zr
 from os.path import isdir, isfile
 from os.path import join as pjoin
 from os import listdir
 from typing import Callable, List, Optional, Union, Dict
 import os
-import re
+from pathlib import Path
+from uuid import uuid4
+import rechunker
+import dask as da
+from dask.delayed import optimize as default_delay_optimize
 import json
 import shutil
 from dask.diagnostics import ProgressBar
@@ -101,10 +106,128 @@ def open_minian(
         ds = post_process(ds, dpath)
     return ds
 
+def save_minian(
+    var: xr.DataArray,
+    dpath: str,
+    meta_dict: Optional[dict] = None,
+    overwrite=False,
+    chunks: Optional[dict] = None,
+    compute=True,
+    mem_limit="500MB",
+) -> xr.DataArray:
+    """
+    Taken from https://github.com/denisecailab/minian/blob/f64c456ca027200e19cf40a80f0596106918fd09/minian/utilities.py#L440.
+    The current version of minian has outdated dependencies and is not compatible with this project,
+    hence the function has been copied here.
 
-def save_xarray(
+    Save a `xr.DataArray` with `zarr` storage backend following minian
+    conventions.
+
+    This function will store arbitrary `xr.DataArray` into `dpath` with `zarr`
+    backend. A separate folder will be created under `dpath`, with folder name
+    `var.name + ".zarr"`. Optionally metadata can be retrieved from directory
+    hierarchy and added as coordinates of the `xr.DataArray`. In addition, an
+    on-disk rechunking of the result can be performed using
+    :func:`rechunker.rechunk` if `chunks` are given.
+
+    Parameters
+    ----------
+    var : xr.DataArray
+        The array to be saved.
+    dpath : str
+        The path to the minian dataset directory.
+    meta_dict : dict, optional
+        How metadata should be retrieved from directory hierarchy. The keys
+        should be negative integers representing directory level relative to
+        `dpath` (so `-1` means the immediate parent directory of `dpath`), and
+        values should be the name of dimensions represented by the corresponding
+        level of directory. The actual coordinate value of the dimensions will
+        be the directory name of corresponding level. By default `None`.
+    overwrite : bool, optional
+        Whether to overwrite the result on disk. By default `False`.
+    chunks : dict, optional
+        A dictionary specifying the desired chunk size. The chunk size should be
+        specified using :doc:`dask:array-chunks` convention, except the "auto"
+        specifiication is not supported. The rechunking operation will be
+        carried out with on-disk algorithms using :func:`rechunker.rechunk`. By
+        default `None`.
+    compute : bool, optional
+        Whether to compute `var` and save it immediately. By default `True`.
+    mem_limit : str, optional
+        The memory limit for the on-disk rechunking algorithm, passed to
+        :func:`rechunker.rechunk`. Only used if `chunks` is not `None`. By
+        default `"500MB"`.
+
+    Returns
+    -------
+    var : xr.DataArray
+        The array representation of saving result. If `compute` is `True`, then
+        the returned array will only contain delayed task of loading the on-disk
+        `zarr` arrays. Otherwise all computation leading to the input `var` will
+        be preserved in the result.
+
+    Examples
+    -------
+    The following will save the variable `var` to directory
+    `/spatial_memory/alpha/learning1/minian/important_array.zarr`, with the
+    additional coordinates: `{"session": "learning1", "animal": "alpha",
+    "experiment": "spatial_memory"}`.
+
+    >>> save_minian(
+    ...     var.rename("important_array"),
+    ...     "/spatial_memory/alpha/learning1/minian",
+    ...     {-1: "session", -2: "animal", -3: "experiment"},
+    ... ) # doctest: +SKIP
+    """
+    dpath = os.path.normpath(dpath)
+    Path(dpath).mkdir(parents=True, exist_ok=True)
+    ds = var.to_dataset()
+    if meta_dict is not None:
+        pathlist = os.path.split(os.path.abspath(dpath))[0].split(os.sep)
+        ds = ds.assign_coords(
+            **dict([(dn, pathlist[di]) for dn, di in meta_dict.items()])
+        )
+    md = {True: "a", False: "w-"}[overwrite]
+    fp = os.path.join(dpath, var.name + ".zarr")
+    if overwrite:
+        try:
+            shutil.rmtree(fp)
+        except FileNotFoundError:
+            pass
+    arr = ds.to_zarr(fp, compute=compute, mode=md)
+    if (chunks is not None) and compute:
+        chunks = {d: var.sizes[d] if v <= 0 else v for d, v in chunks.items()}
+        dst_path = os.path.join(dpath, str(uuid4()))
+        temp_path = os.path.join(dpath, str(uuid4()))
+        with da.config.set(
+            array_optimize=darr.optimization.optimize,
+            delayed_optimize=default_delay_optimize,
+        ):
+            zstore = zr.open(fp)
+            rechk = rechunker.rechunk(
+                zstore[var.name], chunks, mem_limit, dst_path, temp_store=temp_path
+            )
+            rechk.execute()
+        try:
+            shutil.rmtree(temp_path)
+        except FileNotFoundError:
+            pass
+        arr_path = os.path.join(fp, var.name)
+        for f in os.listdir(arr_path):
+            os.remove(os.path.join(arr_path, f))
+        for f in os.listdir(dst_path):
+            os.rename(os.path.join(dst_path, f), os.path.join(arr_path, f))
+        os.rmdir(dst_path)
+    if compute:
+        arr = xr.open_zarr(fp)[var.name]
+        arr.data = darr.from_zarr(os.path.join(fp, var.name), inline_array=True)
+    return arr
+
+
+def overwrite_xarray(
     varr: xr.DataArray,
     dpath: str,
+    retrieve: bool = False,
 ) -> xr.DataArray:
     """
     Save an xarray DataArray to a zarr file.
@@ -123,6 +246,9 @@ def save_xarray(
         The xarray DataArray that should be saved.
     dpath : str
         The path to the zarr file that should be saved.
+    retrieve : bool, optional
+        Whether the saved xarray DataArray should be read from the zarr file.
+        By default `False`.
 
     Returns
     -------
@@ -141,8 +267,10 @@ def save_xarray(
 
     # Rename the temp file to the original file
     os.rename(fp_temp, fp_orig)
-    
-    return arr
+    if retrieve:
+        arr = xr.open_zarr(fp_orig)[varr.name]
+        arr.data = darr.from_zarr(os.path.join(fp_orig, varr.name), inline_array=True)
+        return arr
 
 def delete_xarray(
         dpath: str,
@@ -423,7 +551,7 @@ class DataInstance:
             M = xr.concat([M_old, M], dim="missed_id")
             
 
-        self.data["M"] = save_xarray(M, self.cnmf_path, compute=True)
+        self.data["M"] = overwrite_xarray(M, self.cnmf_path, retrieve=True)
         return id
 
     def remove_missed(self, ids: List[int]):
@@ -442,7 +570,7 @@ class DataInstance:
             delete_xarray(self.cnmf_path, "M")
             self.data["M"] = None
         else:
-            self.data["M"] = save_xarray(M, self.cnmf_path, compute=True)
+            self.data["M"] = overwrite_xarray(M, self.cnmf_path, retrieve=True)
 
 
 
@@ -459,7 +587,7 @@ class DataInstance:
             group = config['Session_Info']['group']
             data_path = config['Session_Info']['data_path']
             behavior_path = config['Session_Info']['behavior_path']
-            video_path = config['Session_Info'].get('video_path', None)
+            video_path = config['Session_Info']['video_path']
             return mouseID, day, session, group, data_path, behavior_path, video_path
         else:
             print("Error! Section name should be 'Session_Info'!")
@@ -471,11 +599,7 @@ class DataInstance:
         return False, None
 
     def load_videos(self):
-        # We're setting this up as a seperate function as is takes up a lot of space and we only want to load the video info when we need to
-        if self.video_path is None:
-            data = open_minian(self.cnmf_path + "_intermediate")
-        else:
-            data = open_minian(self.video_path)
+        data = open_minian(self.video_path)
         video_types = ["Y_fm_chk", "varr", "Y_hw_chk", "behavior_video"]
         video_data = {}
         for video_type in video_types:
@@ -484,6 +608,17 @@ class DataInstance:
                 video_data[video_type] = data[data_type]
             else:
                 print("No %s data found in video folder" % (video_type))
+                if video_type == "Y_hw_chk" and "Y_fm_chk" in data:
+                    print("Creating Y_hw_chk from Y_fm_chk. This may take a while.")
+                    Y_hw_chk = save_minian(
+                        data["Y_fm_chk"].rename("Y_hw_chk"),
+                        self.video_path,
+                        overwrite=True,
+                        chunks={"frame": -1, "height": 32, "width": 32},
+                    )
+                    video_data[video_type] = Y_hw_chk
+                    
+                    
         
         self.video_data = video_data       
 
@@ -1100,13 +1235,13 @@ class DataInstance:
                 
         E.loc[dict(unit_id=unit_id)] = new_e
         # Now save the E array to disk
-        save_xarray(E, self.cnmf_path)
+        overwrite_xarray(E, self.cnmf_path)
 
     def clear_E(self, unit_id):
         E = self.data['E']
         E.load()
         E.loc[dict(unit_id=unit_id)] = 0
-        save_xarray(E, self.cnmf_path)
+        overwrite_xarray(E, self.cnmf_path)
 
     def backup_E(self):
         """
@@ -1121,7 +1256,7 @@ class DataInstance:
         current_time = time.strftime("%m_%d_%H_%M_%S", t)
 
         
-        save_xarray(E, os.path.join(self.cnmf_path, "backup", "E_" + current_time))
+        overwrite_xarray(E, os.path.join(self.cnmf_path, "backup", "E_" + current_time))
 
     def remove_from_E(self, clear_selected_events_local: Dict[int, List[int]]):
         E = self.data['E']
@@ -1130,7 +1265,7 @@ class DataInstance:
             events = E.sel(unit_id=unit_id).values
             events[x_values] = 0          
             E.loc[dict(unit_id=unit_id)] = events
-        save_xarray(E, self.cnmf_path)
+        overwrite_xarray(E, self.cnmf_path)
 
     def add_to_E(self, add_selected_events_local: Dict[int, List[int]]):
         E = self.data['E']
@@ -1139,13 +1274,13 @@ class DataInstance:
             events = E.sel(unit_id=unit_id)
             events[x_values] = 1          
             E.loc[dict(unit_id=unit_id)] = events
-        save_xarray(E, self.cnmf_path)
+        overwrite_xarray(E, self.cnmf_path)
     
     def save_E(self):
         """
         Save the E array to disk
         """
-        save_xarray(self.data['E'], self.cnmf_path)
+        overwrite_xarray(self.data['E'], self.cnmf_path)
 
     def reject_cells(self, cells: List[int]):
         """
@@ -1155,13 +1290,13 @@ class DataInstance:
         E.load()
         E['good_cells'].loc[dict(unit_id=cells)] = 0
         E['verified'].loc[dict(unit_id=cells)] = 0
-        save_xarray(self.data['E'], self.cnmf_path)
+        overwrite_xarray(self.data['E'], self.cnmf_path)
 
     def approve_cells(self, cells: List[int]):
         E = self.data['E']
         E.load()
         E['good_cells'].loc[dict(unit_id=cells)] = 1
-        save_xarray(self.data['E'], self.cnmf_path)
+        overwrite_xarray(self.data['E'], self.cnmf_path)
 
     def update_verified(self, cells: List[int], force_verified: bool = False):
         E = self.data['E']
@@ -1171,7 +1306,7 @@ class DataInstance:
                 E['verified'].loc[dict(unit_id=cell)] = 1
             else:
                 E['verified'].loc[dict(unit_id=cell)] = (E['verified'].loc[dict(unit_id=cell)].values.item() + 1) % 2
-        save_xarray(self.data['E'], self.cnmf_path)
+        overwrite_xarray(self.data['E'], self.cnmf_path)
     
     def prune_non_verified(self, cells: set):
         # Keep only verified cells in cells
@@ -1200,13 +1335,13 @@ class DataInstance:
             )
             E = E.assign_coords(good_cells=("unit_id", np.ones(len(self.data['unit_ids']))), verified=("unit_id", np.zeros(len(self.data['unit_ids']))))
             E.coords['timestamp(ms)'] = self.data['timestamp(ms)']
-            self.data['E'] = save_xarray(E, self.cnmf_path)
+            self.data['E'] = overwrite_xarray(E, self.cnmf_path)
             
 
         # For backwards compatibility check if the verified values exist and if not create them
         elif "verified" not in self.data['E'].coords:
             self.data['E'] = self.data['E'].assign_coords(verified=("unit_id", np.zeros(len(self.data['unit_ids']))))
-            save_xarray(self.data['E'], self.cnmf_path)
+            overwrite_xarray(self.data['E'], self.cnmf_path)
 
     def check_DFF(self):
         """
@@ -1227,7 +1362,7 @@ class DataInstance:
                 ),
                 name="DFF"
             ).chunk(dict(frame=-1, unit_id="auto"))
-            self.data['DFF'] = save_xarray(DFF, self.cnmf_path)
+            self.data['DFF'] = overwrite_xarray(DFF, self.cnmf_path)
 
 
     def check_essential_data(self):

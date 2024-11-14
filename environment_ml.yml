@@ -17,5 +17,6 @@ dependencies:
   - ipykernel
   - tqdm
   - mayavi
+  - rechunker
   - pip:
     - local-attention

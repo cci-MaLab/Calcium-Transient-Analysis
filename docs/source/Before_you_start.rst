@@ -89,6 +89,7 @@ The following videos are expected to likewise be in a zarr format:
 
  - `varr.zarr`: A 3D array of shape `(frame, height, width)`. This array represents the raw video data. When chunked, ensure that it is chunked along the frame axis and not the height or width.
  - `Y_fm_chk.zarr`: A 3D array of shape `(frame, height, width)`. This array represents the processed video data. When chunked, ensure that it is chunked along the frame axis and not the height or width.
+ - `Y_hw_chk.zarr`: A 3D array of shape `(frame, height, width)`. This array represents the processed video data. When chunked, ensure that it the frames are intact and it is chunked along heigh and width. It will be automatically created if it doesn't exist (However it will take a considerable amount of time).
  - (Optional) `behavior_video.zarr`: A 3D array of shape `(frame, height, width)`. This array represents the behavior video data. When chunked, ensure that it is chunked along the frame axis and not the height or width.
 
 We are aware that the recording framerate in the behavior video will most likely differ to that of the calcium imaging video.
@@ -116,6 +117,7 @@ Loading in your data will require 2 folders and a csv file:
 - `videos`: This folder should contain the following files:
     - `varr.zarr`
     - `Y_fm_chk.zarr`
+    - `Y_hw_chk.zarr` (Optional, will be created if it doesn't exist)
     - `behavior_video.zarr` (Optional, look at the `video files`_ section for more information)
 - `behavior.csv`: This file contains both millisecond time information as well as the behavior data, where 0 represents no event occurred and 1 represents that an event happened. The following indicates the column information:
     - `Frame Number`: The frame number of the video

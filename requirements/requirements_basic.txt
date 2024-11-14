@@ -10,3 +10,4 @@ zarr
 ipykernel
 tqdm
 mayavi
+rechunker
