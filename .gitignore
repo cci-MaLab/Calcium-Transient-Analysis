@@ -1,4 +1,3 @@
-!docs/
 *.pyc
 *.json
 *.pdf
@@ -10,6 +9,7 @@ backup/*
 */test_results/*
 *.pkl
 *.csv
+src/*
 *.svg
 
 # Include the following files
