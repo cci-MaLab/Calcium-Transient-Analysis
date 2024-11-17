@@ -682,7 +682,7 @@ class GAToolWidget(QWidget):
         layout_mut_rate.addWidget(self.input_mut_rate)
 
         # Event Type
-        event_list = ["ALP", "IALP", "RNFS", "ALP_Timeout"]
+        event_list = ["ALP", "ILP", "RNF", "ALP_Timeout"]
         label_event_type = QLabel("Event Type:")
         self.dropdown_event_type = QComboBox()
         self.dropdown_event_type.addItems(event_list)
