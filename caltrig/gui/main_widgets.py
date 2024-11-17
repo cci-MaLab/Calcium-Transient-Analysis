@@ -314,42 +314,23 @@ class ClusteringToolWidget(QWidget):
         self.button_delete.clicked.connect(self.delete)
 
         self.event_chkboxes = []
-        self.event_component1 = EventComponent('ALP')
-        self.event_component2 = EventComponent('IALP')
-        self.event_component3 = EventComponent('RNFS')
-        self.event_component4 = EventComponent('ALP_Timeout')
+        self.event_components = []
+        for i in self.events:
+            self.event_components.append(EventComponent(i))
+
         for idx,i in enumerate(self.events):
             single_chkbox = QCheckBox(i)
             single_chkbox.stateChanged.connect(lambda: hide_unhide(self.event_chkboxes[idx],self.event_param[idx]))
             single_chkbox.stateChanged.connect(self.release_button)
             self.event_chkboxes.append(single_chkbox)
 
-        # self.ALP_chkbox = QCheckBox("ALP")
-        # self.ALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_chkbox, self.ALP_param))
-        # self.ALP_chkbox.stateChanged.connect(self.release_button)
-        # self.IALP_chkbox = QCheckBox("IALP")
-        # self.IALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.IALP_chkbox, self.IALP_param))
-        # self.IALP_chkbox.stateChanged.connect(self.release_button)
-        # self.RNFS_chkbox = QCheckBox("RNFS")
-        # self.RNFS_chkbox.stateChanged.connect(lambda: hide_unhide(self.RNFS_chkbox, self.RNFS_param))
-        # self.RNFS_chkbox.stateChanged.connect(self.release_button)
-        # self.ALP_Timeout_chkbox = QCheckBox("ALP_Timeout")
-        # self.ALP_Timeout_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_Timeout_chkbox, self.ALP_Timeout_param))
-        # self.ALP_Timeout_chkbox.stateChanged.connect(self.release_button)
 
         self.event_param = []
         for i in self.events:
             single_param = ParamWidget(i, self.event_defaults)
             single_param.setEnabled(False)
             self.event_param.append(single_param)
-        # self.ALP_param = ParamWidget("ALP", self.event_defaults)
-        # self.ALP_param.setEnabled(False)
-        # self.IALP_param = ParamWidget("IALP", self.event_defaults)
-        # self.IALP_param.setEnabled(False)
-        # self.RNFS_param = ParamWidget("RNFS", self.event_defaults)
-        # self.RNFS_param.setEnabled(False)
-        # self.ALP_Timeout_param = ParamWidget("ALP_Timeout", self.event_defaults)
-        # self.ALP_Timeout_param.setEnabled(False)
+
 
         distance_metric_label = QLabel("Distance Metric")
         self.distance_metric_combo = QComboBox()
@@ -379,20 +360,10 @@ class ClusteringToolWidget(QWidget):
             single_layout.addWidget(self.event_chkboxes[idx])
             single_layout.addWidget(self.event_param[idx])
             event_layout.append(single_layout)
-        # ALP_layout = QVBoxLayout()
-        # IALP_layout = QVBoxLayout()
-        # RNFS_layout = QVBoxLayout()
-        # ALP_Timeout_layout = QVBoxLayout()
+
         distance_metric_layout = QVBoxLayout()
 
-        # ALP_layout.addWidget(self.ALP_chkbox)
-        # ALP_layout.addWidget(self.ALP_param)
-        # IALP_layout.addWidget(self.IALP_chkbox)
-        # IALP_layout.addWidget(self.IALP_param)
-        # RNFS_layout.addWidget(self.RNFS_chkbox)
-        # RNFS_layout.addWidget(self.RNFS_param)
-        # ALP_Timeout_layout.addWidget(self.ALP_Timeout_chkbox)
-        # ALP_Timeout_layout.addWidget(self.ALP_Timeout_param)
+
         distance_metric_layout.addWidget(distance_metric_label)
         distance_metric_layout.addWidget(self.distance_metric_combo)
 
@@ -413,10 +384,7 @@ class ClusteringToolWidget(QWidget):
         layout_sub.addWidget(self.outlier_input_label)
         for i in event_layout:
             layout_sub.addLayout(i)
-        # layout_sub.addLayout(ALP_Timeout_layout)
-        # layout_sub.addLayout(RNFS_layout)
-        # layout_sub.addLayout(IALP_layout)
-        # layout_sub.addLayout(ALP_layout)
+
         layout_sub.addWidget(self.cluster_select)
         layout_sub.addWidget(label_cluster_select)
         layout_sub.addLayout(distance_metric_layout)
@@ -457,22 +425,6 @@ class ClusteringToolWidget(QWidget):
         layout_event_input.addLayout(layout_post_bin)
         layout_event_ALP.addLayout(layout_event_input)
 
-        # # Crossover Rate
-        # label_cross_rate = QLabel("Crossover Rate:")
-        # self.input_cross_rate = QLineEdit("0.5")
-        # onlyFloat = QDoubleValidator()
-        # self.input_cross_rate.setValidator(onlyFloat)
-        # layout_cross_rate = QHBoxLayout()
-        # layout_cross_rate.addWidget(label_cross_rate)
-        # layout_cross_rate.addWidget(self.input_cross_rate)
-
-        # Mutation Rate
-        # label_mut_rate = QLabel("Mutation Rate:")
-        # self.input_mut_rate = QLineEdit("0.15")
-        # self.input_mut_rate.setValidator(onlyFloat)
-        # layout_mut_rate = QHBoxLayout()
-        # layout_mut_rate.addWidget(label_mut_rate)
-        # layout_mut_rate.addWidget(self.input_mut_rate)
 
         # Start Clustering button
         self.btn_clustering = QPushButton("Start Clustering")
@@ -483,11 +435,9 @@ class ClusteringToolWidget(QWidget):
 
         self.layout_tools = QVBoxLayout()
         self.layout_tools.addWidget(self.wid_sub)
-        # self.layout_tools.addLayout(layout_event_ALP)
-        self.layout_tools.addWidget(self.event_component1)
-        self.layout_tools.addWidget(self.event_component2)
-        self.layout_tools.addWidget(self.event_component3)
-        self.layout_tools.addWidget(self.event_component4)
+
+        for i in self.event_components:
+            self.layout_tools.addWidget(i)
         self.layout_tools.addWidget(self.btn_clustering)
 
 
