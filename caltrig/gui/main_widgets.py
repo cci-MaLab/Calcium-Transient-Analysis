@@ -645,7 +645,6 @@ class GAToolWidget(QWidget):
     def __init__(self, main_ref, parent=None):
         super().__init__(parent)
         self.value_feature_dict = {"signal":["C","S","C_filtered","DFF","E"],"AUC":["C","S","C_filtered","DFF","E"],"Frequency":["S","DFF","E"]}
-        # self.value_feature_dict = {"C":["Signal","AUC"], "S":["Signal","AUC","Frequency"], "C_filtered":["Signal","AUC"],"DFF":["Signal","AUC"]}
         # Max Generations
         self.main_ref = main_ref
         label_max_gen = QLabel("Max Generations:")
@@ -706,9 +705,7 @@ class GAToolWidget(QWidget):
         layout_value_type.addWidget(label_value_type)
         layout_value_type.addWidget(self.dropdown_value_type)
 
-
-        
-        self.dropdown_value_type.currentIndexChanged.connect(lambda: self.update_feature(self.dropdown_value_type.currentText()))
+        self.dropdown_feature_type.currentIndexChanged.connect(lambda: self.update_feature(self.dropdown_feature_type.currentText()))
 
         # Log File
         label_file_name = QLabel("Log File:")
@@ -736,8 +733,8 @@ class GAToolWidget(QWidget):
         self.setLayout(layout)
     
     def update_feature(self,key):
-        self.dropdown_feature_type.clear()
-        self.dropdown_feature_type.addItems(self.value_feature_dict[key])
+        self.dropdown_value_type.clear()
+        self.dropdown_value_type.addItems(self.value_feature_dict[key])
 
     def run_ga(self):
         print("Started GA")
