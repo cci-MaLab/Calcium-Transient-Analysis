@@ -305,10 +305,10 @@ class ExplorationWidget(QWidget):
         self.cmb_model_name = QComboBox()
         self.name_to_path = {}
         # Check if there is a model available in ./ml_training/output
-        if os.path.exists("./ml_training/output"):
-            for root, dirs, files in os.walk("./ml_training/output"):
+        if os.path.exists("./caltrig/ml_models/"):
+            for root, dirs, files in os.walk("./caltrig/ml_models/"):
                 for file in files:
-                    if file.endswith(".pth") and "val" in file:
+                    if file.endswith(".pth"):
                         model = file.split(".")[0]
                         self.cmb_model_name.addItem(model)
                         self.name_to_path[model] = (os.path.join(root, file))
@@ -1643,7 +1643,7 @@ class ExplorationWidget(QWidget):
                             else:                                
                                 input_data, _ = extract_data(self.session.data, unit_id, model.slack)
 
-                                pred = sequence_to_predictions(model, input_data, config.ROLLING, voting="min")
+                                pred = sequence_to_predictions(model, input_data, config.ROLLING, voting="max")
 
                                 pred[pred >= confidence] = 1
                                 pred[pred < confidence] = 0

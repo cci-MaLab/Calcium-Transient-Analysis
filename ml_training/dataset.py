@@ -1,7 +1,7 @@
 # import the necessary packages
 from torch.utils.data import Dataset
 import torch
-from core.backend import open_minian
+from caltrig.core.backend import open_minian
 import numpy as np
 from ml_training import config
 from torch.nn import ConstantPad2d

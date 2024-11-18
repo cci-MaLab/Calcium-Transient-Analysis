@@ -7,7 +7,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from ml_training.ml_util import sequence_to_predictions
-from core.backend import open_minian
+from caltrig.core.backend import open_minian
 import matplotlib.pyplot as plt
 import torch
 import time

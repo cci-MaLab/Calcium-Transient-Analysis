@@ -1,6 +1,6 @@
 from ml_training.train import train
 import matplotlib.pyplot as plt
-import seaborn as sns
+#import seaborn as sns
 import os
 import numpy as np
 import pickle
@@ -289,19 +289,19 @@ def train_on_all_GRU():
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     
-    repeats = 10
+    repeats = 1
     outputs = {"all": {}}
     for i in range(repeats):
         output = train(**{"PATHS": all_paths, "MODEL_TYPE": "GRU", "HIDDEN_SIZE": 30})
         outputs["all"][i] = output
     
     f1_scores = [outputs["all"][i]["f1"] for i in range(repeats)]
-    plt.clf()
-    sns.boxplot(data=f1_scores)
-    plt.ylabel("F1 Score")
-    plt.title("F1 Score by Train Size")
+    #plt.clf()
+    #sns.boxplot(data=f1_scores)
+    #plt.ylabel("F1 Score")
+    #plt.title("F1 Score by Train Size")
 
-    plt.savefig(os.path.join(save_path, "f1_scores.png"))
+    #plt.savefig(os.path.join(save_path, "f1_scores.png"))
 
     results = []
     for i in range(repeats):
@@ -516,4 +516,4 @@ def train_on_all_LocalTransformer():
         pickle.dump(test_indices, f)
 
 if __name__ == "__main__": 
-    train_on_all_LocalTransformer()
+    train_on_all_GRU()
