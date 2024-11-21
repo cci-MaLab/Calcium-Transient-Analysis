@@ -98,6 +98,14 @@ class MainWindow(QMainWindow):
         self.show()
 
     def activate_params(self, viewer: Viewer):
+        """
+        Activates the parameters of the selected viewer and deactivates the parameters of the previous viewer.
+
+        Parameters
+        ----------
+        viewer : Viewer
+            The viewer that was selected.
+        """
         if self.current_selection is None:
             self.current_selection = viewer
             self.current_selection.change_to_red()
@@ -133,6 +141,9 @@ class MainWindow(QMainWindow):
             self.update_params()
 
     def update_params(self):
+        """
+        Updates the parameters of the current selection in the GUI.
+        """
         group, session, day, mouseID = self.current_selection.return_info()
         instance = self.instances[group][mouseID][f"{session}:{day}"]
         result = self.path_list[instance.config_path]
@@ -144,6 +155,9 @@ class MainWindow(QMainWindow):
             self.cl_tools.display_default()
 
     def update_defaults(self):
+        """
+        Opens a dialog to update the default parameters of the events.
+        """
         pdg = UpdateDialog(self.event_defaults)
         if pdg.exec():
             result = pdg.get_result()
@@ -153,6 +167,15 @@ class MainWindow(QMainWindow):
         self.cl_tools.update_defaults(self.event_defaults)
 
     def start_exploration(self, current_selection=None):
+        """
+        Starts the Exploration window for the current selection.
+        If a selection is not provided, the current selection of the GUI will be used.
+
+        Parameters
+        ----------
+        current_selection : Viewer, optional
+            The current selection to be analyzed. If not provided, the current selection of the GUI will be used.
+        """
         current_selection = self.current_selection if current_selection is None else current_selection
         group, session, day, mouseID = current_selection.return_info()
         instance = self.instances[group][mouseID][f"{session}:{day}"]
@@ -169,6 +192,16 @@ class MainWindow(QMainWindow):
                 wid.show()
 
     def start_sda(self, current_selection=None):
+        """
+        Starts the Spatial Distribution Analysis window for the current selection.
+        If a selection is not provided, the current selection of the GUI will be used.
+        For now this method is deprecated and has been incorporated into the Exploration window.
+
+        Parameters
+        ----------
+        current_selection : Viewer, optional
+            The current selection to be analyzed. If not provided, the current selection of the GUI will be used.
+        """
         current_selection = self.current_selection if current_selection is None else current_selection
         group, session, day, mouseID = current_selection.return_info()
         instance = self.instances[group][mouseID][f"{session}:{day}"]
@@ -183,6 +216,14 @@ class MainWindow(QMainWindow):
                 wid.show()
 
     def start_ga(self, ga):
+        """
+        Starts the Genetic Algorithm window and the Generation Score window for the provided Genetic Algorithm object.
+
+        Parameters
+        ----------
+        ga : GeneticAlgorithm
+            The Genetic Algorithm object to be visualized.
+        """
         name = "Genetic Algorithm"
         name2 = "Score"
         window = GAGenerationScoreWindowWidget(self,ga)
@@ -197,6 +238,14 @@ class MainWindow(QMainWindow):
 
 
     def update_cluster(self, result):
+        """
+        Updates the clustering results of the current selection.
+        
+        Parameters
+        ----------
+        result : dict
+            A dictionary containing the clustering results.
+        """
         no_of_clusters = result.pop("no_of_clusters")
         outliers = result.pop("outliers")
         distance_metric = result.pop("distance_metric")
@@ -228,7 +277,16 @@ class MainWindow(QMainWindow):
             self.windows[name].refresh()
 
         
-    def start_inspection(self, current_selection=None):
+    def start_inspection(self, current_selection:Viewer=None):
+        """
+        Initialize the clustering inspection window for the current selection.
+        If a selection is not provided, the current GUI selection will be used.
+        
+        Parameters
+        ----------
+        current_selection : Viewer, optional
+            The current selection to be inspected. If not provided, the current selection of the GUI will be used.
+        """
         current_selection = self.current_selection if current_selection is None else current_selection
         group, session, day, mouseID = current_selection.return_info()
         instance = self.instances[group][mouseID][f"{session}:{day}"]
@@ -243,6 +301,10 @@ class MainWindow(QMainWindow):
             wid.show()
     
     def delete_selection(self):
+        """
+        Deletes the current selection from the application. Readjusts
+        the visualization and removes all references to the selection.
+        """
         group, session, day, mouseID = self.current_selection.return_info()
         self.instance_viz.remove_visualization(group, mouseID, session, day)
         path = self.instances[group][mouseID][f"{session}:{day}"].dpath
@@ -264,6 +326,9 @@ class MainWindow(QMainWindow):
 
 
     def load_data(self, _):
+        """
+        Loads data from a folder and creates a DataInstance object for each file in the folder.
+        """
         fname = QFileDialog.getOpenFileName(
             self,
             "Select ini File",
@@ -276,6 +341,9 @@ class MainWindow(QMainWindow):
                 print_error((str(e), fname), extra_info="Make sure the file is a valid ini file.", severity=QMessageBox.Critical)
 
     def load_clustering_params(self):
+        """
+        Loads the clustering parameters from a dialog and starts the clustering process.
+        """
         pdg = ParamDialog(self.event_defaults)
         if pdg.exec():
             result = pdg.get_result()
@@ -284,6 +352,10 @@ class MainWindow(QMainWindow):
         self.load_clustering(result)        
 
     def load_saved_state(self):
+        """
+        Loads a previously saved state of the application from a JSON file. The file contains the paths of the loaded data and the
+        default parameters for the events.
+        """
         fname = QFileDialog.getOpenFileName(
             self,
             "Open File",
@@ -308,6 +380,14 @@ class MainWindow(QMainWindow):
         
 
     def load_clustering(self, result):
+        """
+        Loads the clustering results into the current instance.
+
+        Parameters
+        ----------
+        result : dict
+            A dictionary containing the clustering results.
+        """
         self.setWindowTitle("Loading...")
 
         current_selection = self.current_selection
@@ -350,7 +430,15 @@ class MainWindow(QMainWindow):
         self.update_params()
         self.setWindowTitle("Cell Exploration Tool")
 
-    def load_instance(self, fname):
+    def load_instance(self, fname: str):
+        """
+        Loads an instance of the DataInstance class and adds it to the instances dictionary.
+
+        Parameters
+        ----------
+        fname : str
+            The path to the ini file that contains the data
+        """
         self.setWindowTitle("Loading...")
         instance = DataInstance(fname)
         self.instances_list.append(instance)
@@ -370,6 +458,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Cell Exploration Tool")
     
     def save(self):
+        """
+        Saves the current state of the application to a JSON file. The file contains the paths of the loaded data and the
+        default parameters for the events.
+        """
         default_dir = os.getcwd()
         default_filename = os.path.join(default_dir, "paths.json")
         filename, _ = QFileDialog.getSaveFileName(
@@ -385,6 +477,11 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         """
         Calls the parent closeEvent and closes all other windows.
+
+        Parameters
+        ----------
+        event : QCloseEvent
+            The event that is triggered when the window is closed.
         """
         windows_to_close = list(self.windows.values())
         for window in windows_to_close:
@@ -392,6 +489,14 @@ class MainWindow(QMainWindow):
         event.accept()
     
 def start_gui():
+    """
+    Function to initiate the PyQt5 GUI.
+
+    Example
+    -------
+    >>> from caltrig.start_gui import start_gui
+    >>> start_gui()
+    """
     app = QApplication([])
     app.setStyle('Fusion')
     window = MainWindow()
