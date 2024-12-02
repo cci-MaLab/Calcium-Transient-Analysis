@@ -1335,7 +1335,7 @@ class DataInstance:
             )
             E = E.assign_coords(good_cells=("unit_id", np.ones(len(self.data['unit_ids']))), verified=("unit_id", np.zeros(len(self.data['unit_ids']))))
             E.coords['timestamp(ms)'] = self.data['timestamp(ms)']
-            self.data['E'] = overwrite_xarray(E, self.cnmf_path)
+            self.data['E'] = overwrite_xarray(E, self.cnmf_path, retrieve=True)
             
 
         # For backwards compatibility check if the verified values exist and if not create them
@@ -1362,7 +1362,7 @@ class DataInstance:
                 ),
                 name="DFF"
             ).chunk(dict(frame=-1, unit_id="auto"))
-            self.data['DFF'] = overwrite_xarray(DFF, self.cnmf_path)
+            self.data['DFF'] = overwrite_xarray(DFF, self.cnmf_path, retrieve=True)
 
 
     def check_essential_data(self):
