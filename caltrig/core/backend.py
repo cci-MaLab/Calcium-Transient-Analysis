@@ -1474,6 +1474,53 @@ class DataInstance:
         
         unit_ids.sort()
         return unit_ids
+    
+    def merge_cells(self, cell_ids: List[List[int]]):
+        """
+        Merge the cells in the list of cell ids. By averaging both their spatial footprints and temporal activities.
+        The previous C, S, A and E arrays will be first backed up before the merge is performed.
+
+        Parameters
+        ----------
+        cell_ids : list
+            List of cell ids to merge.
+        """
+        # For each group of cells within the list, we'll take the lowest cell id as the main cell id
+        # and merge the rest of the cells into it.
+        cell_mapping = {}
+        for group in cell_ids:
+            min_id = min(group)
+            for id in group:
+                cell_mapping[id] = min_id
+
+        unit_labels = self.data['unit_ids']
+        for i in range(len(unit_labels)):
+            if unit_labels[i] in cell_mapping:
+                unit_labels[i] = cell_mapping[unit_labels[i]]
+
+        # Backup stuff here
+
+        # Merge the spatial footprints
+        A_merge = (
+            self.data["A"].assign_coords(unit_labels=("unit_id", unit_labels))
+            .groupby("unit_labels")
+            .mean("unit_id")
+            .rename(unit_labels="unit_id")
+        )
+
+        C_merge = (
+            self.data["C"].assign_coords(unit_labels=("unit_id", unit_labels))
+            .groupby("unit_labels")
+            .mean("unit_id")
+            .rename(unit_labels="unit_id")
+        )
+
+        S_merge = (
+            self.data["S"].assign_coords(unit_labels=("unit_id", unit_labels))
+            .groupby("unit_labels")
+            .mean("unit_id")
+            .rename(unit_labels="unit_id")
+        )
 
         
 
