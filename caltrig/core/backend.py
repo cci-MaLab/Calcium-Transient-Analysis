@@ -1478,7 +1478,9 @@ class DataInstance:
     def merge_cells(self, cell_ids: List[List[int]]):
         """
         Merge the cells in the list of cell ids. By averaging both their spatial footprints and temporal activities.
-        The previous C, S, A and E arrays will be first backed up before the merge is performed.
+        The previous C, S, A, YrA and E arrays will be first backed up before the merge is performed. The E array 
+        will drop the cell ids that are not in the list of cell ids to merge and it will change the verified status
+        to 0 for the merged cell id.
 
         Parameters
         ----------
