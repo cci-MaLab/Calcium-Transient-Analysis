@@ -83,7 +83,7 @@ class ExplorationWidget(QWidget):
         self.current_frame = 0
         self.imv_cell.setImage(self.current_video.sel(frame=self.current_frame).values)
         if "behavior_video" in self.session.video_data:
-            self.imv_behavior.setImage(self.session.video_data["behavior_video"].sel(frame=self.current_frame).values[0])
+            self.imv_behavior.setImage(self.session.video_data["behavior_video"].sel(frame=self.current_frame).values)
 
         # Add Context Menu Action
         self.video_to_title = {"varr": "Original", "Y_fm_chk": "Processed"}
@@ -2692,11 +2692,11 @@ class ExplorationWidget(QWidget):
                 if self.select_missed_mode:
                     image[:,:,1][self.video_missed_mask_candidate == 1] = 0
         if self.chkbox_behavior_video.isChecked():
-            _, bframes, bheight, bwidth = self.session.video_data["behavior_video"].shape
+            bframes, bheight, bwidth = self.session.video_data["behavior_video"].shape
             vframes = self.current_video.shape[0]
             bcurrent_frame = int(self.current_frame * bframes / vframes)
             self.check_preload_bimage(bcurrent_frame)
-            bimage = self.pre_bimages.sel(frame=bcurrent_frame).values[0]
+            bimage = self.pre_bimages.sel(frame=bcurrent_frame).values
         if self.chkbox_3D.isChecked():
             self.visualization_3D.set_frame(self.current_frame)
 

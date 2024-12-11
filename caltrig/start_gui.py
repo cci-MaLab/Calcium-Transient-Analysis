@@ -188,7 +188,7 @@ class MainWindow(QMainWindow):
                 wid.setWindowTitle(name)
                 self.windows[name] = wid
                 # Create a backup of E data
-                instance.backup_E()
+                instance.backup_data("E")
                 wid.show()
 
     def start_sda(self, current_selection=None):

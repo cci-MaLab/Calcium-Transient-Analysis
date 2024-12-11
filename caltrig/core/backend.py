@@ -1243,12 +1243,17 @@ class DataInstance:
         E.loc[dict(unit_id=unit_id)] = 0
         overwrite_xarray(E, self.cnmf_path)
 
-    def backup_E(self):
+    def backup_data(self, name: str):
         """
-        Backup the E array to disk
+        Backup a specified data array to the backup folder.
+
+        Parameters
+        ----------
+        name : str
+            The name of the data array to backup.
         """
-        E = self.data['E']
-        E.load()
+        data = self.data[name]
+        data.load()
         # Save to backup folder but first check if it exists
         if not os.path.exists(os.path.join(self.cnmf_path, "backup")):
             os.makedirs(os.path.join(self.cnmf_path, "backup"))
@@ -1256,7 +1261,7 @@ class DataInstance:
         current_time = time.strftime("%m_%d_%H_%M_%S", t)
 
         
-        overwrite_xarray(E, os.path.join(self.cnmf_path, "backup", "E_" + current_time))
+        overwrite_xarray(data, os.path.join(self.cnmf_path, "backup", f"{name}_" + current_time))
 
     def remove_from_E(self, clear_selected_events_local: Dict[int, List[int]]):
         E = self.data['E']
@@ -1478,7 +1483,7 @@ class DataInstance:
     def merge_cells(self, cell_ids: List[List[int]]):
         """
         Merge the cells in the list of cell ids. By averaging both their spatial footprints and temporal activities.
-        The previous C, S, A, YrA and E arrays will be first backed up before the merge is performed. The E array 
+        The previous C, S, A, YrA, DFF and E arrays will be first backed up before the merge is performed. The E array 
         will drop the cell ids that are not in the list of cell ids to merge and it will change the verified status
         to 0 for the merged cell id.
 
@@ -1493,7 +1498,8 @@ class DataInstance:
         for group in cell_ids:
             min_id = min(group)
             for id in group:
-                cell_mapping[id] = min_id
+                if id != min_id:
+                    cell_mapping[id] = min_id
 
         unit_labels = self.data['unit_ids']
         for i in range(len(unit_labels)):
@@ -1501,6 +1507,13 @@ class DataInstance:
                 unit_labels[i] = cell_mapping[unit_labels[i]]
 
         # Backup stuff here
+        self.backup_data("A")
+        self.backup_data("C")
+        self.backup_data("S")
+        self.backup_data("YrA")
+        self.backup_data("DFF")
+        self.backup_data("E")
+
 
         # Merge the spatial footprints
         A_merge = (
@@ -1523,6 +1536,37 @@ class DataInstance:
             .mean("unit_id")
             .rename(unit_labels="unit_id")
         )
+
+        YrA_merge = (
+            self.data["YrA"].assign_coords(unit_labels=("unit_id", unit_labels))
+            .groupby("unit_labels")
+            .mean("unit_id")
+            .rename(unit_labels="unit_id")
+        )
+
+        DFF_merge = (
+            self.data["DFF"].assign_coords(unit_labels=("unit_id", unit_labels))
+            .groupby("unit_labels")
+            .mean("unit_id")
+            .rename(unit_labels="unit_id")
+        )
+
+        # For E we will first go through the keys and update verified to 0 for the merged cells
+        for key in cell_mapping.keys():
+            self.data["E"]["verified"].loc[dict(unit_id=key)] = 0
+        
+        # Get the all values of cell_mapping into a list and drop them from E
+        drop_keys = list(cell_mapping.keys())
+        self.data["E"] = self.data["E"].drop_sel(unit_id=drop_keys)
+
+        # Save the new arrays
+        self.data["A"] = overwrite_xarray(A_merge, self.cnmf_path, retrieve=True)
+        self.data["C"] = overwrite_xarray(C_merge, self.cnmf_path, retrieve=True)
+        self.data["S"] = overwrite_xarray(S_merge, self.cnmf_path, retrieve=True)
+        self.data["YrA"] = overwrite_xarray(YrA_merge, self.cnmf_path, retrieve=True)
+        self.data["E"] = overwrite_xarray(self.data["E"], self.cnmf_path, retrieve=True)
+        self.data["DFF"] = overwrite_xarray(DFF_merge, self.cnmf_path, retrieve=True)
+        
 
         
 
