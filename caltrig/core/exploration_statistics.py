@@ -180,11 +180,11 @@ class GeneralStatsWidget(StatsWidget):
                 self.pd_table.at[id, "Average Rising Time (seconds)"] = str(round(average_rising_time.sel(unit_id=id).item(), 3))
 
             # 8.) Average Ca2+ transient-interval (# of frames)
-            self.pd_table.at[id, "Average Ca2+ transient-interval (# of frames)"] = session.get_mean_iti_per_cell(transient_frames, id, total_transients)
+            self.pd_table.at[id, "Average Ca2+ transient-interval (# of frames)"] = session.get_mean_iei_per_cell(transient_frames, id, total_transients)
                 
             
             # 9.) Average interval (seconds)
-            self.pd_table.at[id, "Average interval (seconds)"] = session.get_mean_iti_per_cell(transient_frames, id, total_transients, frame_rate=frames_per_second)
+            self.pd_table.at[id, "Average interval (seconds)"] = session.get_mean_iei_per_cell(transient_frames, id, total_transients, frame_rate=frames_per_second)
 
             # 10.) Std(ΔF/F)
             self.pd_table.at[id, "Std(ΔF/F)"] = round(std_dff.sel(unit_id=id).item(), 3)
@@ -328,7 +328,7 @@ class LocalStatsWidget(StatsWidget):
         # Rows will indicate the feature we are interested in and columns indicate the corresponding cell
         self.table = QTableWidget(total_transients, 10)
         self.pd_table = pd.DataFrame(index=range(1, total_transients+1), columns=["Rising-Start(frames)", "Rising-Stop(frames)", "Total # of Rising Frames",
-                                        "Rising-Start(seconds)", "Rising-Stop(seconds)", "Total # of Rising Frames (seconds)",
+                                        "Rising-Start(seconds)", "Rising-Stop(seconds)", "Duration (seconds)",
                                         "Interval with Previous Transient (frames)", "Interval with Previous Transient (seconds)",
                                         "Peak Amplitude (ΔF/F)", "Total Amplitude (ΔF/F)"])
 
@@ -378,7 +378,7 @@ class LocalStatsWidget(StatsWidget):
             self.pd_table.at[i+1, "Total # of Rising Frames"] = rising_total_frames
             self.pd_table.at[i+1, "Rising-Start(seconds)"] = round(rising_start_seconds, 3)
             self.pd_table.at[i+1, "Rising-Stop(seconds)"] = round(rising_stop_seconds, 3)
-            self.pd_table.at[i+1, "Total # of Rising Frames (seconds)"] = round(rising_total_seconds, 3)
+            self.pd_table.at[i+1, "Duration (seconds)"] = round(rising_total_seconds, 3)
             self.pd_table.at[i+1, "Interval with Previous Transient (frames)"] = interval_frames
             self.pd_table.at[i+1, "Interval with Previous Transient (seconds)"] = interval_seconds
             self.pd_table.at[i+1, "Peak Amplitude (ΔF/F)"] = round(peak_amplitude, 3)

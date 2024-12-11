@@ -100,12 +100,12 @@ class ExplorationWidget(QWidget):
                 button_video_type.setChecked(False)
             self.submenu_videos.addAction(button_video_type)
         
-        submenu_add_group = self.imv_cell.getView().menu.addMenu('&Add Group')
-        button_add_group_rect = QAction("Rectangle", submenu_add_group)
-        submenu_add_group.addAction(button_add_group_rect)
+        self.submenu_add_group = self.imv_cell.getView().menu.addMenu('&Add Group')
+        button_add_group_rect = QAction("Rectangle", self.submenu_add_group)
+        self.submenu_add_group.addAction(button_add_group_rect)
         button_add_group_rect.triggered.connect(lambda: self.highlight_roi_selection(type="rectangle"))
-        button_add_group_ellipse = QAction("Ellipse", submenu_add_group)
-        submenu_add_group.addAction(button_add_group_ellipse)
+        button_add_group_ellipse = QAction("Ellipse", self.submenu_add_group)
+        self.submenu_add_group.addAction(button_add_group_ellipse)
         button_add_group_ellipse.triggered.connect(lambda: self.highlight_roi_selection(type="ellipse"))
         
 
@@ -1915,6 +1915,16 @@ class ExplorationWidget(QWidget):
             self.visualize_signals(reset_view=False)
 
 
+    def enable_imv_menu(self):
+        for action in self.imv_cell.getView().menu.actions():
+            action.setEnabled(True)
+        self.imv_cell.getView().setMouseEnabled(x=True, y=True)
+
+    def disable_imv_menu(self):
+        for action in self.imv_cell.getView().menu.actions():
+            action.setEnabled(False)
+        self.imv_cell.getView().setMouseEnabled(x=False, y=False)
+
     def switched_tabs(self):
         '''
         This function is necessary due to the fact that the video will have different functionality on click depending
@@ -1923,8 +1933,7 @@ class ExplorationWidget(QWidget):
         if self.tabs_video.currentIndex() != 2:
             self.select_missed_mode = False
             self.btn_missed_select.setText("Enable Select Cell Mode")
-            self.imv_cell.getView().setMenuEnabled(True)
-            self.imv_cell.getView().setMouseEnabled(x=True, y=True)
+            self.enable_imv_menu()
             if self.prev_video_tab_idx == 2: # Switching between 0 and 1 should not reset the state
                 self.reset_state()
                 self.missed_cell_signals_disabled()
@@ -2053,8 +2062,7 @@ class ExplorationWidget(QWidget):
         if self.select_missed_mode:
             self.select_missed_mode = False
             self.btn_missed_select.setText("Enable Select Cell Mode")
-            self.imv_cell.getView().setMenuEnabled(True)
-            self.imv_cell.getView().setMouseEnabled(x=True, y=True)
+            self.enable_imv_menu()
             self.missed_cell_indices = set()
             self.video_missed_mask_candidate = np.zeros(self.mask.shape)
             self.current_frame -= 1
@@ -2064,8 +2072,7 @@ class ExplorationWidget(QWidget):
         else:
             self.select_missed_mode = True
             self.btn_missed_select.setText("Disable Missed Cell Mode")
-            self.imv_cell.getView().setMenuEnabled(False)
-            self.imv_cell.getView().setMouseEnabled(x=False, y=False)
+            self.disable_imv_menu()
             self.video_missed_mask_candidate = np.zeros(self.mask.shape)
             self.missed_cell_signals_enabled()
             self.w_missed_utility.show()
