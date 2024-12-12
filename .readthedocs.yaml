@@ -4,14 +4,13 @@ build:
   os: "ubuntu-20.04"
   tools:
     python: "3.10"
+  commands:
+   - pip install wheel==0.45.1
 
 python:
   install: 
     - requirements: docs/requirements.txt
     - requirements: requirements/requirements_basic.txt
-
-  pre_install:
-    - pip install wheel==0.45.1
 
 sphinx:
   configuration: docs/source/conf.py
