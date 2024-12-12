@@ -5,8 +5,6 @@ xarray==2023.12.0
 scikit-learn==1.3.2
 scikit-image==0.22.0
 matplotlib==3.8.4
-numpy==1.26.1
-vtk==9.3.0
 configobj
 zarr
 ipykernel
