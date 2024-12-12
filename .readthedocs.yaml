@@ -10,5 +10,8 @@ python:
     - requirements: docs/requirements.txt
     - requirements: requirements/requirements_basic.txt
 
+  pre_install:
+    - pip install wheel==0.45.1
+
 sphinx:
   configuration: docs/source/conf.py
