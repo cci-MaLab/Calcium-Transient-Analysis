@@ -171,6 +171,7 @@ class ExplorationWidget(QWidget):
 
         # Select Cells
         w_cell_label = QLabel("Pick which cells to focus (Hold ctrl/shift for multi):")
+        self.cell_count_label = QLabel(f"Total/Verified: ")
         self.list_cell = QListWidget()
         self.list_cell.setMaximumHeight(600)
         self.list_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -608,6 +609,7 @@ class ExplorationWidget(QWidget):
 
         layout_cells = QVBoxLayout()
         layout_cells.addWidget(w_cell_label)
+        layout_cells.addWidget(self.cell_count_label)
         layout_cells.addWidget(self.list_cell)
         layout_cells.addLayout(layout_focus_buttons)
         layout_cells.addWidget(self.btn_cell_reset)
@@ -2722,6 +2724,7 @@ class ExplorationWidget(QWidget):
         cell_ids_to_groups = self.session.cell_ids_to_groups
         good_bad_cells = self.session.data['E']['good_cells'].values
         reject_size = 0
+        approved_size = 0
         for i, cell_id in enumerate(self.session.data['E']['unit_id'].values):
             if good_bad_cells[i]:
                 if cell_id in cell_ids_to_groups:
@@ -2730,9 +2733,12 @@ class ExplorationWidget(QWidget):
                     self.list_cell.addItem(str(cell_id))
                 if self.session.data['E']['verified'].loc[{'unit_id': cell_id}].values.item():
                     self.list_cell.item(i-reject_size).setBackground(Qt.green)
+                    approved_size += 1
             else:
                 self.list_rejected_cell.addItem(str(cell_id))
                 reject_size += 1
+
+        self.cell_count_label.setText(f"Total - {self.list_cell.count()}, Verified - {approved_size}")
 
     def extract_id(self, item):
         if "G" in item.text():
