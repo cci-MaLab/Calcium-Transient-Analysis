@@ -1884,7 +1884,7 @@ class ExplorationWidget(QWidget):
 
     def keyReleaseEvent(self, event):
         
-        action_view = {Qt.Key_A: "start", Qt.Key_F: "end", Qt.Key_D: "next", Qt.Key_S: "prev"}.get(event.key(), None)
+        action_view = {Qt.Key_A: "start", Qt.Key_F: "end", Qt.Key_D: "next", Qt.Key_S: "prev", Qt.Key_U: "update"}.get(event.key(), None)
         action_trace = {Qt.Key_W: "toggle_dff"}.get(event.key(), None)
 
         if self.w_signals and action_view is not None:
@@ -1911,6 +1911,8 @@ class ExplorationWidget(QWidget):
                                 item.getViewBox().setXRange(0, window, padding=0)
                             else:
                                 item.getViewBox().setXRange(xs[0] - jump, xs[1] - jump, padding=0)
+                        elif action_view == "update":
+                            self.update_plot_view()
                 i += 1
         if self.w_signals and action_trace == "toggle_dff":
             self.chkbox_plot_options_dff.setChecked(not self.chkbox_plot_options_dff.isChecked())
