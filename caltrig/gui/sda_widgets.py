@@ -1,10 +1,5 @@
 # Spatial distribution analysis
 
-from traits.api import HasTraits, Instance, on_trait_change
-from traitsui.api import View, Item
-from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
-from mayavi import mlab
-from tvtk.api import tvtk
 from PyQt5.QtWidgets import  QWidget, QVBoxLayout, QPushButton
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QMessageBox
@@ -14,46 +9,10 @@ import xarray as xr
 from .pop_up_messages import print_error
 from matplotlib import cm
 from typing import List
+from pyvistaqt import QtInteractor
+import pyvista as pv
 
-class SDAWindowWidget(QWidget):
-    def __init__(self, session, name, main_window_ref, parent=None):
-        super().__init__() 
-        self.session = session
-        self.name = name
-        self.main_window_ref = main_window_ref
-
-        self.layout = QVBoxLayout()
-        self.setLayout(self.layout)
-
-        C = session.data["C"].sel(frame=slice(0,1999)).values
-        A = session.data["A"].values
-        A_flat = A.sum(axis=0)
-
-        # Only use subset of A where values are positive, trim out 0 areas around the edges
-        x_axis_sum = np.sum(A_flat, axis=0)
-        y_axis_sum = np.sum(A_flat, axis=1)
-        # Find first and last non-zero index
-        x_axis_indices = np.where(x_axis_sum > 0)[0]
-        y_axis_indices = np.where(y_axis_sum > 0)[0]
-        x_start, x_end = x_axis_indices[0], x_axis_indices[-1]
-        y_start, y_end = y_axis_indices[0], y_axis_indices[-1]
-        A = A[:, y_start:y_end, x_start:x_end]
-
-        Y = np.tensordot(C, A, axes=([0], [0]))
-
-        self.mayavi_widget = MayaviQWidget(Y)
-        self.mayavi_widget.setObjectName("3D Cell Overview")
-
-        # Add a simple button to start the animation
-        self.button = QPushButton("Start/Stop Animation")
-        self.button.clicked.connect(self.mayavi_widget.start_stop_animation)
-
-        # Add a panel to the side for different options and utilities
-
-        self.layout.addWidget(self.mayavi_widget)
-        self.layout.addWidget(self.button)
-
-
+"""
 class Visualization(HasTraits):
     # Signal to indicate scene has been activated
     scene = Instance(MlabSceneModel, ())
@@ -139,7 +98,7 @@ class Visualization(HasTraits):
         self.update_points(data_dict["points_coords"])
 
     def picker_callback(self, picker):
-        """ Picker callback: this get called when on pick events.
+         Picker callback: this get called when on pick events.
         This method is a bit of a disaster but I will justify the approach.
         I needed to use points for the visualization as I wanted to make the rendering as fast as possible.
         Unfortunately to select a given point you need pixel perfect precision, way more than what I would
@@ -147,7 +106,7 @@ class Visualization(HasTraits):
         to extrapolate the necessary x and y positions. This will be sent to the main GUI to cross, check whether
         the selected point overlaps with a cell position. If so then it will be highlighted and the color of
         the point will be updated.
-        """
+        
         x, y = -1, -1
         if picker.actor in self.plot.actor.actors:
             # The point ID gives us the index of the point picked. It start from the bottom left corner and goes right and then up.
@@ -163,6 +122,8 @@ class Visualization(HasTraits):
             # And now transpose the x and y values
             x, y = y, x
             self.parent.receive_click(x, y)
+
+"""
 
 
 
@@ -352,7 +313,26 @@ def calculate_windowed_data(session, precalculated_values, data_type, window_siz
 
 
                 
+class PyVistaWidget(QtInteractor):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.init_plot()
 
+    def init_plot(self):
+        # Generate a sample 3D grid of random values
+        self.grid_values = np.random.rand(300, 600, 600) * 10
+
+        x, y = np.meshgrid(np.arange(600), np.arange(600))
+        self.grid = pv.StructuredGrid(x, y, self.grid_values[0])
+
+
+        # Add the smoothed grid to the PyVista plot
+        self.add_mesh(self.grid, cmap="viridis", lighting='flat')
+    
+    def set_frame(self, frame):
+        frame %= 300
+        self.grid.points[:,2] = self.grid_values[frame].ravel(order='F')
+        self.render()
 
 
 
@@ -366,7 +346,7 @@ class MayaviQWidget(QWidget):
         self.scaling_factor = 10
         self.visualization_data = visualization_data * self.scaling_factor
         self.anim = None
-        self.visualization = Visualization(self.visualization_data, self)
+        #self.visualization = Visualization(self.visualization_data, self)
         self.visualization_generator = visualization_generator
         layout = QVBoxLayout(self)
         self.ui = self.visualization.edit_traits(parent=self,

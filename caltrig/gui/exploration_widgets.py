@@ -19,11 +19,10 @@ from skimage.measure import find_contours
 from ..core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget, MetricsWidget)
 from .pyqtgraph_override import ImageViewOverride
 from .cofiring_2d_widgets import Cofiring2DWidget
-from .sda_widgets import (MayaviQWidget, base_visualization)
+from .sda_widgets import (base_visualization, PyVistaWidget)
 import os
 import matplotlib.pyplot as plt
 import pickle
-from mayavi.core.lut_manager import lut_mode_list
 
 
 try:
@@ -65,9 +64,9 @@ class ExplorationWidget(QWidget):
         self.imv_cell = ImageViewOverride()
         self.imv_behavior = ImageViewOverride()
         self.imv_behavior.setVisible(False)
-        self.visualization_3D = MayaviQWidget(self.session)
+        self.visualization_3D = PyVistaWidget()
         self.visualization_3D.setVisible(False)
-        self.visualization_3D.point_signal.connect(self.point_selection)
+        #self.visualization_3D.point_signal.connect(self.point_selection)
 
 
         self.session.load_videos()
@@ -739,10 +738,10 @@ class ExplorationWidget(QWidget):
         layout_colormap = QHBoxLayout()
         layout_colormap.addWidget(QLabel("Colormap:"))
         dropdown_3D_colormap = QComboBox()
-        dropdown_3D_colormap.addItems(lut_mode_list())
+        #dropdown_3D_colormap.addItems(lut_mode_list())
         # Set index to whatever hot is
-        dropdown_3D_colormap.setCurrentIndex(lut_mode_list().index("hot"))
-        dropdown_3D_colormap.currentIndexChanged.connect(lambda: self.visualization_3D.change_colormap(dropdown_3D_colormap.currentText()))
+        #dropdown_3D_colormap.setCurrentIndex(lut_mode_list().index("hot"))
+        #dropdown_3D_colormap.currentIndexChanged.connect(lambda: self.visualization_3D.change_colormap(dropdown_3D_colormap.currentText()))
         layout_colormap.addWidget(dropdown_3D_colormap)
 
 
@@ -2710,6 +2709,7 @@ class ExplorationWidget(QWidget):
             bimage = self.pre_bimages.sel(frame=bcurrent_frame).values
         if self.chkbox_3D.isChecked():
             self.visualization_3D.set_frame(self.current_frame)
+            pass
 
         return image, bimage
     
