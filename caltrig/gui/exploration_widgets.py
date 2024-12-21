@@ -23,6 +23,8 @@ from .sda_widgets import (base_visualization, PyVistaWidget)
 import os
 import matplotlib.pyplot as plt
 import pickle
+from concurrent.futures import ProcessPoolExecutor
+import time
 
 
 try:
@@ -57,17 +59,14 @@ class ExplorationWidget(QWidget):
         self.windows = {}
         self.single_plot_options = {"enabled": False, "inter_distance": 0, "intra_distance": 0}
 
-
+        # Initialize executor to load next chunks in the background
+        self.executor = ProcessPoolExecutor(max_workers=4)
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
         self.imv_cell = ImageViewOverride()
         self.imv_behavior = ImageViewOverride()
         self.imv_behavior.setVisible(False)
-        self.visualization_3D = PyVistaWidget()
-        self.visualization_3D.setVisible(False)
-        #self.visualization_3D.point_signal.connect(self.point_selection)
-
 
         self.session.load_videos()
         if not self.session.video_data:
@@ -83,6 +82,10 @@ class ExplorationWidget(QWidget):
         self.imv_cell.setImage(self.current_video.sel(frame=self.current_frame).values)
         if "behavior_video" in self.session.video_data:
             self.imv_behavior.setImage(self.session.video_data["behavior_video"].sel(frame=self.current_frame).values)
+
+        self.visualization_3D = PyVistaWidget(self.session)
+        self.visualization_3D.setVisible(False)
+        #self.visualization_3D.point_signal.connect(self.point_selection)
 
         # Add Context Menu Action
         self.video_to_title = {"varr": "Original", "Y_fm_chk": "Processed"}
@@ -2647,35 +2650,98 @@ class ExplorationWidget(QWidget):
         if bimage is not None:
             self.imv_behavior.setImage(bimage, autoRange=False, autoLevels=False)
 
+
+    def create_next_chunk_image(self, video, start, end):
+        # Submit the task to the pool and return a future
+        return self.executor.submit(load_next, video, start, end)
+
     def check_preload_image(self):
-        chunk_length = self.current_video.chunks[0][0] * 10
+        chunk_length = self.current_video.chunks[0][0]
+
         if self.pre_images is None:
             # Check which chunk the current frame is in
             chunk_idx = self.current_frame // chunk_length
-            self.pre_images = self.current_video.sel(frame=slice(chunk_idx*chunk_length, (chunk_idx+1)*chunk_length)).load()
-
+            self.pre_images = self.current_video.sel(
+                frame=slice(chunk_idx * chunk_length, (chunk_idx + 1) * chunk_length)
+            ).load()
+            self.next_images_future = self.create_next_chunk_image(
+                self.current_video, (chunk_idx + 1) * chunk_length, (chunk_idx + 2) * chunk_length
+            )
         else:
             frames = self.pre_images.coords["frame"].values
+
             if frames[0] <= self.current_frame <= frames[-1]:
                 return
-            else:
+
+            elif frames[0] + chunk_length <= self.current_frame <= frames[-1] + chunk_length:
                 chunk_idx = self.current_frame // chunk_length
-                self.pre_images = self.current_video.sel(frame=slice(chunk_idx*chunk_length, (chunk_idx+1)*chunk_length)).load()
+
+                # Check if the future is ready
+                while not self.next_images_future.done():
+                    time.sleep(0.01)
+
+                self.pre_images = self.next_images_future.result()
+
+                # Start loading the next chunk in the background
+                self.next_images_future = self.create_next_chunk_image(
+                    self.current_video, (chunk_idx + 1) * chunk_length, (chunk_idx + 2) * chunk_length
+                )
+            else:
+                # Load the current and next chunks synchronously if the jump is large
+                chunk_idx = self.current_frame // chunk_length
+                self.pre_images = self.current_video.sel(
+                    frame=slice(chunk_idx * chunk_length, (chunk_idx + 1) * chunk_length)
+                ).load()
+                self.next_images_future = self.create_next_chunk_image(
+                    self.current_video, (chunk_idx + 1) * chunk_length, (chunk_idx + 2) * chunk_length
+                )
 
     def check_preload_bimage(self, current_frame):
         chunk_length = self.session.video_data["behavior_video"].chunks[0][0]
+
         if self.pre_bimages is None:
             # Check which chunk the current frame is in
             chunk_idx = current_frame // chunk_length
-            self.pre_bimages = self.session.video_data["behavior_video"].sel(frame=slice(chunk_idx*chunk_length, (chunk_idx+1)*chunk_length)).load()
-        
+            self.pre_bimages = self.session.video_data["behavior_video"].sel(
+                frame=slice(chunk_idx * chunk_length, (chunk_idx + 1) * chunk_length)
+            ).load()
+            self.next_bimages_future = self.create_next_chunk_image(
+                self.session.video_data["behavior_video"], 
+                (chunk_idx + 1) * chunk_length, 
+                (chunk_idx + 2) * chunk_length
+            )
         else:
             frames = self.pre_bimages.coords["frame"].values
+
             if frames[0] <= current_frame <= frames[-1]:
                 return
-            else:
+
+            elif frames[0] + chunk_length <= current_frame <= frames[-1] + chunk_length:
                 chunk_idx = current_frame // chunk_length
-                self.pre_bimages = self.session.video_data["behavior_video"].sel(frame=slice(chunk_idx*chunk_length, (chunk_idx+1)*chunk_length)).load()
+
+                # Check if the future is ready
+                while not self.next_bimages_future.done():
+                    time.sleep(0.01)
+
+                self.pre_bimages = self.next_bimages_future.result()
+
+                # Start loading the next chunk in the background
+                self.next_bimages_future = self.create_next_chunk_image(
+                    self.session.video_data["behavior_video"], 
+                    (chunk_idx + 1) * chunk_length, 
+                    (chunk_idx + 2) * chunk_length
+                )
+            else:
+                # Load the current and next chunks synchronously if the jump is large
+                chunk_idx = current_frame // chunk_length
+                self.pre_bimages = self.session.video_data["behavior_video"].sel(
+                    frame=slice(chunk_idx * chunk_length, (chunk_idx + 1) * chunk_length)
+                ).load()
+                self.next_bimages_future = self.create_next_chunk_image(
+                    self.session.video_data["behavior_video"], 
+                    (chunk_idx + 1) * chunk_length, 
+                    (chunk_idx + 2) * chunk_length
+                )
 
 
         
@@ -2709,7 +2775,7 @@ class ExplorationWidget(QWidget):
             bimage = self.pre_bimages.sel(frame=bcurrent_frame).values
         if self.chkbox_3D.isChecked():
             self.visualization_3D.set_frame(self.current_frame)
-            pass
+
 
         return image, bimage
     
@@ -3203,3 +3269,8 @@ class PlotCurveItemEnhanced(PlotCurveItem):
             else:
                 self.setPen('r')
                 self.main_plot.remove_selection(self)
+
+def load_next(video, start, end):
+    """Load the next chunk and store the result in a shared dictionary."""
+    return video.sel(frame=slice(start, end)).load()
+    
