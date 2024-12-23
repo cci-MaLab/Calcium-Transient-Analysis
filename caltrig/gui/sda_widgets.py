@@ -11,6 +11,10 @@ from matplotlib import cm
 from typing import List
 from pyvistaqt import QtInteractor
 import pyvista as pv
+from concurrent.futures import ProcessPoolExecutor
+from ..core.backend import DataInstance
+import time
+import pickle
 
 """
 class Visualization(HasTraits):
@@ -185,9 +189,27 @@ class CurrentVisualizationData():
 
     __rmul__ = __mul__
 
-def base_visualization(session, precalculated_values=None, smoothing_size=1, window_size=1, data_type="C", start_frame=0, end_frame=200,
-                       cells_to_visualize="All Cells", smoothing_type="mean", cumulative=False, average=False, normalize=False, **kwargs):
+
+
+def base_visualization(serialized_data, start_frame=0, end_frame=50):
+    unserialized_data = pickle.loads(serialized_data)
     
+    # Extract the necessary data
+    session = unserialized_data.get("session")
+    precalculated_values = unserialized_data.get("precalculated_values", None)
+    data_type = unserialized_data.get("data_type", "C")
+    window_size = unserialized_data.get("window_size", 1)
+    cells_to_visualize = unserialized_data.get("cells_to_visualize", "All Cells")
+    smoothing_size = unserialized_data.get("smoothing_size", 1)
+    smoothing_type = unserialized_data.get("smoothing_type", "mean")
+    cumulative = unserialized_data.get("cumulative", False)
+    average = unserialized_data.get("average", False)
+    normalize = unserialized_data.get("normalize", False)
+    kwargs = unserialized_data.get("kwargs", {})
+
+
+    print("Starting Timer")
+    start_time = time.time()
     ids = session.get_cell_ids(cells_to_visualize)
     if window_size != 1:
         # We'll first check if the visualization data exists within precalculated, otherwise we'll calculate it
@@ -240,6 +262,7 @@ def base_visualization(session, precalculated_values=None, smoothing_size=1, win
     # Include only the ones that rea in ids
     centroids = {id: centroids[id] for id in ids}
     CV.update_points_list(centroids)
+    print(f"Time taken for func: {time.time() - start_time}")
 
     return CV
 
@@ -319,7 +342,7 @@ def calculate_windowed_data(session, precalculated_values, data_type, window_siz
 
                 
 class PyVistaWidget(QtInteractor):
-    def __init__(self, session, chunk_length=50, chunk_size=200, visualization_data=CurrentVisualizationData(np.random.rand(1, 608, 608), 1, 0, 0, 0, 608, 0, 608), visualization_generator=base_visualization, parent=None):
+    def __init__(self, session: DataInstance, executor: ProcessPoolExecutor, chunk_size=50, visualization_generator=base_visualization, parent=None):
         super().__init__(parent)
         """
         Main widget for the PyVista for 3D visualization of any specified typed of data.
@@ -328,36 +351,40 @@ class PyVistaWidget(QtInteractor):
         ----------
         session : DataInstance
             The session object that contains all the relevant session data from the parent class.
+        executor : ProcessPoolExecutor
+            The executor to use to setup separate processes for loading the next chunk of data.
         chunk_length : int, optional
             The nearest multiple of frames to chunk the data into, by default 50. This to compensate for 
             the user potentially jumping to a random frame and for clarity we would like to start chunking
             at the nearest multiple of specified chunk_length.
         chunk_size : int, optional
-            The size of the chunk to visualize, by default 200. We lazy load 200 frames at a time and only load
+            The size of the chunk to visualize, by default 50. We load 50 frames at a time and pre-load
             the next chunk when the user has reached the end of the current chunk. This is too avoid slow downs
             due to lazy loading of the data from disk.
-        visualization_data : CurrentVisualizationData, optional
-            The data to visualize, by default CurrentVisualizationData(np.random.rand(1, 608, 608), 1, 0, 0, 0, 608, 0, 608)
         visualization_generator : function, optional
             The function to generate the visualization data, by default base_visualization.
         parent : QWidget, optional
             The parent widget, by default None.
         """
-        self.chunk_length = chunk_length
         self.chunk_size = chunk_size
+        self.executor = executor
         self.session = session
         self.scaling_factor = 10
-        self.visualization_data = visualization_data * self.scaling_factor
+        self.precalculated_values = self._precalculate()
+        # We need to serialize the data so we can speed up the process of submit a process to the executor
+        self.serialized_data = pickle.dumps({"session": session, "precalculated_values": None, "smoothing_size": 1, "window_size": 1, "data_type": "C",
+                                            "cells_to_visualize": "All Cells", "smoothing_type": "mean", "cumulative": False, "average": False, 
+                                            "normalize": False, "kwargs": {}})
+        
         self.visualization_generator = visualization_generator
+        self.visualization_data = visualization_generator(self.serialized_data, start_frame=0, end_frame=50) * self.scaling_factor
+        self.visualization_data_buffered = self.chunk_load(self.serialized_data, start_frame=50, end_frame=100)
 
         self.current_frame = 0
         self.kwargs_func = {}
 
         # We need to keep track the cell id to index position
         self.cell_id_to_index = {cell_id: i for i, cell_id in enumerate(session.centroids_max.keys())}
-
-        # We need to precalculate some data related to E to not cause slow down during visualization
-        self.precalculated_values = self._precalculate()
 
         # All parameters for the visualization itself
         self.axes = None
@@ -375,6 +402,8 @@ class PyVistaWidget(QtInteractor):
         self.grid = pv.StructuredGrid(x, y, grid_values)
         self.grid["scalars"] = grid_values.ravel(order='F')
         self.add_mesh(self.grid, cmap="viridis", lighting='flat')
+
+        self.timer = time.time()
 
 
     def _precalculate(self):
@@ -511,12 +540,15 @@ class PyVistaWidget(QtInteractor):
     def set_data(self, visualization_data):
         self.visualization_data = visualization_data * self.scaling_factor
         self.reset_grid()
-        self.cell_id_to_index = self.visualization_data.cell_id_to_index # This gets updated in the update_data method
+        self.cell_id_to_index = self.visualization_data.cell_id_to_index
+    
+    def chunk_load(self, serialized_data, start_frame, end_frame):
+        return self.executor.submit(self.visualization_generator, serialized_data, start_frame=start_frame, end_frame=end_frame)
 
     def reset_grid(self):
         shape = self.visualization_data.get_shape()
         x, y = np.meshgrid(np.arange(shape["x"]), np.arange(shape["y"]))
-        grid_values = self.visualization_data.get_3d_data(0)["frame"]
+        grid_values = self.visualization_data.get_3d_data()["frame"]
         self.clear()
         self.grid = pv.StructuredGrid(x, y, grid_values)
         self.grid.points[:,2] = grid_values.ravel(order='F')
@@ -525,11 +557,7 @@ class PyVistaWidget(QtInteractor):
         self.render()
     
     def set_frame(self, frame=0):
-        if not self.visualization_data.in_range(frame):
-            # We are out of range and we need to update the data, first we need to find the nearest chunk, which is a multiple of chunk_length
-            chunk_start = frame - frame % self.chunk_length
-            self.set_data(self.visualization_generator(self.session, precalculated_values=self.precalculated_values, start_frame=chunk_start, end_frame=chunk_start+self.chunk_size, **self.kwargs_func))
-        
+        self.check_frame(frame)       
         # Now we can set the frame
         frame_3d_data = self.visualization_data.get_3d_data(frame)
         frame_scalars = frame_3d_data["frame"].ravel(order='F')
@@ -538,6 +566,45 @@ class PyVistaWidget(QtInteractor):
         self.render()
 
         self.current_frame = frame
+
+    def check_frame(self, frame):
+        """
+        We are checking whether the frame is within the current or the next chunk:
+         - If is within the current chunk we do nothing.
+         - If it is within the next chunk we swap the current chunk with the next chunk and update the next chunk.
+         - If it is outside of the next chunk we update both current and next chunk.
+
+        Parameters:
+        frame : int
+            The frame to check.
+        """
+        print(f"time taken: {time.time() - self.timer}")
+        self.timer = time.time()
+        if not self.visualization_data.in_range(frame):
+            chunk_start = frame - frame % self.chunk_size
+            next_chunk_start = chunk_start + self.chunk_size
+            if self.visualization_data_buffered is None: # The next chunk wasn't instantiated. Update both
+                self.visualization_data = self.visualization_generator(self.serialized_data, start_frame=chunk_start, end_frame=next_chunk_start) * self.scaling_factor
+                self.visualization_data_buffered = self.chunk_load(self.serialized_data, next_chunk_start, next_chunk_start+self.chunk_size)
+            else:
+                while not self.visualization_data_buffered.done():
+                    time.sleep(0.01)
+                # Time the following code
+                self.visualization_data_buffered = self.visualization_data_buffered.result() * self.scaling_factor
+                if not self.visualization_data_buffered.in_range(frame): # Not in range of the next chunk, we need to update both
+                    self.visualization_data = self.visualization_generator(self.serialized_data, start_frame=chunk_start, end_frame=next_chunk_start) * self.scaling_factor
+                    self.visualization_data_buffered = self.chunk_load(self.serialized_data, next_chunk_start, next_chunk_start+self.chunk_size)
+                else: # In range of the next chunk, we need to swap the current chunk with the next chunk and update the next chunk
+                    # Swap
+                    print("Swapping")
+                    self.visualization_data = self.visualization_data_buffered
+                    self.visualization_data_buffered = self.chunk_load(self.serialized_data, next_chunk_start, next_chunk_start+self.chunk_size)
+                    print("After Swapping")
+
+                    
+
+            
+
 
 
 

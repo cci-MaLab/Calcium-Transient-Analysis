@@ -83,7 +83,7 @@ class ExplorationWidget(QWidget):
         if "behavior_video" in self.session.video_data:
             self.imv_behavior.setImage(self.session.video_data["behavior_video"].sel(frame=self.current_frame).values)
 
-        self.visualization_3D = PyVistaWidget(self.session)
+        self.visualization_3D = PyVistaWidget(self.session, self.executor)
         self.visualization_3D.setVisible(False)
         #self.visualization_3D.point_signal.connect(self.point_selection)
 
