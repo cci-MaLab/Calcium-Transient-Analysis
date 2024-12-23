@@ -208,7 +208,6 @@ def base_visualization(serialized_data, start_frame=0, end_frame=50):
     kwargs = unserialized_data.get("kwargs", {})
 
 
-    print("Starting Timer")
     start_time = time.time()
     ids = session.get_cell_ids(cells_to_visualize)
     if window_size != 1:
@@ -262,7 +261,6 @@ def base_visualization(serialized_data, start_frame=0, end_frame=50):
     # Include only the ones that rea in ids
     centroids = {id: centroids[id] for id in ids}
     CV.update_points_list(centroids)
-    print(f"Time taken for func: {time.time() - start_time}")
 
     return CV
 
@@ -402,8 +400,6 @@ class PyVistaWidget(QtInteractor):
         self.grid = pv.StructuredGrid(x, y, grid_values)
         self.grid["scalars"] = grid_values.ravel(order='F')
         self.add_mesh(self.grid, cmap="viridis", lighting='flat')
-
-        self.timer = time.time()
 
 
     def _precalculate(self):
@@ -578,8 +574,6 @@ class PyVistaWidget(QtInteractor):
         frame : int
             The frame to check.
         """
-        print(f"time taken: {time.time() - self.timer}")
-        self.timer = time.time()
         if not self.visualization_data.in_range(frame):
             chunk_start = frame - frame % self.chunk_size
             next_chunk_start = chunk_start + self.chunk_size
@@ -595,11 +589,8 @@ class PyVistaWidget(QtInteractor):
                     self.visualization_data = self.visualization_generator(self.serialized_data, start_frame=chunk_start, end_frame=next_chunk_start) * self.scaling_factor
                     self.visualization_data_buffered = self.chunk_load(self.serialized_data, next_chunk_start, next_chunk_start+self.chunk_size)
                 else: # In range of the next chunk, we need to swap the current chunk with the next chunk and update the next chunk
-                    # Swap
-                    print("Swapping")
                     self.visualization_data = self.visualization_data_buffered
                     self.visualization_data_buffered = self.chunk_load(self.serialized_data, next_chunk_start, next_chunk_start+self.chunk_size)
-                    print("After Swapping")
 
                     
 

@@ -73,6 +73,7 @@ class ExplorationWidget(QWidget):
             print("Missing Videos")
             return None
         self.current_video = self.session.video_data["varr"]
+        self.current_video_serialized = pickle.dumps(self.current_video)
         self.video_length = self.current_video.shape[0]
         self.mask = np.ones((self.current_video.shape[1], self.current_video.shape[2]))
         # We need two seperate masks here. One for the missed cells we confirmed and one for drawing a new missed cell
@@ -2651,9 +2652,9 @@ class ExplorationWidget(QWidget):
             self.imv_behavior.setImage(bimage, autoRange=False, autoLevels=False)
 
 
-    def create_next_chunk_image(self, video, start, end):
+    def create_next_chunk_image(self, current_video_serialized, start, end):
         # Submit the task to the pool and return a future
-        return self.executor.submit(load_next, video, start, end)
+        return self.executor.submit(load_next, current_video_serialized, start, end)
 
     def check_preload_image(self):
         chunk_length = self.current_video.chunks[0][0]
@@ -2665,7 +2666,7 @@ class ExplorationWidget(QWidget):
                 frame=slice(chunk_idx * chunk_length, (chunk_idx + 1) * chunk_length)
             ).load()
             self.next_images_future = self.create_next_chunk_image(
-                self.current_video, (chunk_idx + 1) * chunk_length, (chunk_idx + 2) * chunk_length
+                self.current_video_serialized, (chunk_idx + 1) * chunk_length, (chunk_idx + 2) * chunk_length
             )
         else:
             frames = self.pre_images.coords["frame"].values
@@ -2684,7 +2685,7 @@ class ExplorationWidget(QWidget):
 
                 # Start loading the next chunk in the background
                 self.next_images_future = self.create_next_chunk_image(
-                    self.current_video, (chunk_idx + 1) * chunk_length, (chunk_idx + 2) * chunk_length
+                    self.current_video_serialized, (chunk_idx + 1) * chunk_length, (chunk_idx + 2) * chunk_length
                 )
             else:
                 # Load the current and next chunks synchronously if the jump is large
@@ -2693,7 +2694,7 @@ class ExplorationWidget(QWidget):
                     frame=slice(chunk_idx * chunk_length, (chunk_idx + 1) * chunk_length)
                 ).load()
                 self.next_images_future = self.create_next_chunk_image(
-                    self.current_video, (chunk_idx + 1) * chunk_length, (chunk_idx + 2) * chunk_length
+                    self.current_video_serialized, (chunk_idx + 1) * chunk_length, (chunk_idx + 2) * chunk_length
                 )
 
     def check_preload_bimage(self, current_frame):
@@ -2897,6 +2898,7 @@ class ExplorationWidget(QWidget):
 
     def change_cell_video(self, type):
         self.current_video = self.session.video_data[type]
+        self.current_video_serialized = pickle.dumps(self.current_video)
         self.pre_images = None
         for action in self.submenu_videos.actions():
             if action.text() == "&Behavior Video":
@@ -3270,7 +3272,8 @@ class PlotCurveItemEnhanced(PlotCurveItem):
                 self.setPen('r')
                 self.main_plot.remove_selection(self)
 
-def load_next(video, start, end):
+def load_next(current_video_serialized, start, end):
     """Load the next chunk and store the result in a shared dictionary."""
+    video = pickle.loads(current_video_serialized)
     return video.sel(frame=slice(start, end)).load()
     
