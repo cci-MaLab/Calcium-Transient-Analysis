@@ -399,7 +399,8 @@ class PyVistaWidget(QtInteractor):
         grid_values = self.visualization_data.get_3d_data(0)["frame"]
         self.grid = pv.StructuredGrid(x, y, grid_values)
         self.grid["scalars"] = grid_values.ravel(order='F')
-        self.add_mesh(self.grid, cmap="viridis", lighting='flat')
+        self.add_mesh(self.grid, cmap="viridis", lighting='flat', clim=[0, 30])
+        self.show_grid(bounds=(0, shape["x"], 0, shape["y"], -20, 150))
 
 
     def _precalculate(self):
