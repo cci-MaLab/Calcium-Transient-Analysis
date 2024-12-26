@@ -1,10 +1,5 @@
 # Spatial distribution analysis
 
-from traits.api import HasTraits, Instance, on_trait_change
-from traitsui.api import View, Item
-from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
-from mayavi import mlab
-from tvtk.api import tvtk
 from PyQt5.QtWidgets import  QWidget, QVBoxLayout, QPushButton
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QMessageBox
@@ -14,46 +9,15 @@ import xarray as xr
 from .pop_up_messages import print_error
 from matplotlib import cm
 from typing import List
+from pyvistaqt import QtInteractor
+import pyvista as pv
+import colorcet as cc
+from concurrent.futures import ProcessPoolExecutor
+from ..core.backend import DataInstance
+import time
+import pickle
 
-class SDAWindowWidget(QWidget):
-    def __init__(self, session, name, main_window_ref, parent=None):
-        super().__init__() 
-        self.session = session
-        self.name = name
-        self.main_window_ref = main_window_ref
-
-        self.layout = QVBoxLayout()
-        self.setLayout(self.layout)
-
-        C = session.data["C"].sel(frame=slice(0,1999)).values
-        A = session.data["A"].values
-        A_flat = A.sum(axis=0)
-
-        # Only use subset of A where values are positive, trim out 0 areas around the edges
-        x_axis_sum = np.sum(A_flat, axis=0)
-        y_axis_sum = np.sum(A_flat, axis=1)
-        # Find first and last non-zero index
-        x_axis_indices = np.where(x_axis_sum > 0)[0]
-        y_axis_indices = np.where(y_axis_sum > 0)[0]
-        x_start, x_end = x_axis_indices[0], x_axis_indices[-1]
-        y_start, y_end = y_axis_indices[0], y_axis_indices[-1]
-        A = A[:, y_start:y_end, x_start:x_end]
-
-        Y = np.tensordot(C, A, axes=([0], [0]))
-
-        self.mayavi_widget = MayaviQWidget(Y)
-        self.mayavi_widget.setObjectName("3D Cell Overview")
-
-        # Add a simple button to start the animation
-        self.button = QPushButton("Start/Stop Animation")
-        self.button.clicked.connect(self.mayavi_widget.start_stop_animation)
-
-        # Add a panel to the side for different options and utilities
-
-        self.layout.addWidget(self.mayavi_widget)
-        self.layout.addWidget(self.button)
-
-
+"""
 class Visualization(HasTraits):
     # Signal to indicate scene has been activated
     scene = Instance(MlabSceneModel, ())
@@ -139,7 +103,8 @@ class Visualization(HasTraits):
         self.update_points(data_dict["points_coords"])
 
     def picker_callback(self, picker):
-        """ Picker callback: this get called when on pick events.
+
+        Picker callback: this get called when on pick events.
         This method is a bit of a disaster but I will justify the approach.
         I needed to use points for the visualization as I wanted to make the rendering as fast as possible.
         Unfortunately to select a given point you need pixel perfect precision, way more than what I would
@@ -147,7 +112,8 @@ class Visualization(HasTraits):
         to extrapolate the necessary x and y positions. This will be sent to the main GUI to cross, check whether
         the selected point overlaps with a cell position. If so then it will be highlighted and the color of
         the point will be updated.
-        """
+        
+
         x, y = -1, -1
         if picker.actor in self.plot.actor.actors:
             # The point ID gives us the index of the point picked. It start from the bottom left corner and goes right and then up.
@@ -163,6 +129,8 @@ class Visualization(HasTraits):
             # And now transpose the x and y values
             x, y = y, x
             self.parent.receive_click(x, y)
+
+"""
 
 
 
@@ -207,11 +175,14 @@ class CurrentVisualizationData():
     def get_ranges(self):
         return [self.x_start, self.x_end, self.y_start, self.y_end, 0, self.max_height]
     
+    def get_shape(self):
+        return {"x": self.x_end - self.x_start, "y": self.y_end - self.y_start}
+    
     def get_extent(self):
         x = self.data.shape[1]
         y = self.data.shape[2]
         z = self.max_height * self.scaling_factor
-        return [0, x, 0, y, 0, z]
+        return {"x": x, "y": y, "z": z}
     
     def __mul__(self, factor):
         self.scaling_factor = factor
@@ -219,8 +190,23 @@ class CurrentVisualizationData():
 
     __rmul__ = __mul__
 
-def base_visualization(session, precalculated_values=None, smoothing_size=1, window_size=1, data_type="C", start_frame=0, end_frame=200,
-                       cells_to_visualize="All Cells", smoothing_type="mean", cumulative=False, average=False, normalize=False, **kwargs):
+
+
+def base_visualization(serialized_data, start_frame=0, end_frame=50):
+    unserialized_data = pickle.loads(serialized_data)
+    
+    # Extract the necessary data
+    session = unserialized_data.get("session")
+    precalculated_values = unserialized_data.get("precalculated_values", None)
+    kwargs = unserialized_data.get("kwargs", {})
+    data_type = kwargs.get("data_type", "C")
+    window_size = kwargs.get("window_size", 1)
+    cells_to_visualize = kwargs.get("cells_to_visualize", "All Cells")
+    smoothing_size = kwargs.get("smoothing_size", 1)
+    smoothing_type = kwargs.get("smoothing_type", "mean")
+    cumulative = kwargs.get("cumulative", False)
+    average = kwargs.get("average", False)
+    normalize = kwargs.get("normalize", False)
     
     ids = session.get_cell_ids(cells_to_visualize)
     if window_size != 1:
@@ -264,7 +250,7 @@ def base_visualization(session, precalculated_values=None, smoothing_size=1, win
     y_start, y_end = y_axis_indices[0], y_axis_indices[-1]
     A = A[:, y_start:y_end, x_start:x_end]
 
-    Y = np.flip(np.tensordot(signal, A, axes=([0], [0])).swapaxes(1, 2), 2) # In order to maintain parity with the 2D visualization
+    Y = np.tensordot(signal, A, axes=([0], [0])).swapaxes(1, 2) # In order to maintain parity with the 2D visualization
 
     # Since we did the prior we need to flip x_start, y_start etc...
     x_start, x_end, y_start, y_end = y_start, y_end, x_start, x_end
@@ -352,8 +338,291 @@ def calculate_windowed_data(session, precalculated_values, data_type, window_siz
 
 
                 
+class PyVistaWidget(QtInteractor):
+    def __init__(self, session: DataInstance, executor: ProcessPoolExecutor, chunk_size=50, visualization_generator=base_visualization, parent=None):
+        super().__init__(parent)
+        """
+        Main widget for the PyVista for 3D visualization of any specified typed of data.
+
+        Parameters
+        ----------
+        session : DataInstance
+            The session object that contains all the relevant session data from the parent class.
+        executor : ProcessPoolExecutor
+            The executor to use to setup separate processes for loading the next chunk of data.
+        chunk_length : int, optional
+            The nearest multiple of frames to chunk the data into, by default 50. This to compensate for 
+            the user potentially jumping to a random frame and for clarity we would like to start chunking
+            at the nearest multiple of specified chunk_length.
+        chunk_size : int, optional
+            The size of the chunk to visualize, by default 50. We load 50 frames at a time and pre-load
+            the next chunk when the user has reached the end of the current chunk. This is too avoid slow downs
+            due to lazy loading of the data from disk.
+        visualization_generator : function, optional
+            The function to generate the visualization data, by default base_visualization.
+        parent : QWidget, optional
+            The parent widget, by default None.
+        """
+        self.chunk_size = chunk_size
+        self.executor = executor
+        self.session = session
+        self.scaling_factor = 10
+        self.current_frame = 0
+        self.kwargs_func = {}
+        self.precalculated_values = self._precalculate()
+        # We need to serialize the data so we can speed up the process of submit a process to the executor
+        self._update_serialize_data()
+        
+        self.visualization_generator = visualization_generator
+        self.visualization_data = visualization_generator(self.serialized_data, start_frame=0, end_frame=50) * self.scaling_factor
+        self.visualization_data_buffered = self.chunk_load(self.serialized_data, start_frame=50, end_frame=100)
+
+        # We need to keep track the cell id to index position
+        self.cell_id_to_index = {cell_id: i for i, cell_id in enumerate(session.centroids_max.keys())}
+
+        # All parameters for the visualization itself
+        self.axes = None
+        self.points_3d = None # The actual mlab points3d object
+        self.points_coords = None # The coordinates of the points
+        self.current_shape = self.visualization_data.data[0].shape
+        self.parent = parent
+        self.cells = None
+        self.arrows = []
+
+        # Instantiate PyVista scene
+        self.scalar_range = (0, 50)
+        self.background_color = 'black'
+        self.points_3d = None
+        self.populate_3D_scene()
+
+    def populate_3D_scene(self):
+        shape = self.visualization_data.get_shape()
+        x, y = np.meshgrid(np.arange(shape["x"]), np.arange(shape["y"]))
+        data_3d = self.visualization_data.get_3d_data(self.current_frame)
+        frame, points_coords = data_3d["frame"], data_3d["points_coords"]
+        self.grid = pv.StructuredGrid(x, y, frame)
+        self.grid["scalars"] = frame.ravel(order='F')
+        self.add_mesh(self.grid, cmap="viridis", lighting='flat', clim=self.scalar_range, scalar_bar_args={'title': 'Spike Intensity', 'color': 'white', 'shadow': True, 'n_labels': 5, 'fmt': '%.0f'})
+        if self.points_3d is None:
+            pass
+            #self.points_3d = pv.PolyData(np.array(points_coords).T)
+            #self.points_3d["scalars"] = np.ones(len(points_coords[0]))
+            #self.add_mesh(self.points_3d, color='red', render_points_as_spheres=False, point_size=10)
+        else:
+            pass
+            #self.points_3d.points = np.array(points_coords).T
+            
+        self.show_grid(bounds=(0, shape["x"], 0, shape["y"], -20, 150), color='white')
+        self.render()
+
+    def _precalculate(self):
+        precalculated_values = {}
+        E = self.session.data['E']
+        C = self.session.data['C']
+        DFF = self.session.data['DFF']
+
+        # Unit ids
+        unit_ids = E.unit_id.values
+
+        # Output values
+        C_based_events = np.zeros(C.shape)
+        C_cumulative_events = np.zeros(C.shape)
+        DFF_based_events = np.zeros(DFF.shape)
+        DFF_cumulative_events = np.zeros(DFF.shape)
+        frequency = np.zeros(C.shape)
+        # We are also going to maintain a dictionary for transient information
+        # what frame the transient starts, its duration and the value in terms of C and DFF
+        # Top level are unit_ids which leads to dictionaries of the aforementioned values
+        transient_info = {}
+
+        for i, unit_id in enumerate(unit_ids):
+            row = E.sel(unit_id=unit_id).values
+            C_row = C.sel(unit_id=unit_id).values
+            DFF_row = DFF.sel(unit_id=unit_id).values
+            events = np.nan_to_num(row, nan=0) # Sometimes saving errors can cause NaNs
+            indices = events.nonzero()
+            if indices[0].any():
+                transient_info[unit_id] = {}
+                frame_start = []
+                frame_end = []
+                c_values = []
+                dff_values = []
+                # Split up the indices into groups
+                split_indices = np.split(indices[0], np.where(np.diff(indices[0]) != 1)[0]+1)
+                # Now Split the indices into pairs of first and last indices
+                split_indices = [(indices_group[0], indices_group[-1]+1) for indices_group in split_indices]
+
+                C_based_total = 0
+                DFF_based_total = 0
+                frequency_total = 0
+                indices_to_remove = []
+                for j, (start, end) in enumerate(split_indices):
+                    C_based_val = abs(C_row[start:end].max() - C_row[start:end].min())
+                    DFF_based_val = abs(DFF_row[start:end].max() - DFF_row[start:end].min())
+
+                    if C_based_val == 0 or DFF_based_val == 0:
+                        indices_to_remove.append(j)
+                        continue # Can occur due to erroneous data, skip these
+
+                    frame_start.append(start)
+                    frame_end.append(end)
+                    c_values.append(C_based_val)
+                    dff_values.append(DFF_based_val)
+
+                    C_based_events[i, start:end] = C_based_val
+                    DFF_based_events[i, start:end] = DFF_based_val
+                    frequency_total += 1
+                    frequency[i, start:end] = frequency_total
+
+                    C_based_total += C_based_val
+                    DFF_based_total += DFF_based_val
+
+                    C_cumulative_events[i, start:end] = C_based_total
+                    DFF_cumulative_events[i, start:end] = DFF_based_total
+                
+
+                # Add to info dictionary
+                transient_info[unit_id]['frame_start'] = frame_start
+                transient_info[unit_id]['frame_end'] = frame_end
+                transient_info[unit_id]['C_values'] = c_values
+                transient_info[unit_id]['DFF_values'] = dff_values
+                transient_info[unit_id]['C_total'] = C_based_total
+                transient_info[unit_id]['DFF_total'] = DFF_based_total
+
+                # Remove the erroneous indices
+                split_indices = [split_indices[j] for j in range(len(split_indices)) if j not in indices_to_remove]
+                
+                # Normalize the values by the total in both cases
+                C_based_events[i] /= C_based_total
+                DFF_based_events[i] /= DFF_based_total
+                C_cumulative_events[i] /= C_based_total
+                DFF_cumulative_events[i] /= DFF_based_total
+                frequency[i] /= frequency_total
+
+                # Interpolate the values to fill in the gaps for cumulative events
+                C_cumulative_events[i] = self._forward_fill(C_cumulative_events[i])
+                DFF_cumulative_events[i] = self._forward_fill(DFF_cumulative_events[i])
+                frequency[i] = self._forward_fill(frequency[i])
+
+                # We'll simulate decay for the base events by taking the last value and multiplying it by 0.95
+                for j, (_, end) in enumerate(split_indices):
+                    last_val_C = C_based_events[i, end-1]
+                    last_val_DFF = DFF_based_events[i, end-1]
+
+                    # Be wary of when the next event starts to not overwrite the values
+                    next_start = split_indices[j+1][0] if j+1 < len(split_indices) else C_based_events.shape[1]
+
+                    # We need to calculate how many frames we need for the decay to be less than 1. 
+                    C_no_of_frames = int(min(max(np.ceil(np.emath.logn(0.95, 0.01/last_val_C)), 0), next_start-end))
+                    DFF_no_of_frames = int(min(max(np.ceil(np.emath.logn(0.95, 0.01/last_val_DFF)), 0), next_start-end))
 
 
+                    # Now we need to calculate the decay values, by exponentiation
+                    if C_no_of_frames > 0:
+                        C_decay_powers = np.arange(C_no_of_frames) + 1
+                        C_decay_values = last_val_C * 0.95**C_decay_powers
+                        C_based_events[i, end:end+C_no_of_frames] = C_decay_values
+
+                    if DFF_no_of_frames > 0:
+                        DFF_decay_powers = np.arange(DFF_no_of_frames) + 1
+                        DFF_decay_values = last_val_DFF * 0.95**DFF_decay_powers
+                        DFF_based_events[i, end:end+DFF_no_of_frames] = DFF_decay_values
+
+
+        precalculated_values['C_transient'] = xr.DataArray(C_based_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='C_base')
+        precalculated_values['C_cumulative'] = xr.DataArray(C_cumulative_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='C_cumulative')
+        precalculated_values['DFF_transient'] = xr.DataArray(DFF_based_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='DFF_base')
+        precalculated_values['DFF_cumulative'] = xr.DataArray(DFF_cumulative_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='DFF_cumulative')
+        precalculated_values['Frequency'] = xr.DataArray(frequency, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='frequency')
+        precalculated_values['transient_info'] = transient_info
+        
+        return precalculated_values
+
+
+    def _forward_fill(self, y):
+        prev = np.arange(len(y))
+        prev[y == 0] = 0
+        prev = np.maximum.accumulate(prev)
+        return y[prev]
+        
+
+    def set_data(self, visualization_data):
+        self.visualization_data = visualization_data * self.scaling_factor
+        self.reset_grid()
+        self.cell_id_to_index = self.visualization_data.cell_id_to_index
+    
+    def chunk_load(self, serialized_data, start_frame, end_frame):
+        return self.executor.submit(self.visualization_generator, serialized_data, start_frame=start_frame, end_frame=end_frame)
+
+    def reset_grid(self):
+        self.clear()
+        self.points_3d = None
+        self.populate_3D_scene()
+    
+    def set_frame(self, frame=0):
+        self.check_frame(frame)       
+        # Now we can set the frame
+        frame_3d_data = self.visualization_data.get_3d_data(frame)
+        frame_scalars = frame_3d_data["frame"].ravel(order='F')
+        self.grid.points[:,2] = frame_scalars
+        self.grid["scalars"] = frame_scalars
+        self.render()
+
+        self.current_frame = frame
+
+    def check_frame(self, frame):
+        """
+        We are checking whether the frame is within the current or the next chunk:
+         - If is within the current chunk we do nothing.
+         - If it is within the next chunk we swap the current chunk with the next chunk and update the next chunk.
+         - If it is outside of the next chunk we update both current and next chunk.
+
+        Parameters:
+        frame : int
+            The frame to check.
+        """
+        if not self.visualization_data.in_range(frame):
+            chunk_start = frame - frame % self.chunk_size
+            next_chunk_start = chunk_start + self.chunk_size
+            if self.visualization_data_buffered is None: # The next chunk wasn't instantiated. Update both
+                self.visualization_data = self.visualization_generator(self.serialized_data, start_frame=chunk_start, end_frame=next_chunk_start) * self.scaling_factor
+                self.visualization_data_buffered = self.chunk_load(self.serialized_data, next_chunk_start, next_chunk_start+self.chunk_size)
+            else:
+                while not self.visualization_data_buffered.done():
+                    time.sleep(0.01)
+                # Time the following code
+                self.visualization_data_buffered = self.visualization_data_buffered.result() * self.scaling_factor
+                if not self.visualization_data_buffered.in_range(frame): # Not in range of the next chunk, we need to update both
+                    self.visualization_data = self.visualization_generator(self.serialized_data, start_frame=chunk_start, end_frame=next_chunk_start) * self.scaling_factor
+                    self.visualization_data_buffered = self.chunk_load(self.serialized_data, next_chunk_start, next_chunk_start+self.chunk_size)
+                else: # In range of the next chunk, we need to swap the current chunk with the next chunk and update the next chunk
+                    self.visualization_data = self.visualization_data_buffered
+                    self.visualization_data_buffered = self.chunk_load(self.serialized_data, next_chunk_start, next_chunk_start+self.chunk_size)
+
+    def change_colormap(self, name):
+        lut = pv.LookupTable(cc.cm[name])
+        lut.scalar_range = self.scalar_range
+        self.mapper.lookup_table = lut
+        # Update as well the scalar bar
+        self.remove_scalar_bar()
+        self.add_scalar_bar(title='Spike Intensity', color='white', shadow=True, n_labels=5, fmt='%.0f')
+        shape = self.visualization_data.get_shape()
+        self.show_grid(bounds=(0, shape["x"], 0, shape["y"], -20, 150), color='white')
+        self.render()
+
+    def change_func(self, func, **kwargs):
+        if "scaling" in kwargs:
+            self.scaling_factor = kwargs["scaling"]
+        self.visualization_generator = func
+        self.kwargs_func = kwargs
+        chunk_start = self.current_frame - self.current_frame % self.chunk_size
+
+        self._update_serialize_data()
+        self.set_data(self.visualization_generator(self.serialized_data, start_frame=chunk_start, end_frame=chunk_start+self.chunk_size))
+        self.set_frame(self.current_frame)  
+
+    def _update_serialize_data(self):
+        self.serialized_data = pickle.dumps({"session": self.session, "precalculated_values": self.precalculated_values, "kwargs": self.kwargs_func})
 
 
 class MayaviQWidget(QWidget):
@@ -366,14 +635,14 @@ class MayaviQWidget(QWidget):
         self.scaling_factor = 10
         self.visualization_data = visualization_data * self.scaling_factor
         self.anim = None
-        self.visualization = Visualization(self.visualization_data, self)
+        #self.visualization = Visualization(self.visualization_data, self)
         self.visualization_generator = visualization_generator
         layout = QVBoxLayout(self)
         self.ui = self.visualization.edit_traits(parent=self,
                                                   kind='subpanel').control
         self.current_frame = 0
         layout.addWidget(self.ui)
-        self.kwargs = {}
+        self.kwargs_func = {}
 
         # We need to keep track the cell id to index position
         self.cell_id_to_index = {cell_id: i for i, cell_id in enumerate(session.centroids_max.keys())}
@@ -520,7 +789,7 @@ class MayaviQWidget(QWidget):
         if not self.visualization_data.in_range(frame):
             # We are out of range and we need to update the data, first we need to find the nearest chunk, which is a multiple of chunk_length
             chunk_start = frame - frame % self.chunk_length
-            self.set_data(self.visualization_generator(self.session, precalculated_values=self.precalculated_values, start_frame=chunk_start, end_frame=chunk_start+self.chunk_size, **self.kwargs))
+            self.set_data(self.visualization_generator(self.session, precalculated_values=self.precalculated_values, start_frame=chunk_start, end_frame=chunk_start+self.chunk_size, **self.kwargs_func))
         self.visualization.set_frame(frame)
         self.current_frame = frame
 
@@ -533,7 +802,7 @@ class MayaviQWidget(QWidget):
         if "scaling" in kwargs:
             self.scaling_factor = kwargs["scaling"]
         self.visualization_generator = func
-        self.kwargs = kwargs
+        self.kwargs_func = kwargs
         chunk_start = self.current_frame - self.current_frame % self.chunk_length
 
         self.set_data(self.visualization_generator(self.session, precalculated_values=self.precalculated_values,  start_frame=chunk_start, end_frame=chunk_start+self.chunk_size, **kwargs))

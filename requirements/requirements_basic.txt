@@ -11,5 +11,6 @@ configobj
 zarr
 ipykernel
 tqdm
-mayavi
+pyvista
+colorcet
 rechunker

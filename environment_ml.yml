@@ -1,4 +1,4 @@
-name: cell_exploration_ml
+name: cell_exploration_ml_test
 channels:
   - conda-forge
   - nvidia
@@ -16,7 +16,8 @@ dependencies:
   - pytorch::pytorch
   - ipykernel
   - tqdm
-  - mayavi
+  - pyvistaqt
   - rechunker
+  - colorcet
   - pip:
     - local-attention

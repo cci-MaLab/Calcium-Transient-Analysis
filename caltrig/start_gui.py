@@ -5,7 +5,6 @@ from caltrig.gui.main_widgets import (UpdateDialog, ParamDialog, VisualizeInstan
 
 from .gui.genetic_algorithm_widgets import GAWindowWidget,GAGenerationScoreWindowWidget
 from .gui.exploration_widgets import ExplorationWidget
-from .gui.sda_widgets import SDAWindowWidget
 from .gui.pop_up_messages import print_error
 import sys
 import os
