@@ -11,6 +11,7 @@ from matplotlib import cm
 from typing import List
 from pyvistaqt import QtInteractor
 import pyvista as pv
+import colorcet as cc
 from concurrent.futures import ProcessPoolExecutor
 from ..core.backend import DataInstance
 import time
@@ -197,18 +198,16 @@ def base_visualization(serialized_data, start_frame=0, end_frame=50):
     # Extract the necessary data
     session = unserialized_data.get("session")
     precalculated_values = unserialized_data.get("precalculated_values", None)
-    data_type = unserialized_data.get("data_type", "C")
-    window_size = unserialized_data.get("window_size", 1)
-    cells_to_visualize = unserialized_data.get("cells_to_visualize", "All Cells")
-    smoothing_size = unserialized_data.get("smoothing_size", 1)
-    smoothing_type = unserialized_data.get("smoothing_type", "mean")
-    cumulative = unserialized_data.get("cumulative", False)
-    average = unserialized_data.get("average", False)
-    normalize = unserialized_data.get("normalize", False)
     kwargs = unserialized_data.get("kwargs", {})
-
-
-    start_time = time.time()
+    data_type = kwargs.get("data_type", "C")
+    window_size = kwargs.get("window_size", 1)
+    cells_to_visualize = kwargs.get("cells_to_visualize", "All Cells")
+    smoothing_size = kwargs.get("smoothing_size", 1)
+    smoothing_type = kwargs.get("smoothing_type", "mean")
+    cumulative = kwargs.get("cumulative", False)
+    average = kwargs.get("average", False)
+    normalize = kwargs.get("normalize", False)
+    
     ids = session.get_cell_ids(cells_to_visualize)
     if window_size != 1:
         # We'll first check if the visualization data exists within precalculated, otherwise we'll calculate it
@@ -251,7 +250,7 @@ def base_visualization(serialized_data, start_frame=0, end_frame=50):
     y_start, y_end = y_axis_indices[0], y_axis_indices[-1]
     A = A[:, y_start:y_end, x_start:x_end]
 
-    Y = np.flip(np.tensordot(signal, A, axes=([0], [0])).swapaxes(1, 2), 2) # In order to maintain parity with the 2D visualization
+    Y = np.tensordot(signal, A, axes=([0], [0])).swapaxes(1, 2) # In order to maintain parity with the 2D visualization
 
     # Since we did the prior we need to flip x_start, y_start etc...
     x_start, x_end, y_start, y_end = y_start, y_end, x_start, x_end
@@ -368,18 +367,15 @@ class PyVistaWidget(QtInteractor):
         self.executor = executor
         self.session = session
         self.scaling_factor = 10
+        self.current_frame = 0
+        self.kwargs_func = {}
         self.precalculated_values = self._precalculate()
         # We need to serialize the data so we can speed up the process of submit a process to the executor
-        self.serialized_data = pickle.dumps({"session": session, "precalculated_values": None, "smoothing_size": 1, "window_size": 1, "data_type": "C",
-                                            "cells_to_visualize": "All Cells", "smoothing_type": "mean", "cumulative": False, "average": False, 
-                                            "normalize": False, "kwargs": {}})
+        self._update_serialize_data()
         
         self.visualization_generator = visualization_generator
         self.visualization_data = visualization_generator(self.serialized_data, start_frame=0, end_frame=50) * self.scaling_factor
         self.visualization_data_buffered = self.chunk_load(self.serialized_data, start_frame=50, end_frame=100)
-
-        self.current_frame = 0
-        self.kwargs_func = {}
 
         # We need to keep track the cell id to index position
         self.cell_id_to_index = {cell_id: i for i, cell_id in enumerate(session.centroids_max.keys())}
@@ -394,14 +390,30 @@ class PyVistaWidget(QtInteractor):
         self.arrows = []
 
         # Instantiate PyVista scene
+        self.scalar_range = (0, 50)
+        self.background_color = 'black'
+        self.points_3d = None
+        self.populate_3D_scene()
+
+    def populate_3D_scene(self):
         shape = self.visualization_data.get_shape()
         x, y = np.meshgrid(np.arange(shape["x"]), np.arange(shape["y"]))
-        grid_values = self.visualization_data.get_3d_data(0)["frame"]
-        self.grid = pv.StructuredGrid(x, y, grid_values)
-        self.grid["scalars"] = grid_values.ravel(order='F')
-        self.add_mesh(self.grid, cmap="viridis", lighting='flat', clim=[0, 30])
-        self.show_grid(bounds=(0, shape["x"], 0, shape["y"], -20, 150))
-
+        data_3d = self.visualization_data.get_3d_data(self.current_frame)
+        frame, points_coords = data_3d["frame"], data_3d["points_coords"]
+        self.grid = pv.StructuredGrid(x, y, frame)
+        self.grid["scalars"] = frame.ravel(order='F')
+        self.add_mesh(self.grid, cmap="viridis", lighting='flat', clim=self.scalar_range, scalar_bar_args={'title': 'Spike Intensity', 'color': 'white', 'shadow': True, 'n_labels': 5, 'fmt': '%.0f'})
+        if self.points_3d is None:
+            pass
+            #self.points_3d = pv.PolyData(np.array(points_coords).T)
+            #self.points_3d["scalars"] = np.ones(len(points_coords[0]))
+            #self.add_mesh(self.points_3d, color='red', render_points_as_spheres=False, point_size=10)
+        else:
+            pass
+            #self.points_3d.points = np.array(points_coords).T
+            
+        self.show_grid(bounds=(0, shape["x"], 0, shape["y"], -20, 150), color='white')
+        self.render()
 
     def _precalculate(self):
         precalculated_values = {}
@@ -543,15 +555,9 @@ class PyVistaWidget(QtInteractor):
         return self.executor.submit(self.visualization_generator, serialized_data, start_frame=start_frame, end_frame=end_frame)
 
     def reset_grid(self):
-        shape = self.visualization_data.get_shape()
-        x, y = np.meshgrid(np.arange(shape["x"]), np.arange(shape["y"]))
-        grid_values = self.visualization_data.get_3d_data()["frame"]
         self.clear()
-        self.grid = pv.StructuredGrid(x, y, grid_values)
-        self.grid.points[:,2] = grid_values.ravel(order='F')
-        self.grid["scalars"] = grid_values.ravel(order='F')
-        self.add_mesh(self.grid, cmap="viridis", lighting='flat')
-        self.render()
+        self.points_3d = None
+        self.populate_3D_scene()
     
     def set_frame(self, frame=0):
         self.check_frame(frame)       
@@ -593,11 +599,30 @@ class PyVistaWidget(QtInteractor):
                     self.visualization_data = self.visualization_data_buffered
                     self.visualization_data_buffered = self.chunk_load(self.serialized_data, next_chunk_start, next_chunk_start+self.chunk_size)
 
-                    
+    def change_colormap(self, name):
+        lut = pv.LookupTable(cc.cm[name])
+        lut.scalar_range = self.scalar_range
+        self.mapper.lookup_table = lut
+        # Update as well the scalar bar
+        self.remove_scalar_bar()
+        self.add_scalar_bar(title='Spike Intensity', color='white', shadow=True, n_labels=5, fmt='%.0f')
+        shape = self.visualization_data.get_shape()
+        self.show_grid(bounds=(0, shape["x"], 0, shape["y"], -20, 150), color='white')
+        self.render()
 
-            
+    def change_func(self, func, **kwargs):
+        if "scaling" in kwargs:
+            self.scaling_factor = kwargs["scaling"]
+        self.visualization_generator = func
+        self.kwargs_func = kwargs
+        chunk_start = self.current_frame - self.current_frame % self.chunk_size
 
+        self._update_serialize_data()
+        self.set_data(self.visualization_generator(self.serialized_data, start_frame=chunk_start, end_frame=chunk_start+self.chunk_size))
+        self.set_frame(self.current_frame)  
 
+    def _update_serialize_data(self):
+        self.serialized_data = pickle.dumps({"session": self.session, "precalculated_values": self.precalculated_values, "kwargs": self.kwargs_func})
 
 
 class MayaviQWidget(QWidget):

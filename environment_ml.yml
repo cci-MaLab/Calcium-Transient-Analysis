@@ -18,5 +18,6 @@ dependencies:
   - tqdm
   - pyvistaqt
   - rechunker
+  - colorcet
   - pip:
     - local-attention

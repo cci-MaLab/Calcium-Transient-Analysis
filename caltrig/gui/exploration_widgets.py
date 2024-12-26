@@ -11,6 +11,7 @@ from PyQt5 import QtCore
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont)
 from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem, InfiniteLine, TextItem)
 import pyqtgraph as pg
+import colorcet as cc
 import numpy as np
 from scipy.signal import find_peaks
 from skimage.segmentation import flood_fill
@@ -742,10 +743,12 @@ class ExplorationWidget(QWidget):
         layout_colormap = QHBoxLayout()
         layout_colormap.addWidget(QLabel("Colormap:"))
         dropdown_3D_colormap = QComboBox()
-        #dropdown_3D_colormap.addItems(lut_mode_list())
+        dropdown_3D_colormap.addItems(cc.cm.keys())
         # Set index to whatever hot is
-        #dropdown_3D_colormap.setCurrentIndex(lut_mode_list().index("hot"))
-        #dropdown_3D_colormap.currentIndexChanged.connect(lambda: self.visualization_3D.change_colormap(dropdown_3D_colormap.currentText()))
+        name_cmap = "linear_bmy_10_95_c71"
+        dropdown_3D_colormap.setCurrentIndex(list(cc.cm.keys()).index(name_cmap))
+        self.visualization_3D.change_colormap(name_cmap)
+        dropdown_3D_colormap.currentIndexChanged.connect(lambda: self.visualization_3D.change_colormap(dropdown_3D_colormap.currentText()))
         layout_colormap.addWidget(dropdown_3D_colormap)
 
 
@@ -1518,7 +1521,7 @@ class ExplorationWidget(QWidget):
                                           smoothing_size=smoothing_size, smoothing_type=smoothing_type, window_size=window_size, normalize=normalize, average=average, cumulative=cumulative)
         
         self.cofiring_chkbox.setChecked(False)
-        self.visualization_3D.remove_cofiring()
+        #self.visualization_3D.remove_cofiring()
 
     def check_if_results_exist(self):
         idx_to_cells = {"0":"1", "1":"2", "2":"5", "3":"10", "4":"15", "5":"20"}
