@@ -1,4 +1,4 @@
-name: cell_exploration_ml_test
+name: cell_exploration_ml
 channels:
   - conda-forge
   - nvidia
