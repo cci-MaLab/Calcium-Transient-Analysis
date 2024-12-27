@@ -35,7 +35,7 @@ except ImportError:
     torch_imported = False
 
 class ExplorationWidget(QWidget):
-    def __init__(self, session, name, main_window_ref, timestamps=None, parent=None):
+    def __init__(self, session, name, main_window_ref, timestamps=None, parent=None, processes=True):
         super().__init__(parent)
         self.session = session
         self.name = name
@@ -59,9 +59,14 @@ class ExplorationWidget(QWidget):
         self.pre_bimages = None
         self.windows = {}
         self.single_plot_options = {"enabled": False, "inter_distance": 0, "intra_distance": 0}
+        self.processes = processes
 
         # Initialize executor to load next chunks in the background
-        self.executor = ProcessPoolExecutor(max_workers=4)
+        if self.processes:
+            self.executor = ProcessPoolExecutor(max_workers=4)
+        else:
+            self.executor = None
+            print("Processes are disabled. This may slow down the application.")
 
         # Set up main view
         pg.setConfigOptions(imageAxisOrder='row-major')
@@ -2668,16 +2673,17 @@ class ExplorationWidget(QWidget):
             self.pre_images = self.current_video.sel(
                 frame=slice(chunk_idx * chunk_length, (chunk_idx + 1) * chunk_length)
             ).load()
-            self.next_images_future = self.create_next_chunk_image(
-                self.current_video_serialized, (chunk_idx + 1) * chunk_length, (chunk_idx + 2) * chunk_length
-            )
+            if self.processes:
+                self.next_images_future = self.create_next_chunk_image(
+                    self.current_video_serialized, (chunk_idx + 1) * chunk_length, (chunk_idx + 2) * chunk_length
+                )
         else:
             frames = self.pre_images.coords["frame"].values
 
             if frames[0] <= self.current_frame <= frames[-1]:
                 return
 
-            elif frames[0] + chunk_length <= self.current_frame <= frames[-1] + chunk_length:
+            elif (frames[0] + chunk_length <= self.current_frame <= frames[-1] + chunk_length) and self.processes:
                 chunk_idx = self.current_frame // chunk_length
 
                 # Check if the future is ready
@@ -2696,9 +2702,10 @@ class ExplorationWidget(QWidget):
                 self.pre_images = self.current_video.sel(
                     frame=slice(chunk_idx * chunk_length, (chunk_idx + 1) * chunk_length)
                 ).load()
-                self.next_images_future = self.create_next_chunk_image(
-                    self.current_video_serialized, (chunk_idx + 1) * chunk_length, (chunk_idx + 2) * chunk_length
-                )
+                if self.processes:
+                    self.next_images_future = self.create_next_chunk_image(
+                        self.current_video_serialized, (chunk_idx + 1) * chunk_length, (chunk_idx + 2) * chunk_length
+                    )
 
     def check_preload_bimage(self, current_frame):
         chunk_length = self.session.video_data["behavior_video"].chunks[0][0]
@@ -2709,18 +2716,19 @@ class ExplorationWidget(QWidget):
             self.pre_bimages = self.session.video_data["behavior_video"].sel(
                 frame=slice(chunk_idx * chunk_length, (chunk_idx + 1) * chunk_length)
             ).load()
-            self.next_bimages_future = self.create_next_chunk_image(
-                self.session.video_data["behavior_video"], 
-                (chunk_idx + 1) * chunk_length, 
-                (chunk_idx + 2) * chunk_length
-            )
+            if self.processes:
+                self.next_bimages_future = self.create_next_chunk_image(
+                    self.session.video_data["behavior_video"], 
+                    (chunk_idx + 1) * chunk_length, 
+                    (chunk_idx + 2) * chunk_length
+                )
         else:
             frames = self.pre_bimages.coords["frame"].values
 
             if frames[0] <= current_frame <= frames[-1]:
                 return
 
-            elif frames[0] + chunk_length <= current_frame <= frames[-1] + chunk_length:
+            elif (frames[0] + chunk_length <= current_frame <= frames[-1] + chunk_length) and self.processes:
                 chunk_idx = current_frame // chunk_length
 
                 # Check if the future is ready
@@ -2741,11 +2749,12 @@ class ExplorationWidget(QWidget):
                 self.pre_bimages = self.session.video_data["behavior_video"].sel(
                     frame=slice(chunk_idx * chunk_length, (chunk_idx + 1) * chunk_length)
                 ).load()
-                self.next_bimages_future = self.create_next_chunk_image(
-                    self.session.video_data["behavior_video"], 
-                    (chunk_idx + 1) * chunk_length, 
-                    (chunk_idx + 2) * chunk_length
-                )
+                if self.processes:
+                    self.next_bimages_future = self.create_next_chunk_image(
+                        self.session.video_data["behavior_video"], 
+                        (chunk_idx + 1) * chunk_length, 
+                        (chunk_idx + 2) * chunk_length
+                    )
 
 
         

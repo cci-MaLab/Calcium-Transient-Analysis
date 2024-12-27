@@ -8,7 +8,7 @@ from scipy.interpolate import interp1d
 import xarray as xr
 from .pop_up_messages import print_error
 from matplotlib import cm
-from typing import List
+from typing import List, Optional
 from pyvistaqt import QtInteractor
 import pyvista as pv
 import colorcet as cc
@@ -153,7 +153,7 @@ class CurrentVisualizationData():
         # Returns a dictionary containing the data for surface plot and the points of the centroids
         frame = self.data[frame-self.start_frame] * self.scaling_factor
         # Get the x, y and z values for the points
-        points_coords = (self.points["x"], self.points["y"], frame[self.points["x"], self.points["y"]]) if len(self.points["x"]) > 0 else ([], [], [])
+        points_coords = np.array([self.points["y"], self.points["x"], frame[self.points["x"], self.points["y"]]]).T if len(self.points["x"]) > 0 else np.array([], [], [])
         return {"frame": frame, "points_coords": points_coords}
     
     def update_points_list(self, points):
@@ -161,9 +161,8 @@ class CurrentVisualizationData():
         cell_ids = points.keys()
         points = points.values()
         x_coords, y_coords = zip(*points)
-
-        y_coords, x_coords = int(self.x_end) - np.array(x_coords).astype(int) - 1, np.array(y_coords).astype(int) - int(self.y_start) # They need to be switched around due prior flipping
-        # Finally y_coords needs to be flipped with respect to its axis        
+        # So it aligns with the data and PyVista convention we need to subtract the start values and flip the y and x values
+        y_coords, x_coords = np.array(x_coords).astype(int) - int(self.x_start), np.array(y_coords).astype(int) - int(self.y_start)     
         self.points = {"x": x_coords, "y": y_coords}
         # Keep a local dict cell_id to coords
         self.cell_id_coords = {cell_id: (x, y) for cell_id, x, y in zip(cell_ids, x_coords, y_coords)}
@@ -252,9 +251,9 @@ def base_visualization(serialized_data, start_frame=0, end_frame=50):
 
     Y = np.tensordot(signal, A, axes=([0], [0])).swapaxes(1, 2) # In order to maintain parity with the 2D visualization
 
-    # Since we did the prior we need to flip x_start, y_start etc...
+    #Since we swapped the axes we need to swap the x and y values
     x_start, x_end, y_start, y_end = y_start, y_end, x_start, x_end
-
+    
     CV = CurrentVisualizationData(Y, max_height, start_frame, end_frame, x_start, x_end, y_start, y_end)
     centroids = session.centroids_max
     # Include only the ones that rea in ids
@@ -339,7 +338,7 @@ def calculate_windowed_data(session, precalculated_values, data_type, window_siz
 
                 
 class PyVistaWidget(QtInteractor):
-    def __init__(self, session: DataInstance, executor: ProcessPoolExecutor, chunk_size=50, visualization_generator=base_visualization, parent=None):
+    def __init__(self, session: DataInstance, executor: Optional[ProcessPoolExecutor], chunk_size=50, visualization_generator=base_visualization, parent=None):
         super().__init__(parent)
         """
         Main widget for the PyVista for 3D visualization of any specified typed of data.
@@ -365,6 +364,7 @@ class PyVistaWidget(QtInteractor):
         """
         self.chunk_size = chunk_size
         self.executor = executor
+        self.processes = True if self.executor is not None else False
         self.session = session
         self.scaling_factor = 10
         self.current_frame = 0
@@ -375,8 +375,10 @@ class PyVistaWidget(QtInteractor):
         
         self.visualization_generator = visualization_generator
         self.visualization_data = visualization_generator(self.serialized_data, start_frame=0, end_frame=50) * self.scaling_factor
-        self.visualization_data_buffered = self.chunk_load(self.serialized_data, start_frame=50, end_frame=100)
-
+        if self.processes:
+            self.visualization_data_buffered = self.chunk_load(self.serialized_data, start_frame=50, end_frame=100)
+        else:
+            self.visualization_data_buffered = None
         # We need to keep track the cell id to index position
         self.cell_id_to_index = {cell_id: i for i, cell_id in enumerate(session.centroids_max.keys())}
 
@@ -393,6 +395,7 @@ class PyVistaWidget(QtInteractor):
         self.scalar_range = (0, 50)
         self.background_color = 'black'
         self.points_3d = None
+        self.cmap = "fire"
         self.populate_3D_scene()
 
     def populate_3D_scene(self):
@@ -402,18 +405,11 @@ class PyVistaWidget(QtInteractor):
         frame, points_coords = data_3d["frame"], data_3d["points_coords"]
         self.grid = pv.StructuredGrid(x, y, frame)
         self.grid["scalars"] = frame.ravel(order='F')
-        self.add_mesh(self.grid, cmap="viridis", lighting='flat', clim=self.scalar_range, scalar_bar_args={'title': 'Spike Intensity', 'color': 'white', 'shadow': True, 'n_labels': 5, 'fmt': '%.0f'})
-        if self.points_3d is None:
-            pass
-            #self.points_3d = pv.PolyData(np.array(points_coords).T)
-            #self.points_3d["scalars"] = np.ones(len(points_coords[0]))
-            #self.add_mesh(self.points_3d, color='red', render_points_as_spheres=False, point_size=10)
-        else:
-            pass
-            #self.points_3d.points = np.array(points_coords).T
-            
-        self.show_grid(bounds=(0, shape["x"], 0, shape["y"], -20, 150), color='white')
-        self.render()
+        self.add_mesh(self.grid, lighting='flat', clim=self.scalar_range, scalar_bar_args={'title': 'Spike Intensity', 'color': 'white', 'shadow': True, 'n_labels': 5, 'fmt': '%.0f'})
+        self.points_3d = pv.PolyData(points_coords)
+        self.points_3d["scalars"] = np.ones(points_coords.shape[0])
+        self.add_mesh(self.points_3d, color='red', render_points_as_spheres=False, point_size=10)
+        self.change_colormap(self.cmap)
 
     def _precalculate(self):
         precalculated_values = {}
@@ -564,8 +560,10 @@ class PyVistaWidget(QtInteractor):
         # Now we can set the frame
         frame_3d_data = self.visualization_data.get_3d_data(frame)
         frame_scalars = frame_3d_data["frame"].ravel(order='F')
+        points_coords = frame_3d_data["points_coords"]
         self.grid.points[:,2] = frame_scalars
         self.grid["scalars"] = frame_scalars
+        self.points_3d.points = points_coords
         self.render()
 
         self.current_frame = frame
@@ -586,7 +584,8 @@ class PyVistaWidget(QtInteractor):
             next_chunk_start = chunk_start + self.chunk_size
             if self.visualization_data_buffered is None: # The next chunk wasn't instantiated. Update both
                 self.visualization_data = self.visualization_generator(self.serialized_data, start_frame=chunk_start, end_frame=next_chunk_start) * self.scaling_factor
-                self.visualization_data_buffered = self.chunk_load(self.serialized_data, next_chunk_start, next_chunk_start+self.chunk_size)
+                if self.processes:
+                    self.visualization_data_buffered = self.chunk_load(self.serialized_data, next_chunk_start, next_chunk_start+self.chunk_size)
             else:
                 while not self.visualization_data_buffered.done():
                     time.sleep(0.01)
@@ -600,9 +599,10 @@ class PyVistaWidget(QtInteractor):
                     self.visualization_data_buffered = self.chunk_load(self.serialized_data, next_chunk_start, next_chunk_start+self.chunk_size)
 
     def change_colormap(self, name):
-        lut = pv.LookupTable(cc.cm[name])
-        lut.scalar_range = self.scalar_range
-        self.mapper.lookup_table = lut
+        self.cmap = name
+        self.lut = pv.LookupTable(cc.cm[name])
+        self.lut.scalar_range = self.scalar_range
+        self.mapper.lookup_table = self.lut
         # Update as well the scalar bar
         self.remove_scalar_bar()
         self.add_scalar_bar(title='Spike Intensity', color='white', shadow=True, n_labels=5, fmt='%.0f')

@@ -20,6 +20,7 @@ class MainWindow(QMainWindow):
     that contains the visualization of imported data and the tools to interact with it.
     """
     def __init__(self, *args, **kwargs):
+        self.processes = kwargs.pop("processes", True)
         super(MainWindow, self).__init__(*args, **kwargs)
         self.setWindowTitle("Cell Exploration Tool")
         self.setMinimumSize(600, 800)
@@ -182,7 +183,7 @@ class MainWindow(QMainWindow):
         name = f"{instance.mouseID} {instance.day} {instance.session} Exploration"
 
         if name not in self.windows:
-            wid = ExplorationWidget(instance, name, self)
+            wid = ExplorationWidget(instance, name, self, processes=self.processes)
             if wid is not None:
                 wid.setWindowTitle(name)
                 self.windows[name] = wid
@@ -487,7 +488,7 @@ class MainWindow(QMainWindow):
             window.close()
         event.accept()
     
-def start_gui():
+def start_gui(processes=True):
     """
     Function to initiate the PyQt5 GUI.
 
@@ -498,5 +499,5 @@ def start_gui():
     """
     app = QApplication([])
     app.setStyle('Fusion')
-    window = MainWindow()
+    window = MainWindow(processes=processes)
     app.exec()
