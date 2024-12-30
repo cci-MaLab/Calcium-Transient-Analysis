@@ -152,9 +152,9 @@ class CurrentVisualizationData():
 
     def get_3d_data(self, frame) -> dict:
         # Returns a dictionary containing the data for surface plot and the points of the centroids
-        frame = self.data[frame-self.start_frame] * self.scaling_factor
+        frame = (self.data[frame-self.start_frame] * self.scaling_factor).astype(np.float32)
         # Get the x, y and z values for the points
-        points_coords = np.array([self.points["y"], self.points["x"], frame[self.points["x"], self.points["y"]]]).T if len(self.points["x"]) > 0 else np.array([], [], [])
+        points_coords = np.array([self.points["y"], self.points["x"], frame[self.points["x"], self.points["y"]]], dtype=np.float32).T if len(self.points["x"]) > 0 else np.array([], [], [])
         return {"frame": frame, "points_coords": points_coords}
     
     def update_points_list(self, points):
@@ -345,6 +345,7 @@ def calculate_windowed_data(session, precalculated_values, data_type, window_siz
 
                 
 class PyVistaWidget(QtInteractor):
+    point_signal = pyqtSignal(int, int)
     def __init__(self, session: DataInstance, executor: Optional[ProcessPoolExecutor], chunk_size=50, visualization_generator=base_visualization, parent=None):
         super().__init__(parent)
         """
@@ -408,15 +409,17 @@ class PyVistaWidget(QtInteractor):
 
     def populate_3D_scene(self):
         shape = self.visualization_data.get_shape()
-        x, y = np.meshgrid(np.arange(shape["x"]), np.arange(shape["y"]))
+        x, y = np.meshgrid(np.arange(shape["x"], dtype=np.float32), np.arange(shape["y"], dtype=np.float32))
         data_3d = self.visualization_data.get_3d_data(self.current_frame)
         frame, points_coords = data_3d["frame"], data_3d["points_coords"]
         self.grid = pv.StructuredGrid(x, y, frame)
         self.grid["scalars"] = frame.ravel(order='F')
-        self.add_mesh(self.grid, lighting='flat', clim=self.scalar_range, scalar_bar_args=None)
+        self.add_mesh(self.grid, lighting='flat', clim=self.scalar_range, scalar_bar_args=None, pickable=False)
         self.points_3d = pv.PolyData(points_coords)
         self.points_3d["colors"] = self.visualization_data.get_selected_points(self.selected_cells)
         self.add_mesh(self.points_3d, scalars="colors", render_points_as_spheres=False, point_size=10, cmap=['red', 'green'], scalar_bar_args=None)
+        self.enable_point_picking(callback=self.receive_click, use_mesh=True, pickable_window=self.points_3d, show_point=False, show_message="Right Click or press 'P' to select point/cell", left_click=True)
+        self._picking_text.GetTextProperty().SetColor(1,1,1)
         self.change_colormap(self.cmap)
 
     def _precalculate(self):
@@ -558,7 +561,7 @@ class PyVistaWidget(QtInteractor):
 
     def reset_grid(self):
         self.clear()
-        self.points_3d = None
+        self.disable_picking()
         self.populate_3D_scene()
     
     def set_frame(self, frame=0):
@@ -653,6 +656,14 @@ class PyVistaWidget(QtInteractor):
         self.selected_cells = cells
         self.points_3d["colors"] = self.visualization_data.get_selected_points(self.selected_cells)
         self.render()
+    
+    def receive_click(self, mesh, index):
+        if mesh is None:
+            return
+        x, y, _ = mesh.points[index]
+        # Add the start values to the x and y values
+        x, y = int(x + self.visualization_data.x_start), int(y + self.visualization_data.y_start)
+        self.point_signal.emit(x, y)
 
 
 class MayaviQWidget(QWidget):

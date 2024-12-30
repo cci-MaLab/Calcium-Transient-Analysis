@@ -94,7 +94,7 @@ class ExplorationWidget(QWidget):
 
         self.visualization_3D = PyVistaWidget(self.session, self.executor)
         self.visualization_3D.setVisible(False)
-        #self.visualization_3D.point_signal.connect(self.point_selection)
+        self.visualization_3D.point_signal.connect(self.point_selection)
 
         # Add Context Menu Action
         self.video_to_title = {"varr": "Original", "Y_fm_chk": "Processed"}
