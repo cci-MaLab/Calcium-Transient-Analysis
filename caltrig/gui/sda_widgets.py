@@ -16,6 +16,7 @@ from concurrent.futures import ProcessPoolExecutor
 from ..core.backend import DataInstance
 import time
 import pickle
+from matplotlib.colors import ListedColormap
 
 """
 class Visualization(HasTraits):
@@ -167,6 +168,12 @@ class CurrentVisualizationData():
         # Keep a local dict cell_id to coords
         self.cell_id_coords = {cell_id: (x, y) for cell_id, x, y in zip(cell_ids, x_coords, y_coords)}
 
+    def get_selected_points(self, selected_cells):
+        # We need to create an array of the same size as the cell_ids but for rgb values. If 0 then red, if 1 then green
+        selected_points = np.zeros(len(self.cell_id_to_index), np.uint8)
+        for cell_id in selected_cells:
+            selected_points[self.cell_id_to_index[cell_id]] = 1
+        return selected_points
     
     def in_range(self, frame):
         return frame >= self.start_frame and frame <= self.end_frame-1
@@ -369,6 +376,7 @@ class PyVistaWidget(QtInteractor):
         self.scaling_factor = 10
         self.current_frame = 0
         self.kwargs_func = {}
+        self.selected_cells = []
         self.precalculated_values = self._precalculate()
         # We need to serialize the data so we can speed up the process of submit a process to the executor
         self._update_serialize_data()
@@ -405,10 +413,10 @@ class PyVistaWidget(QtInteractor):
         frame, points_coords = data_3d["frame"], data_3d["points_coords"]
         self.grid = pv.StructuredGrid(x, y, frame)
         self.grid["scalars"] = frame.ravel(order='F')
-        self.add_mesh(self.grid, lighting='flat', clim=self.scalar_range, scalar_bar_args={'title': 'Spike Intensity', 'color': 'white', 'shadow': True, 'n_labels': 5, 'fmt': '%.0f'})
+        self.add_mesh(self.grid, lighting='flat', clim=self.scalar_range, scalar_bar_args=None)
         self.points_3d = pv.PolyData(points_coords)
-        self.points_3d["scalars"] = np.ones(points_coords.shape[0])
-        self.add_mesh(self.points_3d, color='red', render_points_as_spheres=False, point_size=10)
+        self.points_3d["colors"] = self.visualization_data.get_selected_points(self.selected_cells)
+        self.add_mesh(self.points_3d, scalars="colors", render_points_as_spheres=False, point_size=10, cmap=['red', 'green'], scalar_bar_args=None)
         self.change_colormap(self.cmap)
 
     def _precalculate(self):
@@ -534,14 +542,12 @@ class PyVistaWidget(QtInteractor):
         
         return precalculated_values
 
-
     def _forward_fill(self, y):
         prev = np.arange(len(y))
         prev[y == 0] = 0
         prev = np.maximum.accumulate(prev)
         return y[prev]
         
-
     def set_data(self, visualization_data):
         self.visualization_data = visualization_data * self.scaling_factor
         self.reset_grid()
@@ -599,14 +605,33 @@ class PyVistaWidget(QtInteractor):
                     self.visualization_data_buffered = self.chunk_load(self.serialized_data, next_chunk_start, next_chunk_start+self.chunk_size)
 
     def change_colormap(self, name):
+        # Update the colormap for the plane (StructuredGrid)
         self.cmap = name
-        self.lut = pv.LookupTable(cc.cm[name])
-        self.lut.scalar_range = self.scalar_range
-        self.mapper.lookup_table = self.lut
-        # Update as well the scalar bar
-        self.remove_scalar_bar()
-        self.add_scalar_bar(title='Spike Intensity', color='white', shadow=True, n_labels=5, fmt='%.0f')
-        shape = self.visualization_data.get_shape()
+        plane_lut = pv.LookupTable(cc.cm[name])  # Create a LookupTable for the plane
+        plane_lut.scalar_range = self.scalar_range  # Apply scalar range
+
+        mapper = None
+        for actor_name in self.actors.keys():
+            if "Grid" in actor_name:
+                mapper = self.actors[actor_name].GetMapper()
+                mapper.SetLookupTable(plane_lut)
+                mapper.SetScalarRange(self.scalar_range)
+                break
+
+
+
+        # Update the scalar bar for the plane
+        for scalar_bar_name in list(self.scalar_bars.keys()):
+            self.remove_scalar_bar(scalar_bar_name)
+        self.add_scalar_bar(
+            title='Spike Intensity',
+            color='white',
+            shadow=True,
+            n_labels=5,
+            fmt='%.0f',
+            mapper=mapper,
+        )
+        shape = self.visualization_data.get_shape() 
         self.show_grid(bounds=(0, shape["x"], 0, shape["y"], -20, 150), color='white')
         self.render()
 
@@ -623,6 +648,11 @@ class PyVistaWidget(QtInteractor):
 
     def _update_serialize_data(self):
         self.serialized_data = pickle.dumps({"session": self.session, "precalculated_values": self.precalculated_values, "kwargs": self.kwargs_func})
+
+    def update_selected_cells(self, cells):
+        self.selected_cells = cells
+        self.points_3d["colors"] = self.visualization_data.get_selected_points(self.selected_cells)
+        self.render()
 
 
 class MayaviQWidget(QWidget):

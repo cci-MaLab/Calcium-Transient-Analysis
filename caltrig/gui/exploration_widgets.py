@@ -60,6 +60,7 @@ class ExplorationWidget(QWidget):
         self.windows = {}
         self.single_plot_options = {"enabled": False, "inter_distance": 0, "intra_distance": 0}
         self.processes = processes
+        self.recalculate_canny_edges = True # Optimization to not call canny on every frame
 
         # Initialize executor to load next chunks in the background
         if self.processes:
@@ -80,6 +81,7 @@ class ExplorationWidget(QWidget):
             return None
         self.current_video = self.session.video_data["varr"]
         self.current_video_serialized = pickle.dumps(self.current_video)
+        self.behavior_video_serialized = pickle.dumps(self.session.video_data["behavior_video"])
         self.video_length = self.current_video.shape[0]
         self.mask = np.ones((self.current_video.shape[1], self.current_video.shape[2]))
         # We need two seperate masks here. One for the missed cells we confirmed and one for drawing a new missed cell
@@ -2027,10 +2029,12 @@ class ExplorationWidget(QWidget):
             if cell_type == "Missed":
                 self.missed_cells_selection.discard(id)
                 self.video_missed_mask -= self.session.data["M"].sel(missed_id=id).values
+                self.recalculate_canny_edges = True
 
             else:
                 self.video_cell_selection.discard(id)
                 self.video_cell_mask -= self.session.data["A"].sel(unit_id=id).values
+                self.recalculate_canny_edges = True
         
         self.visualize_signals(reset_view=False)
         if not self.btn_play.isChecked():
@@ -2119,6 +2123,7 @@ class ExplorationWidget(QWidget):
 
         self.mask[self.session.data["M"].sel(missed_id=cell_ids).values.sum(axis=0) > 0] = 3
         self.video_missed_mask  = np.sum(self.session.data["M"].sel(missed_id=list(self.missed_cells_selection)).values, axis=0)
+        self.recalculate_canny_edges = True
         self.visualize_signals(reset_view=False)
         if not self.btn_play.isChecked():
             self.current_frame -= 1
@@ -2293,6 +2298,7 @@ class ExplorationWidget(QWidget):
             for id in self.video_cell_selection:
                 self.video_cell_mask  += self.A[id].values
             self.video_cell_mask[self.video_cell_mask  > 0] = 1
+            self.recalculate_canny_edges = True
             self.visualize_signals(reset_view=False)
             if not self.btn_play.isChecked():
                 self.current_frame -= 1
@@ -2308,6 +2314,7 @@ class ExplorationWidget(QWidget):
 
             self.missed_cells_selection = (self.missed_cells_selection | temp_ids) - (self.missed_cells_selection & temp_ids)
             self.video_missed_mask  = np.sum(self.session.data["M"].sel(missed_id=list(self.missed_cells_selection)).values, axis=0)
+            self.recalculate_canny_edges = True
             if not self.btn_play.isChecked():
                 self.current_frame -= 1
                 self.next_frame()
@@ -2602,6 +2609,7 @@ class ExplorationWidget(QWidget):
         for id in self.video_cell_selection:
             self.video_cell_mask  += self.A[id].values
         self.video_cell_mask[self.video_cell_mask  > 0] = 1
+        self.recalculate_canny_edges = True
         self.visualize_signals(reset_view=False)
         if not self.btn_play.isChecked():
             self.current_frame -= 1
@@ -2718,7 +2726,7 @@ class ExplorationWidget(QWidget):
             ).load()
             if self.processes:
                 self.next_bimages_future = self.create_next_chunk_image(
-                    self.session.video_data["behavior_video"], 
+                    self.behavior_video_serialized, 
                     (chunk_idx + 1) * chunk_length, 
                     (chunk_idx + 2) * chunk_length
                 )
@@ -2739,7 +2747,7 @@ class ExplorationWidget(QWidget):
 
                 # Start loading the next chunk in the background
                 self.next_bimages_future = self.create_next_chunk_image(
-                    self.session.video_data["behavior_video"], 
+                    self.behavior_video_serialized, 
                     (chunk_idx + 1) * chunk_length, 
                     (chunk_idx + 2) * chunk_length
                 )
@@ -2751,7 +2759,7 @@ class ExplorationWidget(QWidget):
                 ).load()
                 if self.processes:
                     self.next_bimages_future = self.create_next_chunk_image(
-                        self.session.video_data["behavior_video"], 
+                        self.behavior_video_serialized, 
                         (chunk_idx + 1) * chunk_length, 
                         (chunk_idx + 2) * chunk_length
                     )
@@ -2773,15 +2781,19 @@ class ExplorationWidget(QWidget):
                 elif self.cmb_cell_highlight_mode.currentText() == "Outline":
                     # Use Canny filter to get the edges
                     if self.video_cell_mask.any():
-                        edges = canny(self.video_cell_mask, sigma=2)
-                        image[edges == 1] = np.array([0, 255, 255])
+                        if self.recalculate_canny_edges:
+                            self.canny_edges = canny(self.video_cell_mask, sigma=2)
+                            self.recalculate_canny_edges = False
+                        image[self.canny_edges == 1] = np.array([0, 255, 255])
                     if self.video_missed_mask.any():
-                        edges = canny(self.video_missed_mask, sigma=2)
-                        image[edges == 1] = np.array([255, 0, 255])
+                        if self.recalculate_canny_edges:
+                            self.canny_edges = canny(self.video_missed_mask, sigma=2)
+                            self.recalculate_canny_edges = False
+                        image[self.canny_edges == 1] = np.array([255, 0, 255])
                 if self.select_missed_mode:
                     image[:,:,1][self.video_missed_mask_candidate == 1] = 0
         if self.chkbox_behavior_video.isChecked():
-            bframes, bheight, bwidth = self.session.video_data["behavior_video"].shape
+            bframes = self.session.video_data["behavior_video"].shape[0]
             vframes = self.current_video.shape[0]
             bcurrent_frame = int(self.current_frame * bframes / vframes)
             self.check_preload_bimage(bcurrent_frame)
