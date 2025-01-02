@@ -5,12 +5,10 @@ xarray==2023.12.0
 scikit-learn==1.3.2
 scikit-image==0.22.0
 matplotlib==3.8.4
-vtk==9.3.0
-numpy==1.26.1
-configobj
+numpy
 zarr
 ipykernel
 tqdm
-pyvista
+pyvistaqt
 colorcet
 rechunker
