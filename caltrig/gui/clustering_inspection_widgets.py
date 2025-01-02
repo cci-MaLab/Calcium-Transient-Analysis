@@ -5,7 +5,6 @@ from PyQt5.QtCore import Qt
 import pyqtgraph as pg
 from pyqtgraph import PlotItem
 import matplotlib
-matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 from PyQt5.QtGui import QPixmap
@@ -15,6 +14,7 @@ import os
 class InspectionWidget(QWidget):
     def __init__(self, session, main_ref, parent=None):
         super().__init__(parent)
+        matplotlib.use('Qt5Agg')
         self.session = session
         self.total_cells = len(self.session.clustering_result["all"]["ids"]) - len(self.session.outliers_list)
         self.selected_plot = 0
