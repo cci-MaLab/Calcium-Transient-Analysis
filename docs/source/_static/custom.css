@@ -26,3 +26,8 @@
     font-size: 1.5em; /* Adjust size as needed */
     font-weight: bold;
 }
+
+.figure {
+  margin-bottom: 20px; /* Adds space below the figure directive */
+  margin-top: 20px;    /* Adds space above the figure directive */
+}

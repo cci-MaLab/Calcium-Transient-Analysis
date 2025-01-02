@@ -1,10 +1,10 @@
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox, QAction,
                             QVBoxLayout, QHBoxLayout, QWidget, QTabWidget)
 from caltrig.gui.main_widgets import (UpdateDialog, ParamDialog, VisualizeInstanceWidget, Viewer, ClusteringToolWidget,
-                            GAToolWidget, ExplorationToolWidget, SDAToolWidget)
+                            GAToolWidget, CaltrigToolWidget, SDAToolWidget)
 
 from .gui.genetic_algorithm_widgets import GAWindowWidget,GAGenerationScoreWindowWidget
-from .gui.exploration_widgets import ExplorationWidget
+from .gui.exploration_widgets import CaltrigWidget
 from .gui.pop_up_messages import print_error
 import sys
 import os
@@ -69,7 +69,7 @@ class MainWindow(QMainWindow):
         self.current_selection = None
         self.cl_tools = ClusteringToolWidget(self, self.event_defaults)
         self.ga_tools = GAToolWidget(self)
-        self.e_tools = ExplorationToolWidget(self)
+        self.e_tools = CaltrigToolWidget(self)
         self.sda_tools = SDAToolWidget(self)
         self.cl_tools.setEnabled(False)
         self.e_tools.setEnabled(False)
@@ -83,7 +83,7 @@ class MainWindow(QMainWindow):
         tabs.setFixedWidth(400)
         self.instance_viz = VisualizeInstanceWidget(self)
 
-        tabs.addTab(self.e_tools, "Exploration")
+        tabs.addTab(self.e_tools, "Caltrig")
         tabs.addTab(self.cl_tools, "Clustering")
         tabs.addTab(self.ga_tools, "Genetic Algorithm")
 
@@ -166,9 +166,9 @@ class MainWindow(QMainWindow):
         self.event_defaults = result
         self.cl_tools.update_defaults(self.event_defaults)
 
-    def start_exploration(self, current_selection=None):
+    def start_caltrig(self, current_selection=None):
         """
-        Starts the Exploration window for the current selection.
+        Starts the Caltrig window for the current selection.
         If a selection is not provided, the current selection of the GUI will be used.
 
         Parameters
@@ -183,36 +183,12 @@ class MainWindow(QMainWindow):
         name = f"{instance.mouseID} {instance.day} {instance.session} Exploration"
 
         if name not in self.windows:
-            wid = ExplorationWidget(instance, name, self, processes=self.processes)
+            wid = CaltrigWidget(instance, name, self, processes=self.processes)
             if wid is not None:
                 wid.setWindowTitle(name)
                 self.windows[name] = wid
                 # Create a backup of E data
                 instance.backup_data("E")
-                wid.show()
-
-    def start_sda(self, current_selection=None):
-        """
-        Starts the Spatial Distribution Analysis window for the current selection.
-        If a selection is not provided, the current selection of the GUI will be used.
-        For now this method is deprecated and has been incorporated into the Exploration window.
-
-        Parameters
-        ----------
-        current_selection : Viewer, optional
-            The current selection to be analyzed. If not provided, the current selection of the GUI will be used.
-        """
-        current_selection = self.current_selection if current_selection is None else current_selection
-        group, session, day, mouseID = current_selection.return_info()
-        instance = self.instances[group][mouseID][f"{session}:{day}"]
-
-        name = f"{instance.mouseID} {instance.day} {instance.session} Spatial Distribution Analysis"
-
-        if name not in self.windows:
-            wid = SDAWindowWidget(instance, name, self)
-            if wid is not None:
-                wid.setWindowTitle(name)
-                self.windows[name] = wid
                 wid.show()
 
     def start_ga(self, ga):
@@ -495,7 +471,8 @@ def start_gui(processes=True):
     Example
     -------
     >>> from caltrig.start_gui import start_gui
-    >>> start_gui()
+    >>> if __name__ == "__main__":
+    >>>     start_gui()
     """
     app = QApplication([])
     app.setStyle('Fusion')

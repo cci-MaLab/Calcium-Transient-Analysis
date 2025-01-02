@@ -34,7 +34,7 @@ try:
 except ImportError:
     torch_imported = False
 
-class ExplorationWidget(QWidget):
+class CaltrigWidget(QWidget):
     def __init__(self, session, name, main_window_ref, timestamps=None, parent=None, processes=True):
         super().__init__(parent)
         self.session = session

@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout, QWidget,
                             QCheckBox, QGridLayout, QFrame, QGraphicsView, QGraphicsScene, QPushButton, 
-                            QComboBox, QMainWindow, QBoxLayout, QSpacerItem, QSizePolicy)
+                            QComboBox, QMainWindow, QSpacerItem, QBoxLayout, QSizePolicy)
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QImage, QPixmap)
 from PyQt5.QtCore import (Qt)
 import bisect
@@ -187,7 +187,7 @@ class UpdateDialog(QDialog):
         layout_param = QHBoxLayout()
         event_layout = []
         for i,j in zip(self.event_label,self.event_param):
-            single_layout = QBoxLayout()
+            single_layout = QHBoxLayout()
             single_layout.addWidget(i)
             single_layout.addWidget(j)
             event_layout.append(single_layout)
@@ -215,7 +215,7 @@ class UpdateDialog(QDialog):
         # layout_param.addLayout(IALP_layout)
         # layout_param.addLayout(RNFS_layout)
         # layout_param.addLayout(ALP_Timeout_layout)
-        layout_param.addWidget(distance_metric_layout)
+        layout_param.addLayout(distance_metric_layout)
 
         layout = QVBoxLayout()
         layout.addLayout(layout_param)
@@ -709,16 +709,16 @@ def hide_unhide(chkbox, param):
     else:
         param.setEnabled(False)
 
-class ExplorationToolWidget(QWidget):
+class CaltrigToolWidget(QWidget):
     def __init__(self, main_ref, parent=None):
         super().__init__(parent)
         self.main_ref = main_ref
 
-        button_explore = QPushButton("Data Exploration")
+        button_explore = QPushButton("Start CalTrig")
         button_explore.setStyleSheet("background-color : blue")
         button_explore.clicked.connect(self.explore)
 
-        button_delete = QPushButton("Delete Cluster")
+        button_delete = QPushButton("Delete Selection")
         button_delete.setStyleSheet("background-color : red")
         button_delete.clicked.connect(self.delete)
 
@@ -729,7 +729,7 @@ class ExplorationToolWidget(QWidget):
         self.setLayout(layout)
 
     def explore(self, event):
-        self.main_ref.start_exploration()
+        self.main_ref.start_caltrig()
 
     def delete(self, event):
         self.main_ref.delete_selection()
