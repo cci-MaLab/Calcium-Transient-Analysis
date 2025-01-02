@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAc
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
                             QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar, QCheckBox,
                             QTextEdit, QComboBox, QGraphicsTextItem, QMessageBox, QFileDialog,
-                            QScrollArea, QListWidgetItem, QInputDialog)
+                            QScrollArea, QListWidgetItem, QInputDialog, QSizePolicy)
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5 import QtCore
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont)
@@ -183,6 +183,8 @@ class ExplorationWidget(QWidget):
         # Select Cells
         w_cell_label = QLabel("Pick which cells to focus (Hold ctrl/shift for multi):")
         self.cell_count_label = QLabel(f"Total/Verified: ")
+        self.cell_count_label.setWordWrap(True)
+        self.cell_count_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
         self.list_cell = QListWidget()
         self.list_cell.setMaximumHeight(600)
         self.list_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -619,8 +621,8 @@ class ExplorationWidget(QWidget):
         layout_focus_buttons.addWidget(self.btn_cell_focus_and_trace)
 
         layout_cells = QVBoxLayout()
-        layout_cells.addWidget(w_cell_label)
         layout_cells.addWidget(self.cell_count_label)
+        layout_cells.addWidget(w_cell_label)
         layout_cells.addWidget(self.list_cell)
         layout_cells.addLayout(layout_focus_buttons)
         layout_cells.addWidget(self.btn_cell_reset)
@@ -2831,7 +2833,7 @@ class ExplorationWidget(QWidget):
                 self.list_rejected_cell.addItem(str(cell_id))
                 reject_size += 1
 
-        self.cell_count_label.setText(f"Total - {self.list_cell.count()}, Verified - {approved_size}")
+        self.cell_count_label.setText(f"Total - {self.list_cell.count()}, Verified - {approved_size}, Rejected - {reject_size}, Pending - {self.list_cell.count() - approved_size}")
 
     def extract_id(self, item):
         if "G" in item.text():
