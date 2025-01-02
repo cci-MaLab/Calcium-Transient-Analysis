@@ -19,6 +19,12 @@ included a basic yml file that omits ml.
 
     conda env create -f environment_basic.yml
 
+We also provide an equivalent pip requirements file for those who prefer to use pip:
+
+.. code-block:: bash
+
+    pip install -r requirements_basic.txt
+
 .. _how to use:
 
 How To Use
