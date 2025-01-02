@@ -36,7 +36,7 @@ napoleon_use_rtype = False
 napoleon_use_ivar = True
 autodoc_typehints = "none"
 autodoc_member_order = "groupwise"
-autodoc_mock_imports = ['PyQt5', 'pyvistaqt', 'pyvista', 'pyqtgraph']
+#autodoc_mock_imports = ['PyQt5', 'pyvistaqt', 'pyvista', 'pyqtgraph']
 autoclass_content = "both"
 autosectionlabel_prefix_document = True
 
