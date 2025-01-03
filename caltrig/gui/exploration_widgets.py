@@ -209,7 +209,7 @@ class CaltrigWidget(QWidget):
 
         self.tabs_video_tools_parent = QScrollArea()
         self.tabs_video_tools = QTabWidget()
-        self.tabs_video_tools_parent.setFixedWidth(340)
+        self.tabs_video_tools_parent.setFixedWidth(370)
         self.tabs_video_tools_parent.setWidgetResizable(True)
         self.tabs_video_tools_parent.setWidget(self.tabs_video_tools)
 
@@ -1530,7 +1530,7 @@ class CaltrigWidget(QWidget):
                                           smoothing_size=smoothing_size, smoothing_type=smoothing_type, window_size=window_size, normalize=normalize, average=average, cumulative=cumulative)
         
         self.cofiring_chkbox.setChecked(False)
-        #self.visualization_3D.remove_cofiring()
+        self.visualization_3D.remove_cofiring()
 
     def check_if_results_exist(self):
         idx_to_cells = {"0":"1", "1":"2", "2":"5", "3":"10", "4":"15", "5":"20"}

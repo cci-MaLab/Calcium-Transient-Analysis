@@ -405,6 +405,7 @@ class PyVistaWidget(QtInteractor):
         self.background_color = 'black'
         self.points_3d = None
         self.cmap = "fire"
+        self.arrows = []
         self.populate_3D_scene()
 
     def populate_3D_scene(self):
@@ -665,6 +666,103 @@ class PyVistaWidget(QtInteractor):
         x, y = int(x + self.visualization_data.x_start), int(y + self.visualization_data.y_start)
         self.point_signal.emit(x, y)
 
+    def extract_cofiring_data(self, window_size, **kwargs):
+        name = f"cofiring_{window_size}"
+        name += "_shared_A" if kwargs["shareA"] else ""
+        name += "_shared_B" if kwargs["shareB"] else ""
+        name += kwargs["direction"]
+        if name not in self.precalculated_values:
+            self.change_cofiring_window(window_size, **kwargs)
+        return self.precalculated_values[name]
+    
+    def change_cofiring_window(self, window_size, visualize=False, nums_to_visualize="Verified Cells",
+                               **kwargs):
+        
+        name = f"cofiring_{window_size}"
+        name += "_shared_A" if kwargs["shareA"] else ""
+        name += "_shared_B" if kwargs["shareB"] else ""
+        name += kwargs["direction"]
+        unit_ids = self.session.get_cell_ids(nums_to_visualize, verified=True)
+
+        if len(unit_ids) < 2:
+            print_error("Not Enough Cells for Cofiring", extra_info="Make sure that you have at least two verified cells for cofiring.", severity=QMessageBox.Warning)
+            return unit_ids
+
+        if name not in self.precalculated_values:
+            # Cells to Number
+            cofiring_data_cells = {}
+            # Number to Cells
+            cofiring_data_number = {}
+
+            verified_unit_ids = self.session.get_cell_ids("Verified Cells")
+            
+            for unit_id in verified_unit_ids:
+                for unit_id_2 in verified_unit_ids:
+                    if unit_id == unit_id_2:
+                        continue
+                    unit1_starts = self.precalculated_values['transient_info'][unit_id]['frame_start']
+                    unit2_starts = self.precalculated_values['transient_info'][unit_id_2]['frame_start']
+                    value = _check_cofiring(unit1_starts, unit2_starts, window_size, **kwargs)
+                    cofiring_data_cells[(unit_id, unit_id_2)] = value
+                    if value not in cofiring_data_number:
+                        cofiring_data_number[value] = []
+                    cofiring_data_number[value].append((unit_id, unit_id_2))
+            self.precalculated_values[name] = {"cells": cofiring_data_cells, "number": cofiring_data_number}
+
+        if visualize:
+            # This means the checkbox is checked and we need to visualize the data
+            self.visualize_arrows(unit_ids, window_size, **kwargs)
+        
+        return self.precalculated_values[name]
+
+    def visualize_arrows(self, nums_to_visualize, window_size, cofiring_nums=set(), cofiring_cells=set(), shareA=True, shareB=True, direction="bidirectional", **kwargs):
+        
+        name = f"cofiring_{window_size}"
+        name += "_shared_A" if shareA else ""
+        name += "_shared_B" if shareB else ""
+        name += direction
+
+        if name not in self.precalculated_values:
+            self.change_cofiring_window(window_size, shareA=shareA, shareB=shareB, 
+                                        nums_to_visualize=nums_to_visualize, direction=direction,
+                                          **kwargs)
+            return
+        # We need to visualize the arrows
+        cell_id_coords = self.visualization_data.cell_id_coords
+        if len(cell_id_coords) == 0:
+            return
+
+        max_cofiring = max(self.precalculated_values[name]["number"].keys())
+        colormap = cm.get_cmap("rainbow")
+        for id1 in nums_to_visualize:
+            for id2 in nums_to_visualize:
+                if (id1, id2) in self.precalculated_values[name]["cells"]:
+                    value = self.precalculated_values[name]["cells"][(id1, id2)]
+                else:
+                    continue
+                if value not in cofiring_nums and "all" not in cofiring_nums:
+                    continue
+                if id1 not in cofiring_cells and id2 not in cofiring_cells and "all" not in cofiring_nums:
+                    continue
+
+                coords1 = cell_id_coords[id1]
+                coords2 = cell_id_coords[id2]
+                z_offset = 0.5 # We need to offset the arrows slightly above the surface
+                if value > 1:
+                    normalized_value = value / max_cofiring
+                    color = colormap(normalized_value)
+                    color = (color[0], color[1], color[2])
+                    mesh = pv.Arrow(start=(coords1[0], coords1[1], z_offset), direction=(coords2[0]-coords1[0], coords2[1]-coords1[1], z_offset), scale='auto')
+                    arrow_actor = self.add_mesh(mesh, color=color, show_scalar_bar=False)
+                    self.arrows.append(arrow_actor)
+
+        self.render()
+
+    def remove_cofiring(self):
+        for arrow in self.arrows:
+            self.remove_actor(arrow)
+        self.arrows = []
+        self.render()
 
 class MayaviQWidget(QWidget):
     point_signal = pyqtSignal(int, int)
