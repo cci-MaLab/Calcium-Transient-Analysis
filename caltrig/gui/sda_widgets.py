@@ -753,7 +753,7 @@ class PyVistaWidget(QtInteractor):
                     color = colormap(normalized_value)
                     color = (color[0], color[1], color[2])
                     mesh = pv.Arrow(start=(coords1[0], coords1[1], z_offset), direction=(coords2[0]-coords1[0], coords2[1]-coords1[1], z_offset), scale='auto')
-                    arrow_actor = self.add_mesh(mesh, color=color, show_scalar_bar=False)
+                    arrow_actor = self.add_mesh(mesh, color=color, show_scalar_bar=False, reset_camera=False)
                     self.arrows.append(arrow_actor)
 
         self.render()
