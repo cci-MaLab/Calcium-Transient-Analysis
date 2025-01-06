@@ -617,6 +617,7 @@ class DataInstance:
                         chunks={"frame": -1, "height": 32, "width": 32},
                     )
                     video_data[video_type] = Y_hw_chk
+                    print("Done creating Y_hw_chk")
                     
                     
         

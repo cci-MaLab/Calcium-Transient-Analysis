@@ -154,7 +154,7 @@ class CurrentVisualizationData():
         # Returns a dictionary containing the data for surface plot and the points of the centroids
         frame = (self.data[frame-self.start_frame] * self.scaling_factor).astype(np.float32)
         # Get the x, y and z values for the points
-        points_coords = np.array([self.points["y"], self.points["x"], frame[self.points["x"], self.points["y"]]], dtype=np.float32).T if len(self.points["x"]) > 0 else np.array([], [], [])
+        points_coords = np.array([self.points["x"], self.points["y"], frame[self.points["y"], self.points["x"]]], dtype=np.float32).T if len(self.points["x"]) > 0 else np.array([], [], [])
         return {"frame": frame, "points_coords": points_coords}
     
     def update_points_list(self, points):
@@ -163,7 +163,7 @@ class CurrentVisualizationData():
         points = points.values()
         x_coords, y_coords = zip(*points)
         # So it aligns with the data and PyVista convention we need to subtract the start values and flip the y and x values
-        y_coords, x_coords = np.array(x_coords).astype(int) - int(self.x_start), np.array(y_coords).astype(int) - int(self.y_start)     
+        x_coords, y_coords = switch_to_3d_coordinates(x_coords, y_coords, self.x_start, self.y_start)     
         self.points = {"x": x_coords, "y": y_coords}
         # Keep a local dict cell_id to coords
         self.cell_id_coords = {cell_id: (x, y) for cell_id, x, y in zip(cell_ids, x_coords, y_coords)}
@@ -196,7 +196,23 @@ class CurrentVisualizationData():
 
     __rmul__ = __mul__
 
+def switch_to_3d_coordinates(x, y, x_start=0, y_start=0):
+    """
+    The PyVista coordinates begin in the bottom left corner, while the 2d plane
+    coordinates begin in the top left corner. Therefore, we need to first subtract
+    the start values if they exist and then flip x and y values.
+    """
 
+    # If x or y are a list we need to convert them to numpy arrays
+    if isinstance(x, list) or isinstance(x, tuple):
+        x = np.array(x).astype(int)
+    if isinstance(y, list) or isinstance(y, tuple):
+        y = np.array(y).astype(int)
+    
+    x_start, y_start = int(x_start), int(y_start)
+    
+    x, y = x - x_start, y - y_start
+    return x, y
 
 def base_visualization(serialized_data, start_frame=0, end_frame=50):
     unserialized_data = pickle.loads(serialized_data)
@@ -398,14 +414,13 @@ class PyVistaWidget(QtInteractor):
         self.current_shape = self.visualization_data.data[0].shape
         self.parent = parent
         self.cells = None
-        self.arrows = []
 
         # Instantiate PyVista scene
         self.scalar_range = (0, 50)
         self.background_color = 'black'
         self.points_3d = None
         self.cmap = "fire"
-        self.arrows = []
+        self.arrows = {"params": ""}
         self.populate_3D_scene()
 
     def populate_3D_scene(self):
@@ -715,12 +730,22 @@ class PyVistaWidget(QtInteractor):
         
         return self.precalculated_values[name]
 
+    def remove_arrow(self, ids):
+        if ids in self.arrows:
+            self.remove_actor(self.arrows[ids])
+            self.arrows.pop(ids)
+
     def visualize_arrows(self, nums_to_visualize, window_size, cofiring_nums=set(), cofiring_cells=set(), shareA=True, shareB=True, direction="bidirectional", **kwargs):
         
         name = f"cofiring_{window_size}"
         name += "_shared_A" if shareA else ""
         name += "_shared_B" if shareB else ""
         name += direction
+
+        params = "_".join([str(val) for val in [window_size, shareA, shareB, direction]])
+
+        self.remove_cofiring(check_params=params)
+        self.arrows["params"] = params
 
         if name not in self.precalculated_values:
             self.change_cofiring_window(window_size, shareA=shareA, shareB=shareB, 
@@ -734,34 +759,67 @@ class PyVistaWidget(QtInteractor):
 
         max_cofiring = max(self.precalculated_values[name]["number"].keys())
         colormap = cm.get_cmap("rainbow")
+        visualized_arrows = []
         for id1 in nums_to_visualize:
             for id2 in nums_to_visualize:
                 if (id1, id2) in self.precalculated_values[name]["cells"]:
                     value = self.precalculated_values[name]["cells"][(id1, id2)]
                 else:
+                    self.remove_arrow((id1, id2))
                     continue
                 if value not in cofiring_nums and "all" not in cofiring_nums:
+                    self.remove_arrow((id1, id2))
                     continue
                 if id1 not in cofiring_cells and id2 not in cofiring_cells and "all" not in cofiring_nums:
+                    self.remove_arrow((id1, id2))
                     continue
 
-                coords1 = cell_id_coords[id1]
-                coords2 = cell_id_coords[id2]
+                x1, y1 = cell_id_coords[id1]
+                x2, y2 = cell_id_coords[id2]
                 z_offset = 0.5 # We need to offset the arrows slightly above the surface
                 if value > 1:
+                    if (id1, id2) in self.arrows:
+                        visualized_arrows.append((id1, id2))
+                        continue
                     normalized_value = value / max_cofiring
                     color = colormap(normalized_value)
                     color = (color[0], color[1], color[2])
-                    mesh = pv.Arrow(start=(coords1[0], coords1[1], z_offset), direction=(coords2[0]-coords1[0], coords2[1]-coords1[1], z_offset), scale='auto')
+                    distance = np.sqrt((x2-x1)**2 + (y2-y1)**2)
+                    tip_length = (5 + 10 * normalized_value) / distance
+                    tip_radius = (2 + 4 * normalized_value) / distance
+                    shaft_radius = (1 + 2 * normalized_value) / distance
+                    mesh = pv.Arrow(start=(x1, y1, z_offset),
+                                    direction=(x2-x1, y2-y1, z_offset),
+                                    tip_length=tip_length,
+                                    tip_radius=tip_radius,
+                                    shaft_radius=shaft_radius,
+                                    scale="auto",
+                                    )
                     arrow_actor = self.add_mesh(mesh, color=color, show_scalar_bar=False, reset_camera=False)
-                    self.arrows.append(arrow_actor)
+                    self.arrows[(id1, id2)] = arrow_actor
+                    visualized_arrows.append((id1, id2))
+        
+        # Remove any arrows that are not visualized
+        for id in list(self.arrows.keys()):
+            if id == "params":
+                continue
+            if id not in visualized_arrows:
+                self.remove_arrow(id)
 
+        # Reset the gridlines
+        shape = self.visualization_data.get_shape() 
+        self.show_grid(bounds=(0, shape["x"], 0, shape["y"], -20, 150), color='white')
         self.render()
 
-    def remove_cofiring(self):
-        for arrow in self.arrows:
-            self.remove_actor(arrow)
-        self.arrows = []
+    def remove_cofiring(self, check_params=None):
+        if check_params is not None:
+            if self.arrows["params"] == check_params:
+                return
+        for ids in list(self.arrows.keys()):
+            self.remove_arrow(ids)
+        self.arrows = {"params": ""}
+        shape = self.visualization_data.get_shape() 
+        self.show_grid(bounds=(0, shape["x"], 0, shape["y"], -20, 150), color='white')
         self.render()
 
 class MayaviQWidget(QWidget):
@@ -1076,10 +1134,7 @@ class MayaviQWidget(QWidget):
             self.change_cofiring_window(window_size, **kwargs)
         return self.precalculated_values[name]
         
-
-        
-
-    
+   
 def _check_cofiring(A_starts: List[int], B_starts: List[int], window_size: int, shareA:bool=True, shareB:bool=True, direction:str="bidirectional", **kwargs):
     """
     Check if two cells are cofiring with each other. This is generally done
