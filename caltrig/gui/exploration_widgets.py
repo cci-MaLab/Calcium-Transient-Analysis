@@ -81,7 +81,8 @@ class CaltrigWidget(QWidget):
             return None
         self.current_video = self.session.video_data["varr"]
         self.current_video_serialized = pickle.dumps(self.current_video)
-        self.behavior_video_serialized = pickle.dumps(self.session.video_data["behavior_video"])
+        if "behavior_video" in self.session.video_data:
+            self.behavior_video_serialized = pickle.dumps(self.session.video_data["behavior_video"])
         self.video_length = self.current_video.shape[0]
         self.mask = np.ones((self.current_video.shape[1], self.current_video.shape[2]))
         # We need two seperate masks here. One for the missed cells we confirmed and one for drawing a new missed cell
