@@ -210,14 +210,12 @@ class CaltrigWidget(QWidget):
 
         self.tabs_video_tools_parent = QScrollArea()
         self.tabs_video_tools = QTabWidget()
-        self.tabs_video_tools_parent.setFixedWidth(370)
         self.tabs_video_tools_parent.setWidgetResizable(True)
         self.tabs_video_tools_parent.setWidget(self.tabs_video_tools)
 
         self.tabs_visualization = QTabWidget()
 
         self.tabs_video = QTabWidget()
-        self.tabs_video.setFixedWidth(330)
 
         tabs_signal_parent = QScrollArea()
         tabs_signal = QTabWidget()
@@ -1180,7 +1178,7 @@ class CaltrigWidget(QWidget):
         tabs_signal.addTab(frame_stats, "Local Stats")
 
         layout_video_cells.addLayout(layout_video)
-        layout_video_cells.addWidget(self.tabs_video_tools_parent)
+        widget_video_subvideos.addWidget(self.tabs_video_tools_parent)
         self.widget_video_cells = QWidget()
         self.widget_video_cells.setLayout(layout_video_cells)
 
