@@ -30,23 +30,6 @@ class ParamDialog(QDialog):
             self.event_chkboxes[idx].stateChanged.connect(lambda: hide_unhide(self.event_chkboxes[idx], self.event_param[idx]))
             self.event_chkboxes[idx].stateChanged.connect(self.release_button)
             
-            
-
-
-
-        # self.ALP_chkbox = QCheckBox("ALP")
-        # self.ALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_chkbox, self.ALP_param))
-        # self.ALP_chkbox.stateChanged.connect(self.release_button)
-        # self.IALP_chkbox = QCheckBox("IALP")
-        # self.IALP_chkbox.stateChanged.connect(lambda: hide_unhide(self.IALP_chkbox, self.IALP_param))
-        # self.IALP_chkbox.stateChanged.connect(self.release_button)
-        # self.RNFS_chkbox = QCheckBox("RNFS")
-        # self.RNFS_chkbox.stateChanged.connect(lambda: hide_unhide(self.RNFS_chkbox, self.RNFS_param))
-        # self.RNFS_chkbox.stateChanged.connect(self.release_button)
-        # self.ALP_Timeout_chkbox = QCheckBox("ALP_Timeout")
-        # self.ALP_Timeout_chkbox.stateChanged.connect(lambda: hide_unhide(self.ALP_Timeout_chkbox, self.ALP_Timeout_param))
-        # self.ALP_Timeout_chkbox.stateChanged.connect(self.release_button)
-
         distance_metric_label = QLabel("Distance Metric")
         self.distance_metric_combo = QComboBox()
 
@@ -54,14 +37,6 @@ class ParamDialog(QDialog):
             self.event_param.append(ParamWidget(i, event_defaults))
             self.event_param[idx].setEnabled(False)
 
-        # self.ALP_param = ParamWidget("ALP", event_defaults)
-        # self.ALP_param.setEnabled(False)
-        # self.IALP_param = ParamWidget("IALP", event_defaults)
-        # self.IALP_param.setEnabled(False)
-        # self.RNFS_param = ParamWidget("RNFS", event_defaults)
-        # self.RNFS_param.setEnabled(False)
-        # self.ALP_Timeout_param = ParamWidget("ALP_Timeout", event_defaults)
-        # self.ALP_Timeout_param.setEnabled(False)
         self.distance_metric_combo.addItems(DataInstance.distance_metric_list)
         self.distance_metric_combo.setCurrentIndex(self.distance_metric_combo.findText(event_defaults["distance_metric"]))
 
@@ -73,31 +48,12 @@ class ParamDialog(QDialog):
             single_layout.addWidget(j)
             event_layout.append(single_layout)
 
-        # ALP_layout = QVBoxLayout()
-        # IALP_layout = QVBoxLayout()
-        # RNFS_layout = QVBoxLayout()
-        # ALP_Timeout_layout = QVBoxLayout()
         distance_metric_layout = QVBoxLayout()
-
-
-        # ALP_layout.addWidget(self.event_chkboxes[0])
-        # ALP_layout.addWidget(self.event_param[0])
-        # IALP_layout.addWidget(self.event_chkboxes[1])
-        # IALP_layout.addWidget(self.event_param[1])
-        # RNFS_layout.addWidget(self.event_chkboxes[2])
-        # RNFS_layout.addWidget(self.event_param[2])
-        # ALP_Timeout_layout.addWidget(self.event_chkboxes[3])
-        # ALP_Timeout_layout.addWidget(self.event_param[3])
         distance_metric_layout.addWidget(distance_metric_label)
         distance_metric_layout.addWidget(self.distance_metric_combo)
 
         for i in event_layout:
             layout_param.addLayout(i)
-
-        # layout_param.addLayout(ALP_layout)
-        # layout_param.addLayout(IALP_layout)
-        # layout_param.addLayout(RNFS_layout)
-        # layout_param.addLayout(ALP_Timeout_layout)
         layout_param.addLayout(distance_metric_layout)
 
         layout = QVBoxLayout()
@@ -116,11 +72,6 @@ class ParamDialog(QDialog):
         else:
             self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
 
-        # if self.ALP_chkbox.isChecked() or self.IALP_chkbox.isChecked() or self.RNFS_chkbox.isChecked() or self.ALP_Timeout_chkbox.isChecked():
-        #     self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
-        # else:
-        #     self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
-
     def get_result(self):
         result = {}
         for i, j, l in zip(self.event_chkboxes,self.events,self.event_param):
@@ -128,22 +79,6 @@ class ParamDialog(QDialog):
                 result[j] = {}
                 result[j]["window"] = int(l.duration_edit.text())
                 result[j]["delay"] = int(l.delay_edit.text())
-        # if self.ALP_chkbox.isChecked():
-        #     result["ALP"] = {}
-        #     result["ALP"]["window"] = int(self.ALP_param.duration_edit.text())
-        #     result["ALP"]["delay"] = int(self.ALP_param.delay_edit.text())
-        # if self.IALP_chkbox.isChecked():
-        #     result["IALP"] = {}
-        #     result["IALP"]["window"] = int(self.IALP_param.duration_edit.text())
-        #     result["IALP"]["delay"] = int(self.IALP_param.delay_edit.text())
-        # if self.RNFS_chkbox.isChecked():
-        #     result["RNFS"] = {}
-        #     result["RNFS"]["window"] = int(self.RNFS_param.duration_edit.text())
-        #     result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
-        # if self.ALP_Timeout_chkbox.isChecked():
-        #     result["ALP_Timeout"] = {}
-        #     result["ALP_Timeout"]["window"] = int(self.ALP_Timeout_param.duration_edit.text())
-        #     result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
         result["distance_metric"] = self.distance_metric_combo.currentText()
         return result
 
@@ -165,19 +100,11 @@ class UpdateDialog(QDialog):
         for i in self.events:
             self.event_label.append(QLabel(i))
 
-        # self.ALP_label = QLabel("ALP")
-        # self.IALP_label = QLabel("IALP")
-        # self.RNFS_label = QLabel("RNFS")
-        # self.ALP_Timeout_label = QLabel("ALP_Timeout")
 
         self.event_param = []
         for i in self.events:
             self.event_param.append(ParamWidget(i,event_defaults))
 
-        # self.ALP_param = ParamWidget("ALP", event_defaults)
-        # self.IALP_param = ParamWidget("IALP", event_defaults)
-        # self.RNFS_param = ParamWidget("RNFS", event_defaults)
-        # self.ALP_Timeout_param = ParamWidget("ALP_Timeout", event_defaults)
 
         distance_metric_label = QLabel("Distance Metric")
         self.distance_metric_combo = QComboBox()
@@ -192,29 +119,12 @@ class UpdateDialog(QDialog):
             single_layout.addWidget(j)
             event_layout.append(single_layout)
 
-        # ALP_layout = QVBoxLayout()
-        # IALP_layout = QVBoxLayout()
-        # RNFS_layout = QVBoxLayout()
-        # ALP_Timeout_layout = QVBoxLayout()
         distance_metric_layout = QVBoxLayout()
-
-        # ALP_layout.addWidget(self.ALP_label)
-        # ALP_layout.addWidget(self.ALP_param)
-        # IALP_layout.addWidget(self.IALP_label)
-        # IALP_layout.addWidget(self.IALP_param)
-        # RNFS_layout.addWidget(self.RNFS_label)
-        # RNFS_layout.addWidget(self.RNFS_param)
-        # ALP_Timeout_layout.addWidget(self.ALP_Timeout_label)
-        # ALP_Timeout_layout.addWidget(self.ALP_Timeout_param)
         distance_metric_layout.addWidget(distance_metric_label)
         distance_metric_layout.addWidget(self.distance_metric_combo)
 
         for i in event_layout:
             layout_param.addLayout(i)
-        # layout_param.addLayout(ALP_layout)
-        # layout_param.addLayout(IALP_layout)
-        # layout_param.addLayout(RNFS_layout)
-        # layout_param.addLayout(ALP_Timeout_layout)
         layout_param.addLayout(distance_metric_layout)
 
         layout = QVBoxLayout()
@@ -230,18 +140,6 @@ class UpdateDialog(QDialog):
             result[i]["window"] = int(j.duration_edit.text())
             result[i]["delay"] = int(j.delay_edit.text())
 
-        # result["ALP"] = {}
-        # result["ALP"]["window"] = int(self.ALP_param.duration_edit.text())
-        # result["ALP"]["delay"] = int(self.ALP_param.delay_edit.text())
-        # result["IALP"] = {}
-        # result["IALP"]["window"] = int(self.IALP_param.duration_edit.text())
-        # result["IALP"]["delay"] = int(self.IALP_param.delay_edit.text())
-        # result["RNFS"] = {}
-        # result["RNFS"]["window"] = int(self.RNFS_param.duration_edit.text())
-        # result["RNFS"]["delay"] = int(self.RNFS_param.delay_edit.text())
-        # result["ALP_Timeout"] = {}
-        # result["ALP_Timeout"]["window"] = int(self.ALP_Timeout_param.duration_edit.text())
-        # result["ALP_Timeout"]["delay"] = int(self.ALP_Timeout_param.delay_edit.text())
         result["distance_metric"] = self.distance_metric_combo.currentText()
         
         return result
