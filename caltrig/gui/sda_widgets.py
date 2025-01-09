@@ -717,7 +717,7 @@ class PyVistaWidget(QtInteractor):
                         continue
                     unit1_starts = self.precalculated_values['transient_info'][unit_id]['frame_start']
                     unit2_starts = self.precalculated_values['transient_info'][unit_id_2]['frame_start']
-                    value = _check_cofiring(unit1_starts, unit2_starts, window_size, **kwargs)
+                    value = check_cofiring(unit1_starts, unit2_starts, window_size, **kwargs)
                     cofiring_data_cells[(unit_id, unit_id_2)] = value
                     if value not in cofiring_data_number:
                         cofiring_data_number[value] = []
@@ -1056,7 +1056,7 @@ class MayaviQWidget(QWidget):
                         continue
                     unit1_starts = self.precalculated_values['transient_info'][unit_id]['frame_start']
                     unit2_starts = self.precalculated_values['transient_info'][unit_id_2]['frame_start']
-                    value = _check_cofiring(unit1_starts, unit2_starts, window_size, **kwargs)
+                    value = check_cofiring(unit1_starts, unit2_starts, window_size, **kwargs)
                     cofiring_data_cells[(unit_id, unit_id_2)] = value
                     if value not in cofiring_data_number:
                         cofiring_data_number[value] = []
@@ -1135,7 +1135,7 @@ class MayaviQWidget(QWidget):
         return self.precalculated_values[name]
         
    
-def _check_cofiring(A_starts: List[int], B_starts: List[int], window_size: int, shareA:bool=True, shareB:bool=True, direction:str="bidirectional", **kwargs):
+def check_cofiring(A_starts: List[int], B_starts: List[int], window_size: int, shareA:bool=True, shareB:bool=True, direction:str="bidirectional", **kwargs):
     """
     Check if two cells are cofiring with each other. This is generally done
     by checking if the start of a transient in one cell is within the window

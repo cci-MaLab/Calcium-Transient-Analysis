@@ -468,11 +468,11 @@ class CaltrigWidget(QWidget):
         self.btn_global_reset_view = QPushButton("Reset View")
         # Which group of cells to visualize
         label_global_which_cells = QLabel("Which Cells to Visualize")
-        self.list_global_which_cells = QComboBox()
-        self.list_global_which_cells.addItems(["All Cells", "Verified Cells"])
+        self.cmb_global_which_cells = QComboBox()
+        self.cmb_global_which_cells.addItems(["All Cells", "Verified Cells"])
         unique_groups = self.session.get_group_ids()
-        self.list_global_which_cells.addItems([f"Group {group}" for group in unique_groups])
-        self.list_global_which_cells.currentIndexChanged.connect(lambda: self.visualize_global_signals(reset_view=False))
+        self.cmb_global_which_cells.addItems([f"Group {group}" for group in unique_groups])
+        self.cmb_global_which_cells.currentIndexChanged.connect(lambda: self.visualize_global_signals(reset_view=False))
         # Input for window size
         global_window_size_label = QLabel("Window Size")
         self.global_window_size_input = QLineEdit()
@@ -537,9 +537,30 @@ class CaltrigWidget(QWidget):
             "ALP_Timeout": (60, 200, 250)
         }
 
+        # Shuffling Tools
+        label_shuffle_which_cells = QLabel("Select Cells to Shuffle")
+        self.cmb_shuffle_which_cells = QComboBox()
+        self.cmb_shuffle_which_cells.addItems(["All Cells", "Verified Cells"])
+        self.cmb_shuffle_which_cells.addItems([f"Group {group}" for group in unique_groups])
+        self.cmb_shuffle_which_cells.currentIndexChanged.connect(self.refresh_cell_list)
+        self.list_shuffle_cell = QListWidget()
+        self.list_shuffle_cell.setMaximumHeight(600)
+        self.list_shuffle_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        layout_shuffle_chkbox_options = QHBoxLayout()
+        self.chkbox_shuffle_contain_cells = QCheckBox("Contain Cells to Selected?")
+        self.chkbox_shuffle_verified_only = QCheckBox("Verified Cells Only")
+        layout_shuffle_chkbox_options.addWidget(self.chkbox_shuffle_contain_cells)
+        layout_shuffle_chkbox_options.addWidget(self.chkbox_shuffle_verified_only)
+        layout_shuffle_chkbox_type = QHBoxLayout()
+        self.chkbox_shuffle_temporal = QCheckBox("Temporal")
+        self.chkbox_shuffle_spatial = QCheckBox("Spatial")
+        layout_shuffle_chkbox_type.addWidget(self.chkbox_shuffle_temporal)
+        layout_shuffle_chkbox_type.addWidget(self.chkbox_shuffle_spatial)
+        btn_shuffle = QPushButton("Shuffle")
+        btn_shuffle.clicked.connect(self.start_shuffling)
+
         # Populate cell list
         self.refresh_cell_list()
-
         
         # Tools for video
         self.pixmapi_play = QStyle.StandardPixmap.SP_MediaPlay
@@ -636,9 +657,9 @@ class CaltrigWidget(QWidget):
         visualization_3D_layout = QVBoxLayout()
         
         label_3D_which_cells = QLabel("Which Cells to Visualize")
-        self.list_3D_which_cells = QComboBox()
-        self.list_3D_which_cells.addItems(["All Cells", "Verified Cells"])
-        self.list_3D_which_cells.addItems([f"Group {group}" for group in unique_groups])
+        self.cmb_3D_which_cells = QComboBox()
+        self.cmb_3D_which_cells.addItems(["All Cells", "Verified Cells"])
+        self.cmb_3D_which_cells.addItems([f"Group {group}" for group in unique_groups])
         label_3D_functions = QLabel("3D Visualization Functions")
         self.dropdown_3D_functions = QComboBox()
         self.dropdown_3D_functions.addItems(["Raw Visualization", "Transient Visualization"])
@@ -825,10 +846,21 @@ class CaltrigWidget(QWidget):
 
         tabs_visualization_layout = QVBoxLayout()
         tabs_visualization_layout.addWidget(label_3D_which_cells)
-        tabs_visualization_layout.addWidget(self.list_3D_which_cells)
+        tabs_visualization_layout.addWidget(self.cmb_3D_which_cells)
         tabs_visualization_layout.addWidget(self.tabs_visualization)
         tabs_visualization_parent = QWidget()
         tabs_visualization_parent.setLayout(tabs_visualization_layout)
+
+        tabs_shuffling_layout = QVBoxLayout()
+        tabs_shuffling_layout.addWidget(label_shuffle_which_cells)
+        tabs_shuffling_layout.addWidget(self.cmb_shuffle_which_cells)
+        tabs_shuffling_layout.addWidget(self.list_shuffle_cell)
+        tabs_shuffling_layout.addLayout(layout_shuffle_chkbox_options)
+        tabs_shuffling_layout.addLayout(layout_shuffle_chkbox_type)
+        tabs_shuffling_layout.addWidget(btn_shuffle)
+
+        tabs_shuffling = QWidget()
+        tabs_shuffling.setLayout(tabs_shuffling_layout)
         
 
         self.tabs_visualization.addTab(visualization_3D_tools, "Signal Settings")
@@ -836,6 +868,7 @@ class CaltrigWidget(QWidget):
 
         self.tabs_video_tools.addTab(self.tabs_video, "Cell Video")
         self.tabs_video_tools.addTab(tabs_visualization_parent, "3D Visualization")
+        self.tabs_video_tools.addTab(tabs_shuffling, "Shuffling")
 
         # General plot utility
         layout_plot_utility = QVBoxLayout()
@@ -1159,7 +1192,7 @@ class CaltrigWidget(QWidget):
         layout_global_plot_options.addWidget(self.btn_global_reset_view)
         layout_global_plot_options.addLayout(layout_global_avg_method)
         layout_global_plot_options.addLayout(self.layout_global_window_size)
-        layout_global_plot_options.addWidget(self.list_global_which_cells)
+        layout_global_plot_options.addWidget(self.cmb_global_which_cells)
         layout_global_plot_options.addWidget(label_global_which_cells)
         layout_global_plot_options.addWidget(self.chkbox_plot_global_C)
         layout_global_plot_options.addWidget(self.chkbox_plot_global_S)
@@ -1394,7 +1427,7 @@ class CaltrigWidget(QWidget):
         window_size = int(self.cofiring_window_size.text())
         visualize_cofiring = self.cofiring_chkbox.isChecked()
 
-        cells_for_cofiring = self.list_3D_which_cells.currentText()
+        cells_for_cofiring = self.cmb_3D_which_cells.currentText()
         shareA = self.cofiring_shareA_chkbox.isChecked()
         shareB = self.cofiring_shareB_chkbox.isChecked()
         direction = self.cofiring_direction_dropdown.currentText().lower()
@@ -1434,19 +1467,15 @@ class CaltrigWidget(QWidget):
         cofiring_nums = cofiring_nums[1:] if cofiring_nums[0] == 0 else cofiring_nums
         self.cofiring_list.itemChanged.disconnect()
         for num in cofiring_nums:
-            item = QListWidgetItem(f"Cofiring {num}")
-            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked)           
+            item = self.create_checked_item(f"Cofiring {num}")           
             self.cofiring_list.addItem(item)
         self.cofiring_list.itemChanged.connect(lambda: self.update_cofiring_window(reset_list=False))
 
         self.cofiring_individual_cell_list.clear()
-        cells_to_visualize = self.list_global_which_cells.currentText()
+        cells_to_visualize = self.cmb_global_which_cells.currentText()
         cells = self.session.get_cell_ids(cells_to_visualize, verified=True)
         for cell in cells:
-            item = QListWidgetItem(f"Cell {cell}")
-            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked)           
+            item = self.create_checked_item(f"Cell {cell}")        
             self.cofiring_individual_cell_list.addItem(item)
         self.cofiring_individual_cell_list.itemChanged.connect(lambda: self.update_cofiring_window(reset_list=False))
 
@@ -1456,7 +1485,7 @@ class CaltrigWidget(QWidget):
         window_size = int(self.cofiring_window_size.text())
         visualize_cofiring = self.cofiring_chkbox.isChecked()
 
-        cells_for_cofiring = self.list_3D_which_cells.currentText()
+        cells_for_cofiring = self.cmb_3D_which_cells.currentText()
         shareA = self.cofiring_shareA_chkbox.isChecked()
         shareB = self.cofiring_shareB_chkbox.isChecked()
         direction = self.cofiring_direction_dropdown.currentText().lower()
@@ -1506,7 +1535,7 @@ class CaltrigWidget(QWidget):
         visualization_function = self.dropdown_3D_functions.currentText()
         visualization_type = self.dropdown_3D_data_types.currentText()
         scaling = self.slider_3D_scaling.value()
-        cells_to_visualize = self.list_3D_which_cells.currentText()
+        cells_to_visualize = self.cmb_3D_which_cells.currentText()
         # Clamp values between 1 and 1000
         smoothing_size = int(self.input_smoothing_size.text())
         smoothing_size = max(1, min(smoothing_size, 1000))
@@ -2421,7 +2450,7 @@ class CaltrigWidget(QWidget):
         for data_type in selected_types:
             custom_indices = None # Due to Coarsening
             data = self.session.data[data_type]
-            cells_to_visualize = self.list_global_which_cells.currentText()
+            cells_to_visualize = self.cmb_global_which_cells.currentText()
             units = self.session.get_cell_ids(cells_to_visualize)
             data = data.sel(unit_id=units).mean(dim="unit_id")
             if global_window_size > 1:
@@ -2812,21 +2841,44 @@ class CaltrigWidget(QWidget):
         if bimage is not None:
             self.imv_behavior.setImage(bimage, autoRange=False, autoLevels=False)
 
+    def get_shuffle_cells(self):
+        selected_cells = self.cmb_shuffle_which_cells.currentText()
+        if selected_cells == "All Cells":
+            return self.session.data["E"].unit_id.values
+        elif selected_cells == "Verified Cells":
+            return self.session.get_verified_cells()
+        else:
+            return self.session.get_cell_ids(selected_cells)
+        
+    def create_checked_item(self, text, checked=True):
+        item = QListWidgetItem(text)
+        item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+        if checked:
+            item.setCheckState(Qt.CheckState.Checked)
+        return item
+
     def refresh_cell_list(self):
         self.list_cell.clear()
         self.list_rejected_cell.clear()
+        self.list_shuffle_cell.clear()
         cell_ids_to_groups = self.session.cell_ids_to_groups
         good_bad_cells = self.session.data['E']['good_cells'].values
         reject_size = 0
         approved_size = 0
+        shuffle_cells = self.get_shuffle_cells()
         for i, cell_id in enumerate(self.session.data['E']['unit_id'].values):
             if good_bad_cells[i]:
                 if cell_id in cell_ids_to_groups:
-                    self.list_cell.addItem(f"{cell_id} G {', '.join(cell_ids_to_groups[cell_id])}")
+                    cell_name = f"{cell_id} G {', '.join(cell_ids_to_groups[cell_id])}"
                 else:
-                    self.list_cell.addItem(str(cell_id))
+                    cell_name = f"{cell_id}"
+                self.list_cell.addItem(cell_name)
+                if cell_id in shuffle_cells:
+                    self.list_shuffle_cell.addItem(self.create_checked_item(cell_name))
                 if self.session.data['E']['verified'].loc[{'unit_id': cell_id}].values.item():
                     self.list_cell.item(i-reject_size).setBackground(Qt.green)
+                    if cell_id in shuffle_cells:
+                        self.list_shuffle_cell.item(self.list_shuffle_cell.count()-1).setBackground(Qt.green)
                     approved_size += 1
             else:
                 self.list_rejected_cell.addItem(str(cell_id))
@@ -2854,25 +2906,29 @@ class CaltrigWidget(QWidget):
 
         self.session.add_cell_id_group(cell_ids, group_id)
         unique_groups = self.session.get_group_ids()
-        self.list_3D_which_cells.clear()
-        self.list_3D_which_cells.addItems(["All Cells", "Verified Cells"])
-        self.list_3D_which_cells.addItems([f"Group {group_id}" for group_id in unique_groups])
-        self.list_global_which_cells.clear()
-        self.list_global_which_cells.addItems(["All Cells", "Verified Cells"])
-        self.list_global_which_cells.addItems([f"Group {group_id}" for group_id in unique_groups])
-        self.refresh_cell_list()
+        self.reset_which_cells(unique_groups)
     
     def remove_from_group(self):
         cell_ids = [self.extract_id(item) for item in self.list_cell.selectedItems()]
         self.session.remove_cell_id_group(cell_ids)
         unique_groups = self.session.get_group_ids()
-        self.list_3D_which_cells.clear()
-        self.list_3D_which_cells.addItems(["All Cells", "Verified Cells"])
-        self.list_3D_which_cells.addItems([f"Group {group_id}" for group_id in unique_groups])
-        self.list_global_which_cells.clear()
-        self.list_global_which_cells.addItems(["All Cells", "Verified Cells"])
-        self.list_global_which_cells.addItems([f"Group {group_id}" for group_id in unique_groups])
+        self.reset_which_cells(unique_groups)
+        
+    
+    def reset_which_cells(self, unique_groups):
+        self.cmb_3D_which_cells.clear()
+        self.cmb_3D_which_cells.addItems(["All Cells", "Verified Cells"])
+        self.cmb_3D_which_cells.addItems([f"Group {group_id}" for group_id in unique_groups])
+        self.cmb_global_which_cells.clear()
+        self.cmb_global_which_cells.addItems(["All Cells", "Verified Cells"])
+        self.cmb_global_which_cells.addItems([f"Group {group_id}" for group_id in unique_groups])
+        self.cmb_shuffle_which_cells.currentIndexChanged.disconnect()
+        self.cmb_shuffle_which_cells.clear()
+        self.cmb_shuffle_which_cells.addItems(["All Cells", "Verified Cells"])
+        self.cmb_shuffle_which_cells.addItems([f"Group {group_id}" for group_id in unique_groups])
+        self.cmb_shuffle_which_cells.currentIndexChanged.connect(self.refresh_cell_list)
         self.refresh_cell_list()
+
 
     def reject_cells(self):
         cell_ids = [self.extract_id(item) for item in self.list_cell.selectedItems()]
@@ -3089,6 +3145,9 @@ class CaltrigWidget(QWidget):
                     frame_length *= 2
         
         return (start, end)
+    
+    def start_shuffling(self):
+        pass
 
 class PlotItemEnhanced(PlotItem):
     signalChangedSelection = QtCore.Signal(object)

@@ -1033,6 +1033,21 @@ class DataInstance:
         else:
             return str(round(np.mean(np.diff(frames))/frame_rate, 3))
         
+    def get_iei_per_cell(self):
+        '''
+        Calculate the inter-event interval for each cell. The inter-event interval is calculated by taking the difference
+        between the start of each transient. The mean is then calculated from the differences.
+        '''
+        # This will contain 1s for the start of each transient
+        rising_edges = self.data["E"].diff(dim="frame")
+        # Each cell will have a 1 corresponding to the start of each transient and a
+        # a nan value for other frames.
+        transient_frames = rising_edges.where(rising_edges==1,drop=True)
+        transient_indices = transient_frames["frame"]
+
+        # Calculate differences (IEIs) for each cell
+        return transient_indices.diff(dim="frame").compute()
+
 
 
     def set_vector(self):
@@ -1316,11 +1331,16 @@ class DataInstance:
     
     def prune_non_verified(self, cells: set):
         # Keep only verified cells in cells
+        verified_unit_ids = self.get_verified_cells()
+
+        return cells.intersection(verified_unit_ids)
+    
+    def get_verified_cells(self):
         all_unit_ids = self.data['E'].unit_id.values
         verified_idxs = self.data['E'].verified.values.astype(int)
         verified_unit_ids = all_unit_ids[verified_idxs==1]
 
-        return cells.intersection(verified_unit_ids)
+        return verified_unit_ids
 
 
     
@@ -1467,7 +1487,7 @@ class DataInstance:
             if "Group" not in group_id:
                 raise ValueError("Invalid group id")
             # Extract the group id from the string
-            group_id = int(group_id.split(" ")[1])
+            group_id = group_id[6:]
             # Find the corresponding cell ids
             unit_ids = [key for key, value in self.cell_ids_to_groups.items() if group_id in value]
 
