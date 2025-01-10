@@ -985,14 +985,17 @@ class DataInstance:
         elif rolling_type == "max":
             return s.rolling(window, center=True, min_periods=1).max().to_numpy()
     
-    def get_transient_frames(self):
+    def get_transient_frames(self, unit_ids=None):
         '''
         Get the inter-event interval. The approach is as follows: the diff of the E array will give us the rising edges.
         For E this means that the start of each transient will have a value of 1. We can extrapolate the inter-event
         by taking their corresponding frame numbers and performing another diff on them.
         '''
         # This will contain 1s for the start of each transient
-        rising_edges = self.data["E"].diff(dim="frame").compute()
+        if unit_ids is not None:
+            rising_edges = self.data["E"].sel(unit_id=unit_ids).diff(dim="frame").compute()
+        else:
+            rising_edges = self.data["E"].diff(dim="frame").compute()
         # Each cell will have a 1 corresponding to the start of each transient and a
         # a nan value for other frames.
         transient_frames = rising_edges.where(rising_edges==1,drop=True)
@@ -1033,20 +1036,35 @@ class DataInstance:
         else:
             return str(round(np.mean(np.diff(frames))/frame_rate, 3))
         
-    def get_iei_per_cell(self):
+    def get_transient_frames_iti_dict(self, unit_ids) -> tuple[dict, dict]:
         '''
-        Calculate the inter-event interval for each cell. The inter-event interval is calculated by taking the difference
-        between the start of each transient. The mean is then calculated from the differences.
+        Does the same thing as get_transient_frames() but returns two dictionaries.
+        The first dictionary contains the unit_ids as keys and the values are the transient frames.
+        The second dictionary contains the unit_ids as keys and the values are the inter-event intervals.
+
+        Parameters
+        ----------
+        unit_ids: List[int]
+            The list of unit_ids for which the inter-event interval should be calculated.
+        
+        Returns
+        -------
+        frame_start: dict
+            A dictionary where the keys are the unit_ids and the values are the start of each transient.
+        iti: dict
+            A dictionary where the keys are the unit_ids and the values are the inter-event intervals.
         '''
-        # This will contain 1s for the start of each transient
-        rising_edges = self.data["E"].diff(dim="frame")
-        # Each cell will have a 1 corresponding to the start of each transient and a
-        # a nan value for other frames.
-        transient_frames = rising_edges.where(rising_edges==1,drop=True)
-        transient_indices = transient_frames["frame"]
+        transient_frames = self.get_transient_frames(unit_ids=unit_ids)
+
+        itis = {}
+        frame_start = {}
+        for unit_id in unit_ids:
+            frame_start[unit_id] = transient_frames.coords["frame"].where(transient_frames.sel(unit_id = unit_id) == 1, drop=True).values
+            iti[unit_id] = np.diff(frame_start[unit_id])
 
         # Calculate differences (IEIs) for each cell
-        return transient_indices.diff(dim="frame").compute()
+        return frame_start, itis
+    
 
 
 

@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtWidgets import QMessageBox, QDialog, QVBoxLayout, QLabel, QProgressBar, QApplication
 
 
 def print_error(s, extra_info="", severity=QMessageBox.Critical):
@@ -13,3 +13,26 @@ def print_error(s, extra_info="", severity=QMessageBox.Critical):
         dlg.setText(text)
         dlg.setIcon(severity)
         dlg.exec()
+
+
+class ProgressWindow(QDialog):
+    def __init__(self, total_steps, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Progress")
+        self.setGeometry(600, 300, 300, 100)
+
+        layout = QVBoxLayout(self)
+
+        self.label = QLabel("Progress:", self)
+        layout.addWidget(self.label)
+
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setMaximum(total_steps)
+        layout.addWidget(self.progress_bar)
+
+        self.setFixedSize(400, self.sizeHint().height())
+
+    def update_progress(self, step):
+        self.progress_bar.setValue(step)
+        self.label.setText(f"Shuffling {step}/{self.progress_bar.maximum()}...")
+        QApplication.processEvents()

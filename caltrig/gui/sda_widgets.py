@@ -1135,7 +1135,7 @@ class MayaviQWidget(QWidget):
         return self.precalculated_values[name]
         
    
-def check_cofiring(A_starts: List[int], B_starts: List[int], window_size: int, shareA:bool=True, shareB:bool=True, direction:str="bidirectional", **kwargs):
+def check_cofiring(A_starts: List[int], B_starts: List[int], window_size: int, shareA:bool=True, shareB:bool=True, direction:str="bidirectional", omit_first=False, **kwargs):
     """
     Check if two cells are cofiring with each other. This is generally done
     by checking if the start of a transient in one cell is within the window
@@ -1160,6 +1160,11 @@ def check_cofiring(A_starts: List[int], B_starts: List[int], window_size: int, s
         Whether a transient in cell B can be shared with multiple transients in cell A.
     direction : str
         The direction to check for cofiring. Can be 'forward', 'backward' or 'bidirectional'.
+    omit_first : bool
+        Whether to omit the first transient in the cofiring check. This is to compensate
+        for the fact that when calculating itis and then shuffling the data, the first transient
+        has no previous transient to compare to, therefore it may artificially inflate the cofiring
+        values when compared to the shuffled data.
 
     Returns
     -------
@@ -1183,9 +1188,11 @@ def check_cofiring(A_starts: List[int], B_starts: List[int], window_size: int, s
 
     # This is a brute force method, but it should be fine for the number of transients
     # Might be worth optimizing this in the future
-    for startA in A_starts:
-        for startB in B_starts:
+    for i, startA in enumerate(A_starts):
+        for j, startB in enumerate(B_starts):
             if check_overlap(startA, startB):
+                if omit_first and i == 0 or j == 0:
+                    continue
                 if not shareA:
                     if startA in A_starts_used:
                         continue

@@ -21,6 +21,7 @@ from ..core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget,
 from .pyqtgraph_override import ImageViewOverride
 from .cofiring_2d_widgets import Cofiring2DWidget
 from .sda_widgets import (base_visualization, PyVistaWidget)
+from ..core.shuffling import shuffle_cofiring
 import os
 import matplotlib.pyplot as plt
 import pickle
@@ -3147,7 +3148,9 @@ class CaltrigWidget(QWidget):
         return (start, end)
     
     def start_shuffling(self):
-        pass
+        # For now just get unit_ids of verified cells
+        unit_ids = self.session.get_verified_cells()
+        shuffle_cofiring(self.session, unit_ids)
 
 class PlotItemEnhanced(PlotItem):
     signalChangedSelection = QtCore.Signal(object)
