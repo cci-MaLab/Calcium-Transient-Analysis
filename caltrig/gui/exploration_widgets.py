@@ -552,13 +552,47 @@ class CaltrigWidget(QWidget):
         self.chkbox_shuffle_verified_only = QCheckBox("Verified Cells Only")
         layout_shuffle_chkbox_options.addWidget(self.chkbox_shuffle_contain_cells)
         layout_shuffle_chkbox_options.addWidget(self.chkbox_shuffle_verified_only)
-        layout_shuffle_chkbox_type = QHBoxLayout()
+        # Shuffling Temporal
+        self.frame_shuffling_temporal = QFrame()
+        self.frame_shuffling_temporal.setFrameShape(QFrame.StyledPanel)
+        self.frame_shuffling_temporal.setFrameShadow(QFrame.Raised)
+        self.frame_shuffling_temporal.setLineWidth(3)
+        self.frame_shuffling_temporal.setVisible(False)
         self.chkbox_shuffle_temporal = QCheckBox("Temporal")
+        self.chkbox_shuffle_temporal.clicked.connect(self.toggle_temporal_shuffling_options)
+        layout_shuffling_temporal_options = QVBoxLayout(self.frame_shuffling_temporal)
+        layout_shuffling_cofiring_win = QHBoxLayout()
+        label_shuffling_cofiring_win = QLabel("Cofiring Window Size")
+        self.shuffling_cofiring_window_size = QLineEdit()
+        self.shuffling_cofiring_window_size.setValidator(QIntValidator(1, 1000))
+        self.shuffling_cofiring_window_size.setText("30")
+        layout_shuffling_cofiring_win.addWidget(label_shuffling_cofiring_win)
+        layout_shuffling_cofiring_win.addWidget(self.shuffling_cofiring_window_size)
+        layout_shuffling_temporal_direction = QHBoxLayout()
+        self.shuffling_temporal_shareA_chkbox = QCheckBox("Share A")
+        self.shuffling_temporal_shareA_chkbox.setChecked(True)
+        self.shuffling_temporal_shareB_chkbox = QCheckBox("Share B")
+        self.shuffling_temporal_shareB_chkbox.setChecked(True)
+        self.shuffling_cofiring_direction_dropdown = QComboBox()
+        self.shuffling_cofiring_direction_dropdown.addItems(["Bidirectional", "Forward", "Backward"])
+        layout_shuffling_temporal_direction.addWidget(self.shuffling_temporal_shareA_chkbox)
+        layout_shuffling_temporal_direction.addWidget(self.shuffling_temporal_shareB_chkbox)
+        layout_shuffling_temporal_direction.addWidget(self.shuffling_cofiring_direction_dropdown)
+        layout_shuffling_temporal_options.addLayout(layout_shuffling_cofiring_win)
+        layout_shuffling_temporal_options.addLayout(layout_shuffling_temporal_direction)
+        # Shuffling Spatial
         self.chkbox_shuffle_spatial = QCheckBox("Spatial")
-        layout_shuffle_chkbox_type.addWidget(self.chkbox_shuffle_temporal)
-        layout_shuffle_chkbox_type.addWidget(self.chkbox_shuffle_spatial)
         btn_shuffle = QPushButton("Shuffle")
         btn_shuffle.clicked.connect(self.start_shuffling)
+        # No. of Shuffles
+        layout_shuffle_num_shuffles = QHBoxLayout()
+        label_shuffle_num_shuffles = QLabel("No. of Shuffles:")
+        self.shuffle_num_shuffles = QLineEdit()
+        self.shuffle_num_shuffles.setValidator(QIntValidator(10, 9999))
+        self.shuffle_num_shuffles.setText("100")
+        layout_shuffle_num_shuffles.addWidget(label_shuffle_num_shuffles)
+        layout_shuffle_num_shuffles.addWidget(self.shuffle_num_shuffles)
+
 
         # Populate cell list
         self.refresh_cell_list()
@@ -857,7 +891,10 @@ class CaltrigWidget(QWidget):
         tabs_shuffling_layout.addWidget(self.cmb_shuffle_which_cells)
         tabs_shuffling_layout.addWidget(self.list_shuffle_cell)
         tabs_shuffling_layout.addLayout(layout_shuffle_chkbox_options)
-        tabs_shuffling_layout.addLayout(layout_shuffle_chkbox_type)
+        tabs_shuffling_layout.addWidget(self.chkbox_shuffle_temporal)
+        tabs_shuffling_layout.addWidget(self.frame_shuffling_temporal)
+        tabs_shuffling_layout.addWidget(self.chkbox_shuffle_spatial)
+        tabs_shuffling_layout.addLayout(layout_shuffle_num_shuffles)
         tabs_shuffling_layout.addWidget(btn_shuffle)
 
         tabs_shuffling = QWidget()
@@ -3148,9 +3185,55 @@ class CaltrigWidget(QWidget):
         return (start, end)
     
     def start_shuffling(self):
-        # For now just get unit_ids of verified cells
-        unit_ids = self.session.get_verified_cells()
-        shuffle_cofiring(self.session, unit_ids)
+        """
+        Initiate the shuffling process. Based on the Options set out by the user.
+        First step is to extract the cell ids that are needed to be shuffled, then we
+        pass all other relevant parameters to the shuffling function.
+        """
+        # First check if either temporal or spatial shuffling is selected
+        if not self.chkbox_shuffle_temporal.isChecked():
+            return
+
+        target_cells = [] # Cells that the cofiring will calculated from
+        comparison_cells = [] # Cells that the target cells will be compared to
+        for i in range(self.list_shuffle_cell.count()):
+            item = self.list_shuffle_cell.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                target_cells.append(self.extract_id(item))
+        
+        # If contain cells to selected is set to true, then target cells will be compared to themselves
+        if self.chkbox_shuffle_contain_cells.isChecked():
+            comparison_cells = target_cells.copy()
+        else:
+            # Get all non-rejected cells by extracting it from the cell list
+            for i in range(self.list_cell.count()):
+                comparison_cells.append(self.extract_id(self.list_cell.item(i)))
+        
+        # Now we need to check if the user only wants to work with verified cells
+        if self.chkbox_shuffle_verified_only.isChecked():
+            # Go through both target and comparison cells and extract only the verified cells
+            target_cells = self.session.prune_non_verified(target_cells)
+            comparison_cells = self.session.prune_non_verified(comparison_cells)
+        
+        params = {}
+        if self.chkbox_shuffle_temporal.isChecked():
+            params["temporal"] = {}
+            params["temporal"]["window_size"] = int(self.shuffling_cofiring_window_size.text())
+            params["temporal"]["share_a"] = self.shuffling_temporal_shareA_chkbox.isChecked()
+            params["temporal"]["share_b"] = self.shuffling_temporal_shareB_chkbox.isChecked()
+            params["temporal"]["direction"] = self.shuffling_cofiring_direction_dropdown.currentText()
+        if self.chkbox_shuffle_spatial.isChecked():
+            params["spatial"] = {}
+        
+        num_of_shuffles = int(self.shuffle_num_shuffles.text()) if self.shuffle_num_shuffles.text() else 100
+
+        shuffle_cofiring(self.session, target_cells, comparison_cells, n=num_of_shuffles, **params)
+
+    def toggle_temporal_shuffling_options(self):
+        if self.chkbox_shuffle_temporal.isChecked():
+            self.frame_shuffling_temporal.setVisible(True)
+        else:
+            self.frame_shuffling_temporal.setVisible(False)
 
 class PlotItemEnhanced(PlotItem):
     signalChangedSelection = QtCore.Signal(object)

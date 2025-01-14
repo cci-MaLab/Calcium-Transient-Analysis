@@ -1060,7 +1060,7 @@ class DataInstance:
         frame_start = {}
         for unit_id in unit_ids:
             frame_start[unit_id] = transient_frames.coords["frame"].where(transient_frames.sel(unit_id = unit_id) == 1, drop=True).values
-            iti[unit_id] = np.diff(frame_start[unit_id])
+            itis[unit_id] = np.diff(frame_start[unit_id])
 
         # Calculate differences (IEIs) for each cell
         return frame_start, itis
@@ -1351,7 +1351,15 @@ class DataInstance:
         # Keep only verified cells in cells
         verified_unit_ids = self.get_verified_cells()
 
-        return cells.intersection(verified_unit_ids)
+        is_list = False
+        if type(cells) == list:
+            cells = set(cells)
+            is_list = True
+
+        if is_list:
+            return list(cells.intersection(verified_unit_ids))
+        else:
+            return cells.intersection(verified_unit_ids)
     
     def get_verified_cells(self):
         all_unit_ids = self.data['E'].unit_id.values
