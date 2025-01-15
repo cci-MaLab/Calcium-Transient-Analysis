@@ -1259,7 +1259,7 @@ class DataInstance:
             for spike in spikes:
                 new_e[spike[0]:spike[1]] = 1
         else:
-            new_e = spikes
+            new_e = spikes.astype(dtype)
         E.load() # Load into memory
         if update_type == "Accept Overlapping Only":
             new_e *= E.sel(unit_id=unit_id).values
