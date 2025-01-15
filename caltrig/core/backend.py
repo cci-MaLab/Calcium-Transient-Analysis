@@ -266,11 +266,23 @@ def overwrite_xarray(
         pass
 
     # Rename the temp file to the original file
-    os.rename(fp_temp, fp_orig)
+    _safe_rename(fp_temp, fp_orig)
     if retrieve:
         arr = xr.open_zarr(fp_orig)[varr.name]
         arr.data = darr.from_zarr(os.path.join(fp_orig, varr.name), inline_array=True)
         return arr
+    
+def _safe_rename(fp_temp, fp_orig, retries=5, delay=0.1):
+    # Occasionally on Windows due to permissions errors, the file rename will fail.
+    # This function will attempt to rename the file multiple times with a delay to avoid this.
+    for _ in range(retries):
+        try:
+            os.rename(fp_temp, fp_orig)
+            return
+        except PermissionError:
+            time.sleep(delay)
+    raise PermissionError(f"Failed to rename {fp_temp} to {fp_orig} after {retries} attempts")
+
 
 def delete_xarray(
         dpath: str,
@@ -1270,7 +1282,7 @@ class DataInstance:
         E.loc[dict(unit_id=unit_id)] = new_e
         # Now save the E array to disk
         overwrite_xarray(E, self.cnmf_path)
-
+    
     def clear_E(self, unit_id):
         E = self.data['E']
         E.load()

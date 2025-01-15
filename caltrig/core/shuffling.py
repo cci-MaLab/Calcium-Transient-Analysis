@@ -35,10 +35,12 @@ def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, 
     frame_start, itis = session.get_transient_frames_iti_dict(all_cells)
     positions = session.centroids
 
-
+    # If we are temporally shuffling, we need to permute the ITIs hence
+    # we need to omit the first transients from the calculation for 1-to-1 comparison
+    omit_first = kwargs['temporal']
     # First get the cofiring metric of the original data
     cofiring_original, spatial_original = calculate_cofiring_for_group(frame_start, positions, target_cells,
-                                                                        comparison_cells, omit_first=True, **kwargs)
+                                                                        comparison_cells, omit_first=omit_first, **kwargs)
     # Set up the PyQt application and progress window
     progress_window = ProgressWindow(total_steps=n)
     progress_window.show()
@@ -47,8 +49,14 @@ def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, 
     shuffled_spatial_distances = {}
     for i in range(n):
         progress_window.update_progress(i + 1)
-        shuffled_frame_start = permute_itis_to_start_indices(itis)
-        shuffled_spatial = permute_spatial(positions)
+        if kwargs['temporal']:
+            shuffled_frame_start = permute_itis_to_start_indices(itis)
+        else:
+            shuffled_frame_start = frame_start
+        if kwargs['spatial']:
+            shuffled_spatial = permute_spatial(positions)
+        else:
+            shuffled_spatial = positions
 
         # Calculate the cofiring metric for the shuffled data
         cofiring, shuffled_spatial_distances = calculate_cofiring_for_group(shuffled_frame_start, shuffled_spatial,
@@ -71,13 +79,14 @@ def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, 
     plt.figure(figsize=(12, 6))
 
     # Subplot 1: Histogram
-    plt.subplot(1, 2, 1)
-    plt.hist(shuffled_temporal_cofiring, bins=30, color='blue', alpha=0.7, edgecolor='black')
-    plt.axvline(cofiring_original, color='red', linestyle='--', label='Original')
-    plt.xlabel("Co-firing")
-    plt.ylabel("Frequency")
-    plt.title("Co-firing Histogram")
-    plt.legend()
+    if kwargs['temporal']:
+        plt.subplot(1, 2, 1)
+        plt.hist(shuffled_temporal_cofiring, bins=30, color='blue', alpha=0.7, edgecolor='black')
+        plt.axvline(cofiring_original, color='red', linestyle='--', label='Original')
+        plt.xlabel("Co-firing")
+        plt.ylabel("Frequency")
+        plt.title("Co-firing Histogram")
+        plt.legend()
 
     # Prepare data for the scatterplot
     x = []
@@ -99,7 +108,10 @@ def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, 
     x_orig = np.array(x_orig) + np.random.normal(0, 0.1, len(x_orig))
 
     # Subplot 2: Scatterplot
-    plt.subplot(1, 2, 2)
+    if kwargs['temporal']:
+        plt.subplot(1, 2, 2)
+    else:
+        plt.subplot(1, 1, 1)  # Render as the only plot if temporal is False
     plt.scatter(x, y, color='blue', alpha=0.6, label='Shuffled', s=3)
     plt.scatter(x_orig, y_orig, color='red', alpha=0.8, label='Original', s=3)
     plt.xlabel("Co-firing")
@@ -129,8 +141,7 @@ def calculate_cofiring_for_group(frame_start, cell_positions, target_cells, comp
     float
         The co-firing metric.
     """
-    temporal = kwargs.get("temporal", True)
-    spatial = True if "spatial" in kwargs else False
+    cofiring_params = kwargs['cofiring']
     total_cofiring = 0
     for unit_id in target_cells:
         for unit_id2 in comparison_cells:
@@ -139,18 +150,17 @@ def calculate_cofiring_for_group(frame_start, cell_positions, target_cells, comp
 
             # Get the time bins where the two neurons fire together
             cofiring = check_cofiring(frame_start[unit_id], frame_start[unit_id2],
-                                       window_size=temporal["window_size"], omit_first=omit_first,
-                                       shareA=temporal["share_a"], shareB=temporal["share_b"], direction=temporal["direction"])
+                                       window_size=cofiring_params["window_size"], omit_first=omit_first,
+                                       shareA=cofiring_params["share_a"], shareB=cofiring_params["share_b"], direction=cofiring_params["direction"])
             total_cofiring += cofiring
 
-            if spatial:
-                if cofiring > 0:
-                    # Get the spatial distance between the two neurons
-                    spatial_distance = np.linalg.norm(np.array(cell_positions[unit_id]) - np.array(cell_positions[unit_id2]))
-                    if cofiring in cofiring_distances:
-                        cofiring_distances[cofiring].append(spatial_distance)
-                    else:
-                        cofiring_distances[cofiring] = [spatial_distance]
+            if cofiring > 0:
+                # Get the spatial distance between the two neurons
+                spatial_distance = np.linalg.norm(np.array(cell_positions[unit_id]) - np.array(cell_positions[unit_id2]))
+                if cofiring in cofiring_distances:
+                    cofiring_distances[cofiring].append(spatial_distance)
+                else:
+                    cofiring_distances[cofiring] = [spatial_distance]
 
 
     return total_cofiring, cofiring_distances
