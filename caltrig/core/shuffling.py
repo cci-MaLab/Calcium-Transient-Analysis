@@ -93,11 +93,15 @@ def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, 
     for key, values in spatial_original.items():
         x_orig.extend([key] * len(values))
         y_orig.extend(values)
+    
+    # For the x values we want to add some jitter to the data
+    x = np.array(x) + np.random.normal(0, 0.1, len(x))
+    x_orig = np.array(x_orig) + np.random.normal(0, 0.1, len(x_orig))
 
     # Subplot 2: Scatterplot
     plt.subplot(1, 2, 2)
-    plt.scatter(x, y, color='blue', alpha=0.6, label='Shuffled')
-    plt.scatter(x_orig, y_orig, color='red', alpha=0.8, label='Original')
+    plt.scatter(x, y, color='blue', alpha=0.6, label='Shuffled', s=3)
+    plt.scatter(x_orig, y_orig, color='red', alpha=0.8, label='Original', s=3)
     plt.xlabel("Co-firing")
     plt.ylabel("Spatial Distance")
     plt.title("Co-firing vs Spatial Distance")
