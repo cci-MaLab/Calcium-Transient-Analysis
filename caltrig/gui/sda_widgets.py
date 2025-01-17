@@ -746,6 +746,13 @@ def check_cofiring(A_starts: List[int], B_starts: List[int], window_size: int, s
     num_cofiring = 0
     A_starts_used = set()
     B_starts_used = set()
+    # We will check kwargs to see if we have used connections
+    # If yes that means we want to avoid double counting the same A->B and B->A transients
+    connections_used = kwargs.get("connections_used", None)
+    if connections_used is not None:
+        # Extract cell ids
+        A_id = kwargs.get("A_id")
+        B_id = kwargs.get("B_id")
 
 
     def check_overlap(start1, start2):
@@ -773,6 +780,20 @@ def check_cofiring(A_starts: List[int], B_starts: List[int], window_size: int, s
                 
                 A_starts_used.add(startA)
                 B_starts_used.add(startB)
+                if connections_used is not None:
+                    # For convenience we will store the starts in ascending order
+                    starting_frames = (startA, startB) if startA < startB else (startB, startA)
+                    # Same goes for ids
+                    connection_id = (A_id, B_id) if A_id < B_id else (B_id, A_id)
+                    if starting_frames in connections_used.get(connection_id, []):
+                        continue
+
+                    if starting_frames not in connections_used.setdefault(connection_id, []):
+                        connections_used[connection_id].append(starting_frames)
+
+
+                                
+                    
                 num_cofiring += 1
 
     return num_cofiring

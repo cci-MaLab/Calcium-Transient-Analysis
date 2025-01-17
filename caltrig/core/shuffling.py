@@ -143,15 +143,20 @@ def calculate_cofiring_for_group(frame_start, cell_positions, target_cells, comp
     """
     cofiring_params = kwargs['cofiring']
     total_cofiring = 0
+    kwargs = {"connections_used": {}}
     for unit_id in target_cells:
         for unit_id2 in comparison_cells:
             if unit_id == unit_id2:
                 continue
-
+            
+            # Update which cells are being compared
+            kwargs["A_id"] = unit_id
+            kwargs["B_id"] = unit_id2
             # Get the time bins where the two neurons fire together
             cofiring = check_cofiring(frame_start[unit_id], frame_start[unit_id2],
                                        window_size=cofiring_params["window_size"], omit_first=omit_first,
-                                       shareA=cofiring_params["share_a"], shareB=cofiring_params["share_b"], direction=cofiring_params["direction"])
+                                       shareA=cofiring_params["share_a"], shareB=cofiring_params["share_b"], 
+                                       direction=cofiring_params["direction"], **kwargs)
             total_cofiring += cofiring
 
             if cofiring > 0:
