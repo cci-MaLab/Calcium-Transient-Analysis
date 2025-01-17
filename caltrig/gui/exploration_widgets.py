@@ -544,20 +544,35 @@ class CaltrigWidget(QWidget):
         self.cmb_shuffle_which_cells.addItems(["All Cells", "Verified Cells"])
         self.cmb_shuffle_which_cells.addItems([f"Group {group}" for group in unique_groups])
         self.cmb_shuffle_which_cells.currentIndexChanged.connect(self.refresh_cell_list)
-        self.list_shuffle_cell = QListWidget()
-        self.list_shuffle_cell.setMaximumHeight(600)
-        self.list_shuffle_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        layout_list_shuffle_cells = QHBoxLayout()
+        layout_list_shuffle_target_cell = QVBoxLayout()
+        layout_list_shuffle_comparison_cell = QVBoxLayout()
+        label_list_shuffle_target_cell = QLabel("Target Cells")
+        self.list_shuffle_target_cell = QListWidget()
+        self.list_shuffle_target_cell.setMaximumHeight(600)
+        self.list_shuffle_target_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        layout_list_shuffle_target_cell.addWidget(label_list_shuffle_target_cell)
+        layout_list_shuffle_target_cell.addWidget(self.list_shuffle_target_cell)
+        label_list_shuffle_comparison_cell = QLabel("Extra Comparison Cells")
+        self.list_shuffle_comparison_cell = QListWidget()
+        self.list_shuffle_comparison_cell.setMaximumHeight(600)
+        self.list_shuffle_comparison_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        layout_list_shuffle_comparison_cell.addWidget(label_list_shuffle_comparison_cell)
+        layout_list_shuffle_comparison_cell.addWidget(self.list_shuffle_comparison_cell)
+        layout_list_shuffle_cells.addLayout(layout_list_shuffle_target_cell)
+        layout_list_shuffle_cells.addLayout(layout_list_shuffle_comparison_cell)
         layout_shuffle_chkbox_options = QHBoxLayout()
-        self.chkbox_shuffle_contain_cells = QCheckBox("Contain Cells to Selected?")
         self.chkbox_shuffle_verified_only = QCheckBox("Verified Cells Only")
-        layout_shuffle_chkbox_options.addWidget(self.chkbox_shuffle_contain_cells)
+        self.chkbox_shuffle_spatial = QCheckBox("Spatial")
+        self.chkbox_shuffle_temporal = QCheckBox("Temporal")
         layout_shuffle_chkbox_options.addWidget(self.chkbox_shuffle_verified_only)
+        layout_shuffle_chkbox_options.addWidget(self.chkbox_shuffle_spatial)
+        layout_shuffle_chkbox_options.addWidget(self.chkbox_shuffle_temporal)
         # Shuffling Temporal
         self.frame_shuffling_temporal = QFrame()
         self.frame_shuffling_temporal.setFrameShape(QFrame.StyledPanel)
         self.frame_shuffling_temporal.setFrameShadow(QFrame.Raised)
         self.frame_shuffling_temporal.setLineWidth(3)
-        self.chkbox_shuffle_temporal = QCheckBox("Temporal")
         layout_shuffling_cofiring_options = QVBoxLayout(self.frame_shuffling_temporal)
         layout_shuffling_cofiring_win = QHBoxLayout()
         label_shuffling_cofiring_win = QLabel("Cofiring Window Size")
@@ -578,10 +593,10 @@ class CaltrigWidget(QWidget):
         layout_shuffling_temporal_direction.addWidget(self.shuffling_cofiring_direction_dropdown)
         layout_shuffling_cofiring_options.addLayout(layout_shuffling_cofiring_win)
         layout_shuffling_cofiring_options.addLayout(layout_shuffling_temporal_direction)
-        # Shuffling Spatial
-        self.chkbox_shuffle_spatial = QCheckBox("Spatial")
+
         btn_shuffle = QPushButton("Shuffle")
         btn_shuffle.clicked.connect(self.start_shuffling)
+
         # No. of Shuffles
         layout_shuffle_num_shuffles = QHBoxLayout()
         label_shuffle_num_shuffles = QLabel("No. of Shuffles:")
@@ -887,10 +902,8 @@ class CaltrigWidget(QWidget):
         tabs_shuffling_layout = QVBoxLayout()
         tabs_shuffling_layout.addWidget(label_shuffle_which_cells)
         tabs_shuffling_layout.addWidget(self.cmb_shuffle_which_cells)
-        tabs_shuffling_layout.addWidget(self.list_shuffle_cell)
+        tabs_shuffling_layout.addLayout(layout_list_shuffle_cells)
         tabs_shuffling_layout.addLayout(layout_shuffle_chkbox_options)
-        tabs_shuffling_layout.addWidget(self.chkbox_shuffle_temporal)
-        tabs_shuffling_layout.addWidget(self.chkbox_shuffle_spatial)
         tabs_shuffling_layout.addWidget(self.frame_shuffling_temporal)
         tabs_shuffling_layout.addLayout(layout_shuffle_num_shuffles)
         tabs_shuffling_layout.addWidget(btn_shuffle)
@@ -2896,7 +2909,8 @@ class CaltrigWidget(QWidget):
     def refresh_cell_list(self):
         self.list_cell.clear()
         self.list_rejected_cell.clear()
-        self.list_shuffle_cell.clear()
+        self.list_shuffle_target_cell.clear()
+        self.list_shuffle_comparison_cell.clear()
         cell_ids_to_groups = self.session.cell_ids_to_groups
         good_bad_cells = self.session.data['E']['good_cells'].values
         reject_size = 0
@@ -2910,11 +2924,13 @@ class CaltrigWidget(QWidget):
                     cell_name = f"{cell_id}"
                 self.list_cell.addItem(cell_name)
                 if cell_id in shuffle_cells:
-                    self.list_shuffle_cell.addItem(self.create_checked_item(cell_name))
+                    self.list_shuffle_target_cell.addItem(self.create_checked_item(cell_name))
+                    self.list_shuffle_comparison_cell.addItem(self.create_checked_item(cell_name))
                 if self.session.data['E']['verified'].loc[{'unit_id': cell_id}].values.item():
                     self.list_cell.item(i-reject_size).setBackground(Qt.green)
                     if cell_id in shuffle_cells:
-                        self.list_shuffle_cell.item(self.list_shuffle_cell.count()-1).setBackground(Qt.green)
+                        self.list_shuffle_target_cell.item(self.list_shuffle_target_cell.count()-1).setBackground(Qt.green)
+                        self.list_shuffle_comparison_cell.item(self.list_shuffle_comparison_cell.count()-1).setBackground(Qt.green)
                     approved_size += 1
             else:
                 self.list_rejected_cell.addItem(str(cell_id))
@@ -3193,19 +3209,17 @@ class CaltrigWidget(QWidget):
             return
 
         target_cells = [] # Cells that the cofiring will calculated from
-        comparison_cells = [] # Cells that the target cells will be compared to
-        for i in range(self.list_shuffle_cell.count()):
-            item = self.list_shuffle_cell.item(i)
+        comparison_cells = [] # target_cells + comparison_cells
+        for i in range(self.list_shuffle_target_cell.count()):
+            item = self.list_shuffle_target_cell.item(i)
             if item.checkState() == Qt.CheckState.Checked:
                 target_cells.append(self.extract_id(item))
         
         # If contain cells to selected is set to true, then target cells will be compared to themselves
-        if self.chkbox_shuffle_contain_cells.isChecked():
-            comparison_cells = target_cells.copy()
-        else:
-            # Get all non-rejected cells by extracting it from the cell list
-            for i in range(self.list_cell.count()):
-                comparison_cells.append(self.extract_id(self.list_cell.item(i)))
+        for i in range(self.list_shuffle_comparison_cell.count()):
+            item = self.list_shuffle_comparison_cell.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                comparison_cells.append(self.extract_id(item))
         
         # Now we need to check if the user only wants to work with verified cells
         if self.chkbox_shuffle_verified_only.isChecked():
