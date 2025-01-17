@@ -557,7 +557,6 @@ class CaltrigWidget(QWidget):
         self.frame_shuffling_temporal.setFrameShape(QFrame.StyledPanel)
         self.frame_shuffling_temporal.setFrameShadow(QFrame.Raised)
         self.frame_shuffling_temporal.setLineWidth(3)
-        self.frame_shuffling_temporal.setVisible(False)
         self.chkbox_shuffle_temporal = QCheckBox("Temporal")
         layout_shuffling_cofiring_options = QVBoxLayout(self.frame_shuffling_temporal)
         layout_shuffling_cofiring_win = QHBoxLayout()
