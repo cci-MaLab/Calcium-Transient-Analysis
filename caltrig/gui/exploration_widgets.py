@@ -551,16 +551,24 @@ class CaltrigWidget(QWidget):
         self.list_shuffle_target_cell = QListWidget()
         self.list_shuffle_target_cell.setMaximumHeight(600)
         self.list_shuffle_target_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        btn_toggle_check_target = QPushButton("Check/Uncheck Target Cells")
+        btn_toggle_check_target.setFixedSize(160, 20)
+        btn_toggle_check_target.clicked.connect(lambda: self.toggle_check_all(self.list_shuffle_target_cell))
         layout_list_shuffle_target_cell.addWidget(label_list_shuffle_target_cell)
         layout_list_shuffle_target_cell.addWidget(self.list_shuffle_target_cell)
-        label_list_shuffle_comparison_cell = QLabel("Extra Comparison Cells")
+        layout_list_shuffle_target_cell.addWidget(btn_toggle_check_target)
+        label_list_shuffle_comparison_cell = QLabel("Comparison Cells")
         self.list_shuffle_comparison_cell = QListWidget()
         self.list_shuffle_comparison_cell.setMaximumHeight(600)
         self.list_shuffle_comparison_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        btn_toggle_check_comparison = QPushButton("Check/Uncheck Comparison Cells")
+        btn_toggle_check_comparison.setFixedSize(160, 20)
+        btn_toggle_check_comparison.clicked.connect(lambda: self.toggle_check_all(self.list_shuffle_comparison_cell))
         layout_list_shuffle_comparison_cell.addWidget(label_list_shuffle_comparison_cell)
         layout_list_shuffle_comparison_cell.addWidget(self.list_shuffle_comparison_cell)
+        layout_list_shuffle_comparison_cell.addWidget(btn_toggle_check_comparison)
         layout_list_shuffle_cells.addLayout(layout_list_shuffle_target_cell)
-        layout_list_shuffle_cells.addLayout(layout_list_shuffle_comparison_cell)
+        layout_list_shuffle_cells.addLayout(layout_list_shuffle_comparison_cell)        
         layout_shuffle_chkbox_options = QHBoxLayout()
         self.chkbox_shuffle_verified_only = QCheckBox("Verified Cells Only")
         self.chkbox_shuffle_spatial = QCheckBox("Spatial")
@@ -2944,6 +2952,15 @@ class CaltrigWidget(QWidget):
             return int(item.text().split(" ")[0])
         else:
             return int(item.text())
+
+    def toggle_check_all(self, list):
+        # Check the first item, based on that check all or uncheck all
+        # First check if empty list
+        if list.count() == 0:
+            return
+        check_state = Qt.CheckState.Checked if list.item(0).checkState() == Qt.CheckState.Unchecked else Qt.CheckState.Unchecked
+        for i in range(list.count()):
+            list.item(i).setCheckState(check_state)
 
 
     def add_to_group(self):
