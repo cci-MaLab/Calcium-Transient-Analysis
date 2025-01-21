@@ -740,7 +740,7 @@ class CaltrigWidget(QWidget):
         cofiring_window_layout = QHBoxLayout()
         self.cofiring_window_size = QLineEdit()
         self.cofiring_window_btn = QPushButton("Update Cofiring Window")
-        self.cofiring_window_btn.clicked.connect(self.update_cofiring_window)
+        self.cofiring_window_btn.clicked.connect(lambda: self.update_cofiring_window(reset_list=True))
         cofiring_window_layout.addWidget(self.cofiring_window_size)
         cofiring_window_layout.addWidget(self.cofiring_window_btn)
         self.cofiring_window_size.setValidator(QIntValidator(1, 1000))
@@ -1476,9 +1476,14 @@ class CaltrigWidget(QWidget):
         
         if not visualize_cofiring:
             self.visualization_3D.remove_cofiring()
+            self.clear_cofiring_list()
             return
         else:
             self.update_cofiring_window()
+
+    def clear_cofiring_list(self):
+        self.cofiring_list.clear()
+        self.cofiring_individual_cell_list.clear()
 
     def update_cofiring_window(self, reset_list=True):
         window_size = int(self.cofiring_window_size.text())

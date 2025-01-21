@@ -660,7 +660,7 @@ class PyVistaWidget(QtInteractor):
                 x1, y1 = cell_id_coords[id1]
                 x2, y2 = cell_id_coords[id2]
                 z_offset = 0.5 # We need to offset the arrows slightly above the surface
-                if value > 1:
+                if value > 0:
                     if (id1, id2) in self.arrows:
                         visualized_arrows.append((id1, id2))
                         continue
