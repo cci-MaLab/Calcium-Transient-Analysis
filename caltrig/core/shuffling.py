@@ -38,9 +38,11 @@ def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, 
     # If we are temporally shuffling, we need to permute the ITIs hence
     # we need to omit the first transients from the calculation for 1-to-1 comparison
     omit_first = kwargs['temporal']
+    cofiring_distances_original = {}
     # First get the cofiring metric of the original data
     cofiring_original, spatial_original = calculate_cofiring_for_group(frame_start, positions, target_cells,
-                                                                        comparison_cells, omit_first=omit_first, **kwargs)
+                                                                        comparison_cells, cofiring_distances_original,
+                                                                        omit_first=omit_first, **kwargs)
     # Set up the PyQt application and progress window
     progress_window = ProgressWindow(total_steps=n)
     progress_window.show()
@@ -60,8 +62,8 @@ def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, 
 
         # Calculate the cofiring metric for the shuffled data
         cofiring, shuffled_spatial_distances = calculate_cofiring_for_group(shuffled_frame_start, shuffled_spatial,
-                                                                    target_cells, comparison_cells, 
-                                                                    omit_first=False, cofiring_distances=shuffled_spatial_distances, **kwargs)
+                                                                    target_cells, comparison_cells, shuffled_spatial_distances,
+                                                                    omit_first=False, **kwargs)
 
         shuffled_temporal_cofiring.append(cofiring)
 
@@ -125,7 +127,7 @@ def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, 
 
 
 
-def calculate_cofiring_for_group(frame_start, cell_positions, target_cells, comparison_cells, cofiring_distances={}, omit_first=True, **kwargs):
+def calculate_cofiring_for_group(frame_start, cell_positions, target_cells, comparison_cells, cofiring_distances, omit_first=True, **kwargs):
     """This method will call
 
     Parameters
