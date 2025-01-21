@@ -112,8 +112,8 @@ def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, 
         plt.subplot(1, 2, 2)
     else:
         plt.subplot(1, 1, 1)  # Render as the only plot if temporal is False
-    plt.scatter(y, x, color='blue', alpha=0.6, label='Shuffled', s=3)
-    plt.scatter(y_orig, x_orig, color='red', alpha=0.8, label='Original', s=3)
+    plt.scatter(y, x, color='lightskyblue', alpha=0.6, label='Shuffled', s=3)
+    plt.scatter(y_orig, x_orig, color='red', alpha=0.8, label='Original', s=4)
     plt.ylabel("Co-firing")
     plt.xlabel("Spatial Distance")
     plt.title("Spatial Distance vs Co-firing")
