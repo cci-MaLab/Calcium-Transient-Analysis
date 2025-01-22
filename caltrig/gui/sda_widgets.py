@@ -17,6 +17,7 @@ from ..core.backend import DataInstance
 import time
 import pickle
 from matplotlib.colors import ListedColormap
+import gc
 
 class CurrentVisualizationData():
     def __init__(self, data, max_height, start_frame, end_frame, x_start, x_end, y_start, y_end, scaling_factor=10):

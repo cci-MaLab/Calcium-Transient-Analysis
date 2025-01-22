@@ -3,6 +3,11 @@ from ..gui.sda_widgets import check_cofiring
 from ..gui.pop_up_messages import ProgressWindow
 import matplotlib.pyplot as plt
 import random
+from matplotlib.backends.backend_qt5agg import (
+    FigureCanvasQTAgg as FigureCanvas,
+    NavigationToolbar2QT as NavigationToolbar
+)
+from PyQt5.QtWidgets import QVBoxLayout, QLabel, QWidget
 
 def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, **kwargs):
     """Shuffle the data, keeping the co-firing structure.
@@ -69,61 +74,9 @@ def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, 
 
     progress_window.close()
 
-    # Now we want to see the mean and standard deviation of the shuffled data
-    print("Mean of shuffled data:", np.mean(shuffled_temporal_cofiring))
-    print("Standard deviation of shuffled data:", np.std(shuffled_temporal_cofiring))
-    print("Original data:", cofiring_original)
-    # Z score to see if the p-value is significant
-    z_score = (cofiring_original - np.mean(shuffled_temporal_cofiring)) / np.std(shuffled_temporal_cofiring)
-    print("Z score:", z_score)
-
-    # First plot: Histogram with vertical line
-    plt.figure(figsize=(12, 6))
-
-    # Subplot 1: Histogram
-    if kwargs['temporal']:
-        plt.subplot(1, 2, 1)
-        plt.hist(shuffled_temporal_cofiring, bins=30, color='blue', alpha=0.7, edgecolor='black')
-        plt.axvline(cofiring_original, color='red', linestyle='--', label='Original')
-        plt.xlabel("Co-firing")
-        plt.ylabel("Frequency")
-        plt.title("Co-firing Histogram")
-        plt.legend()
-
-    # Prepare data for the scatterplot
-    x = []
-    y = []
-
-    for key, values in shuffled_spatial_distances.items():
-        x.extend([key] * len(values))  # Repeat the key for the number of values
-        y.extend(values)
-
-    # Map the original data as well in a different color
-    x_orig = []
-    y_orig = []
-    for key, values in spatial_original.items():
-        x_orig.extend([key] * len(values))
-        y_orig.extend(values)
+    visualize_shuffled = VisualizeShuffledCofiring(cofiring_original, shuffled_temporal_cofiring, shuffled_spatial_distances, spatial_original, temporal=kwargs['temporal'])
     
-    # For the x values we want to add some jitter to the data
-    x = np.array(x) + np.random.normal(0, 0.1, len(x))
-    x_orig = np.array(x_orig) + np.random.normal(0, 0.1, len(x_orig))
-
-    # Subplot 2: Scatterplot
-    if kwargs['temporal']:
-        plt.subplot(1, 2, 2)
-    else:
-        plt.subplot(1, 1, 1)  # Render as the only plot if temporal is False
-    plt.scatter(y, x, color='lightskyblue', alpha=0.6, label='Shuffled', s=3)
-    plt.scatter(y_orig, x_orig, color='red', alpha=0.8, label='Original', s=4)
-    plt.ylabel("Co-firing")
-    plt.xlabel("Spatial Distance")
-    plt.title("Spatial Distance vs Co-firing")
-    plt.legend()
-
-    # Adjust layout and show the plots
-    plt.tight_layout()
-    plt.show()
+    return visualize_shuffled
 
 
 
@@ -210,4 +163,84 @@ def permute_spatial(positions):
     random.shuffle(positions_values)
     return dict(zip(positions.keys(), positions_values))
 
-    
+
+class VisualizeShuffledCofiring(QWidget):
+    """
+    PyQt5 window to visualize shuffled co-firing data with a Matplotlib plot,
+    labels for Z-Score and other details, and Matplotlib toolbar.
+    """
+    def __init__(self, cofiring_original, shuffled_temporal_cofiring, 
+                 shuffled_spatial_distances, spatial_original, temporal=True):
+        super().__init__()
+
+        # Calculate statistics
+        mean_shuffled = np.mean(shuffled_temporal_cofiring)
+        std_shuffled = np.std(shuffled_temporal_cofiring)
+        z_score = (cofiring_original - mean_shuffled) / std_shuffled
+
+        # Initialize the window
+        self.setWindowTitle("Shuffled Cofiring Visualization")
+        self.setGeometry(100, 100, 900, 700)
+
+        # Create layout
+        layout = QVBoxLayout()
+
+        # Create Matplotlib figure and axes
+        figure, ax = plt.subplots(1, 2 if temporal else 1, figsize=(12, 6))
+
+        # Plot histogram
+        if temporal:
+            ax[0].hist(shuffled_temporal_cofiring, bins=30, color='blue', alpha=0.7, edgecolor='black')
+            ax[0].axvline(cofiring_original, color='red', linestyle='--', label='Original')
+            ax[0].set_xlabel("Co-firing")
+            ax[0].set_ylabel("Frequency")
+            ax[0].set_title("Co-firing Histogram")
+            ax[0].legend()
+
+        # Prepare scatterplot data
+        x, y = [], []
+        for key, values in shuffled_spatial_distances.items():
+            x.extend([key] * len(values))
+            y.extend(values)
+
+        # Original data
+        x_orig, y_orig = [], []
+        for key, values in spatial_original.items():
+            x_orig.extend([key] * len(values))
+            y_orig.extend(values)
+
+        # Add jitter
+        x = np.array(x) + np.random.normal(0, 0.1, len(x))
+        x_orig = np.array(x_orig) + np.random.normal(0, 0.1, len(x_orig))
+
+        # Plot scatterplot
+        scatter_ax = ax[1] if temporal else ax[0]
+        scatter_ax.scatter(y, x, color='lightskyblue', alpha=0.6, label='Shuffled', s=3)
+        scatter_ax.scatter(y_orig, x_orig, color='red', alpha=0.8, label='Original', s=4)
+        scatter_ax.set_ylabel("Co-firing")
+        scatter_ax.set_xlabel("Spatial Distance")
+        scatter_ax.set_title("Spatial Distance vs Co-firing")
+        scatter_ax.legend()
+
+        # Adjust layout to prevent cut-off
+        figure.tight_layout()
+
+        # Embed Matplotlib figure in PyQt5
+        canvas = FigureCanvas(figure)
+        layout.addWidget(canvas)
+
+        # Add Matplotlib toolbar for interactive options
+        toolbar = NavigationToolbar(canvas, self)
+        layout.addWidget(toolbar)
+
+        # Add labels
+        layout.addWidget(QLabel(f"Mean of Shuffled Data: {mean_shuffled:.2f}"))
+        layout.addWidget(QLabel(f"Standard Deviation of Shuffled Data: {std_shuffled:.2f}"))
+        layout.addWidget(QLabel(f"Original Data: {cofiring_original:.2f}"))
+        layout.addWidget(QLabel(f"Z-Score: {z_score:.2f}"))
+
+        # Set layout
+        self.setLayout(layout)
+
+        # Ensure the updated layout is drawn
+        canvas.draw()

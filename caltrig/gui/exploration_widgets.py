@@ -62,6 +62,7 @@ class CaltrigWidget(QWidget):
         self.single_plot_options = {"enabled": False, "inter_distance": 0, "intra_distance": 0}
         self.processes = processes
         self.recalculate_canny_edges = True # Optimization to not call canny on every frame
+        self.visualized_shuffled = None
 
         # Initialize executor to load next chunks in the background
         if self.processes:
@@ -3078,6 +3079,11 @@ class CaltrigWidget(QWidget):
         windows_to_close = list(self.windows.values())
         for window in windows_to_close:
             window.close()
+        if self.visualized_shuffled:
+            self.visualized_shuffled.close()
+
+        #self.visualization_3D.close()
+        
         self.main_window_ref.remove_window(self.name)
         event.accept()
 
@@ -3267,7 +3273,8 @@ class CaltrigWidget(QWidget):
         
         num_of_shuffles = int(self.shuffle_num_shuffles.text()) if self.shuffle_num_shuffles.text() else 100
 
-        shuffle_cofiring(self.session, target_cells, comparison_cells, n=num_of_shuffles, **params)
+        self.visualized_shuffled = shuffle_cofiring(self.session, target_cells, comparison_cells, n=num_of_shuffles, **params)
+        self.visualized_shuffled.show()
 
 class PlotItemEnhanced(PlotItem):
     signalChangedSelection = QtCore.Signal(object)
