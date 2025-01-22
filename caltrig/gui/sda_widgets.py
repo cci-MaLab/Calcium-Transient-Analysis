@@ -705,6 +705,11 @@ class PyVistaWidget(QtInteractor):
         shape = self.visualization_data.get_shape() 
         self.show_grid(bounds=(0, shape["x"], 0, shape["y"], -20, 150), color='white')
         self.render()
+
+    def closeEvent(self, event):
+        self.clear()
+        pv.close_all()
+        super().closeEvent(event)
         
    
 def check_cofiring(A_starts: List[int], B_starts: List[int], window_size: int, shareA:bool=True, shareB:bool=True, direction:str="bidirectional", omit_first=False, **kwargs):

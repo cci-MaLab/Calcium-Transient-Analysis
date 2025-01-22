@@ -3082,7 +3082,7 @@ class CaltrigWidget(QWidget):
         if self.visualized_shuffled:
             self.visualized_shuffled.close()
 
-        #self.visualization_3D.close()
+        self.visualization_3D.close()
         
         self.main_window_ref.remove_window(self.name)
         event.accept()
