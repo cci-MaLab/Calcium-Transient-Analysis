@@ -192,7 +192,7 @@ class VisualizeShuffledCofiring(QWidget):
         if temporal:
             ax[0].hist(shuffled_temporal_cofiring, bins=30, color='blue', alpha=0.7, edgecolor='black')
             ax[0].axvline(cofiring_original, color='red', linestyle='--', label='Original')
-            ax[0].set_xlabel("Co-firing")
+            ax[0].set_xlabel("Total Co-firing")
             ax[0].set_ylabel("Frequency")
             ax[0].set_title("Co-firing Histogram")
             ax[0].legend()
