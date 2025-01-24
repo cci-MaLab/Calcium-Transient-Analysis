@@ -1373,6 +1373,14 @@ class DataInstance:
         else:
             return cells.intersection(verified_unit_ids)
     
+    def prune_rejected_cells(self, cells):
+        """
+        Prune the cells that have been rejected from the list of cells.
+        """
+        E = self.data['E']
+        E.load()
+        return [cell for cell in cells if E.sel(unit_id=cell)['good_cells'].values.item() == 1]
+    
     def get_verified_cells(self):
         all_unit_ids = self.data['E'].unit_id.values
         verified_idxs = self.data['E'].verified.values.astype(int)

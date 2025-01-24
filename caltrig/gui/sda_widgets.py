@@ -1,10 +1,7 @@
 # Spatial distribution analysis
-
-from PyQt5.QtWidgets import  QWidget, QVBoxLayout, QPushButton
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QMessageBox
 import numpy as np
-from scipy.interpolate import interp1d
 import xarray as xr
 from .pop_up_messages import print_error
 from matplotlib import cm
@@ -16,8 +13,6 @@ from concurrent.futures import ProcessPoolExecutor
 from ..core.backend import DataInstance
 import time
 import pickle
-from matplotlib.colors import ListedColormap
-import gc
 
 class CurrentVisualizationData():
     def __init__(self, data, max_height, start_frame, end_frame, x_start, x_end, y_start, y_end, scaling_factor=10):
@@ -553,6 +548,8 @@ class PyVistaWidget(QtInteractor):
         self.serialized_data = pickle.dumps({"session": self.session, "precalculated_values": self.precalculated_values, "kwargs": self.kwargs_func})
 
     def update_selected_cells(self, cells):
+        # Remove cells that are rejected
+        cells = self.session.prune_rejected_cells(cells)
         self.selected_cells = cells
         self.points_3d["colors"] = self.visualization_data.get_selected_points(self.selected_cells)
         self.render()
