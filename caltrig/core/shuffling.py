@@ -7,7 +7,8 @@ from matplotlib.backends.backend_qt5agg import (
     FigureCanvasQTAgg as FigureCanvas,
     NavigationToolbar2QT as NavigationToolbar
 )
-from PyQt5.QtWidgets import QVBoxLayout, QLabel, QWidget
+import pandas as pd
+from PyQt5.QtWidgets import (QVBoxLayout, QLabel, QWidget, QMenuBar, QAction, QStyle)
 
 def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, **kwargs):
     """Shuffle the data, keeping the co-firing structure.
@@ -45,7 +46,7 @@ def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, 
     omit_first = kwargs['temporal']
     cofiring_distances_original = {}
     # First get the cofiring metric of the original data
-    cofiring_original, spatial_original = calculate_cofiring_for_group(frame_start, positions, target_cells,
+    cofiring_original, spatial_original, connections_used_original = calculate_cofiring_for_group(frame_start, positions, target_cells,
                                                                         comparison_cells, cofiring_distances_original,
                                                                         omit_first=omit_first, **kwargs)
     # Set up the PyQt application and progress window
@@ -66,7 +67,7 @@ def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, 
             shuffled_spatial = positions
 
         # Calculate the cofiring metric for the shuffled data
-        cofiring, shuffled_spatial_distances = calculate_cofiring_for_group(shuffled_frame_start, shuffled_spatial,
+        cofiring, shuffled_spatial_distances, _ = calculate_cofiring_for_group(shuffled_frame_start, shuffled_spatial,
                                                                     target_cells, comparison_cells, shuffled_spatial_distances,
                                                                     omit_first=False, **kwargs)
 
@@ -74,7 +75,7 @@ def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, 
 
     progress_window.close()
 
-    visualize_shuffled = VisualizeShuffledCofiring(cofiring_original, shuffled_temporal_cofiring, shuffled_spatial_distances, spatial_original, temporal=kwargs['temporal'])
+    visualize_shuffled = VisualizeShuffledCofiring(cofiring_original, shuffled_temporal_cofiring, shuffled_spatial_distances, spatial_original, connections_used_original, temporal=kwargs['temporal'])
     
     return visualize_shuffled
 
@@ -123,7 +124,7 @@ def calculate_cofiring_for_group(frame_start, cell_positions, target_cells, comp
                     cofiring_distances[cofiring] = [spatial_distance]
 
 
-    return total_cofiring, cofiring_distances
+    return total_cofiring, cofiring_distances, kwargs["connections_used"]
 
 
 def permute_itis_to_start_indices(ieis_dict):
@@ -170,13 +171,29 @@ class VisualizeShuffledCofiring(QWidget):
     labels for Z-Score and other details, and Matplotlib toolbar.
     """
     def __init__(self, cofiring_original, shuffled_temporal_cofiring, 
-                 shuffled_spatial_distances, spatial_original, temporal=True):
+                 shuffled_spatial_distances, spatial_original, connections_used, temporal=True):
         super().__init__()
 
         # Calculate statistics
         mean_shuffled = np.mean(shuffled_temporal_cofiring)
         std_shuffled = np.std(shuffled_temporal_cofiring)
         z_score = (cofiring_original - mean_shuffled) / std_shuffled
+
+        self.connections_used = connections_used
+        self.spatial_original = spatial_original
+        self.prep_copy_data()
+
+        self.menu = QMenuBar()
+        pixmapi_tools = QStyle.StandardPixmap.SP_FileDialogListView
+        btn_copy_1 = QAction(self.style().standardIcon(pixmapi_tools), "&Copy Original Data to Clipboard", self)
+        btn_copy_1.setStatusTip("Data related utilities")
+        btn_copy_1.triggered.connect(lambda: self.copy_to_clipboard(self.df_standard))
+        btn_copy_2 = QAction(self.style().standardIcon(pixmapi_tools), "&Copy Original Data to Clipboard (Cell to Cell Matrix)", self)
+        btn_copy_2.setStatusTip("Data related utilities")
+        btn_copy_2.triggered.connect(lambda: self.copy_to_clipboard(self.df_alt, index=True))
+        stats_menu = self.menu.addMenu("&Tools")
+        stats_menu.addAction(btn_copy_1)
+        stats_menu.addAction(btn_copy_2)
 
         # Initialize the window
         self.setWindowTitle("Shuffled Cofiring Visualization")
@@ -241,6 +258,59 @@ class VisualizeShuffledCofiring(QWidget):
 
         # Set layout
         self.setLayout(layout)
+        self.layout().setMenuBar(self.menu)
 
         # Ensure the updated layout is drawn
         canvas.draw()
+    
+    def prep_copy_data(self):
+        """
+        Prepare data for copying to clipboard.
+        """
+        
+        # First we do it for the standard format, Where we have three columns, co-firing #, pairs detected, cell pair ids
+        df_standard = pd.DataFrame(columns=["Co-firing #", "Pairs Detected", "Cell Pair IDs"])
+        # For cofiring # we used the keys of self.spatial_original in ascending order
+        cofiring_numbers = sorted(self.spatial_original.keys())
+        # For pairs detected we check the length of the values in self.spatial_original
+        pairs_detected = [len(self.spatial_original[cofiring]) for cofiring in cofiring_numbers]
+        # For cell pair ids we iterate through self.connections. The key are cell pairs and the length of the values are the number of times they co-fired
+        cofiring_to_pairs = {}
+        for key, values in self.connections_used.items():
+            num_of_cofiring = len(values)
+            if num_of_cofiring not in cofiring_to_pairs:
+                cofiring_to_pairs[num_of_cofiring] = ""
+            cell_pair = f"Cell {key[0]} - Cell {key[1]}"
+            cofiring_to_pairs[num_of_cofiring] += f"{cell_pair}, "
+        
+        cell_pair_ids = [cofiring_to_pairs[cofiring] for cofiring in cofiring_numbers]
+        df_standard["Co-firing #"] = cofiring_numbers
+        df_standard["Pairs Detected"] = pairs_detected
+        df_standard["Cell Pair IDs"] = cell_pair_ids
+
+        self.df_standard = df_standard
+
+        # Now we need to something similar for the alternative format, where we have a matrix of cell pairs and their co-firing numbers
+        cell_ids = []
+        for key in self.connections_used.keys():
+            cell_ids.extend(key)
+        # Unique and in ascending order
+        cell_ids = sorted(list(set(cell_ids)))
+        # Now cell ids are the columns and the rows, default to 0, and the name should be "Cell #"
+        df_alt = pd.DataFrame(0, index=[f"Cell {i}" for i in cell_ids], columns=[f"Cell {i}" for i in cell_ids])
+        # Now we iterate through self.connections_used and set the values in the matrix in two places at once
+        for key, values in self.connections_used.items():
+            for cell_pair in values:
+                df_alt.at[f"Cell {key[0]}", f"Cell {key[1]}"] = len(values)
+                df_alt.at[f"Cell {key[1]}", f"Cell {key[0]}"] = len(values)
+
+        self.df_alt = df_alt
+
+
+    def copy_to_clipboard(self, table, index=False):
+        '''
+        Copy the data from the table to the clipboard.
+        '''
+        table.to_clipboard(index=index)
+        
+        
