@@ -313,7 +313,7 @@ class PyVistaWidget(QtInteractor):
         self.points_3d = pv.PolyData(points_coords)
         self.points_3d["colors"] = self.visualization_data.get_selected_points(self.selected_cells)
         self.add_mesh(self.points_3d, scalars="colors", render_points_as_spheres=False, point_size=10, cmap=['red', 'green'], scalar_bar_args=None)
-        self.enable_point_picking(callback=self.receive_click, use_mesh=True, pickable_window=self.points_3d, show_point=False, show_message="Right Click or press 'P' to select point/cell", left_click=True)
+        self.enable_point_picking(callback=self.receive_click, pickable_window=self.points_3d, show_point=False, show_message="Right Click or press 'P' to select point/cell", left_click=True)
         self._picking_text.GetTextProperty().SetColor(1,1,1)
         self.change_colormap(self.cmap)
 
@@ -554,10 +554,10 @@ class PyVistaWidget(QtInteractor):
         self.points_3d["colors"] = self.visualization_data.get_selected_points(self.selected_cells)
         self.render()
     
-    def receive_click(self, mesh, index):
-        if mesh is None:
+    def receive_click(self, picked_point):
+        if picked_point is None:
             return
-        x, y, _ = mesh.points[index]
+        x, y, _ = picked_point
         # Add the start values to the x and y values
         x, y = int(x + self.visualization_data.x_start), int(y + self.visualization_data.y_start)
         self.point_signal.emit(x, y)
@@ -647,6 +647,8 @@ class PyVistaWidget(QtInteractor):
                     value = self.precalculated_values[name]["cells"][(id1, id2)]
                 else:
                     self.remove_arrow((id1, id2))
+                    continue
+                if id1 not in cell_id_coords or id2 not in cell_id_coords:
                     continue
                 if value not in cofiring_nums and "all" not in cofiring_nums:
                     self.remove_arrow((id1, id2))

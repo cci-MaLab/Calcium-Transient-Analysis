@@ -1523,7 +1523,7 @@ class CaltrigWidget(QWidget):
     def reset_list(self, precalculated_values):
         cofiring_nums = list(precalculated_values["number"].keys())
         # Populate the list
-        self.cofiring_list.clear()
+        self.clear_cofiring_list()
         # Add cofiring numbers to the list and make them checkable
         cofiring_nums.sort()
         # Remove 0 if it exists because we are not interested in no cofiring connections.
@@ -2991,19 +2991,22 @@ class CaltrigWidget(QWidget):
         
     
     def reset_which_cells(self, unique_groups):
-        self.cmb_3D_which_cells.clear()
-        self.cmb_3D_which_cells.addItems(["All Cells", "Verified Cells"])
-        self.cmb_3D_which_cells.addItems([f"Group {group_id}" for group_id in unique_groups])
-        self.cmb_global_which_cells.clear()
-        self.cmb_global_which_cells.addItems(["All Cells", "Verified Cells"])
-        self.cmb_global_which_cells.addItems([f"Group {group_id}" for group_id in unique_groups])
+        self.reset_which_cells_local(unique_groups, self.cmb_3D_which_cells)
+        self.reset_which_cells_local(unique_groups, self.cmb_global_which_cells)
         self.cmb_shuffle_which_cells.currentIndexChanged.disconnect()
-        self.cmb_shuffle_which_cells.clear()
-        self.cmb_shuffle_which_cells.addItems(["All Cells", "Verified Cells"])
-        self.cmb_shuffle_which_cells.addItems([f"Group {group_id}" for group_id in unique_groups])
+        self.reset_which_cells_local(unique_groups, self.cmb_shuffle_which_cells)
         self.cmb_shuffle_which_cells.currentIndexChanged.connect(self.refresh_cell_list)
         self.refresh_cell_list()
 
+    def reset_which_cells_local(self, unique_groups, list):
+        current_selection = list.currentText()
+        list.clear()
+        list.addItems(["All Cells", "Verified Cells"])
+        list.addItems([f"Group {group_id}" for group_id in unique_groups])
+        # Find the index of the current selection
+        index = list.findText(current_selection)
+        if index != -1:
+            list.setCurrentIndex(index)
 
     def reject_cells(self):
         cell_ids = [self.extract_id(item) for item in self.list_cell.selectedItems()]

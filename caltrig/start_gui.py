@@ -283,7 +283,7 @@ class MainWindow(QMainWindow):
         """
         group, session, day, mouseID = self.current_selection.return_info()
         self.instance_viz.remove_visualization(group, mouseID, session, day)
-        path = self.instances[group][mouseID][f"{session}:{day}"].dpath
+        path = self.instances[group][mouseID][f"{session}:{day}"].config_path
         # Remove it from all references
         del self.path_list[path]
         del self.instances[group][mouseID][f"{session}:{day}"]
