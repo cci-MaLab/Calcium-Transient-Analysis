@@ -735,6 +735,34 @@ class CaltrigWidget(QWidget):
         layout_3D_chkbox.addWidget(self.chkbox_3D_average)
         self.layout_3D_chkbox_parent.hide()
 
+        # Advanced 3D Visualization Tools
+        visualization_3D_advanced_layout = QVBoxLayout()
+        visualization_3D_advanced_window_size_layout = QHBoxLayout()
+        visualization_3D_advanced_window_size_layout.addWidget(QLabel("Window Size:"))
+        self.input_3D_window_size = QLineEdit()
+        self.input_3D_window_size.setValidator(QIntValidator(1, 10000))
+        self.input_3D_window_size.setText("1")
+        visualization_3D_advanced_window_size_layout.addWidget(self.input_3D_window_size)
+        visualization_3D_advanced_layout.addLayout(visualization_3D_advanced_window_size_layout)
+        visualization_3D_advanced_statistic_layout = QHBoxLayout()
+        label_3D_advanced_statistic = QLabel("Statistic:")
+        self.dropdown_3D_advanced_statistic = QComboBox()
+        self.dropdown_3D_advanced_statistic.addItems(["Average Firing", "Average DFF Peak"])
+        visualization_3D_advanced_statistic_layout.addWidget(label_3D_advanced_statistic)
+        visualization_3D_advanced_statistic_layout.addWidget(self.dropdown_3D_advanced_statistic)
+        visualization_3D_advanced_layout.addLayout(visualization_3D_advanced_statistic_layout)
+        visualization_3D_advanced_fpr_layout = QHBoxLayout()
+        label_3D_advanced_fpr = QLabel("Further Processed Readout:")
+        self.dropdown_3D_advanced_fpr = QComboBox()
+        self.dropdown_3D_advanced_fpr.addItems(["A", "B-A", "(B-A)²", "(B-A)/A", "|(B-A)/A|", "B/A"])
+        visualization_3D_advanced_fpr_layout.addWidget(label_3D_advanced_fpr)
+        visualization_3D_advanced_fpr_layout.addWidget(self.dropdown_3D_advanced_fpr)
+        visualization_3D_advanced_layout.addLayout(visualization_3D_advanced_fpr_layout)
+        btn_visualize_3D_advanced = QPushButton("Visualize Advanced")
+        visualization_3D_advanced_layout.addWidget(btn_visualize_3D_advanced)
+        visualization_3D_advanced_layout.addStretch()
+
+
         # Cofiring Tools
         cofiring_layout = QVBoxLayout()
         cofiring_layout.addWidget(QLabel("Cofiring Tools"))
@@ -851,6 +879,10 @@ class CaltrigWidget(QWidget):
         visualization_3D_tools = QWidget()
         visualization_3D_tools.setLayout(visualization_3D_layout)
 
+        # Advanced 3D Visualization Tools
+        visualization_3D_advanced_tools = QWidget()
+        visualization_3D_advanced_tools.setLayout(visualization_3D_advanced_layout)
+
         # Co-Firing Checkbox layout
         cofiring_chkbox_layout = QHBoxLayout()
         cofiring_chkbox_layout.addWidget(self.cofiring_chkbox)
@@ -922,6 +954,7 @@ class CaltrigWidget(QWidget):
         
 
         self.tabs_visualization.addTab(visualization_3D_tools, "Signal Settings")
+        self.tabs_visualization.addTab(visualization_3D_advanced_tools, "Advanced Visualization")
         self.tabs_visualization.addTab(cofiring_tools, "Co-Firing")
 
         self.tabs_video_tools.addTab(self.tabs_video, "Cell Video")
