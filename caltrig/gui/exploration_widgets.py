@@ -20,7 +20,7 @@ from skimage.measure import find_contours
 from ..core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget, MetricsWidget)
 from .pyqtgraph_override import ImageViewOverride
 from .cofiring_2d_widgets import Cofiring2DWidget
-from .sda_widgets import (base_visualization, PyVistaWidget)
+from .sda_widgets import (base_visualization, VisualizationWidget, VisualizationAdvancedWidget)
 from ..core.shuffling import shuffle_cofiring
 import os
 import matplotlib.pyplot as plt
@@ -95,9 +95,12 @@ class CaltrigWidget(QWidget):
         if "behavior_video" in self.session.video_data:
             self.imv_behavior.setImage(self.session.video_data["behavior_video"].sel(frame=self.current_frame).values)
 
-        self.visualization_3D = PyVistaWidget(self.session, self.executor)
+        self.visualization_3D = VisualizationWidget(self.session, self.executor)
         self.visualization_3D.setVisible(False)
         self.visualization_3D.point_signal.connect(self.point_selection)
+
+        self.visualization_3D_advanced = VisualizationAdvancedWidget(self.session)
+        self.visualization_3D_advanced.setVisible(False)
 
         # Add Context Menu Action
         self.video_to_title = {"varr": "Original", "Y_fm_chk": "Processed"}
@@ -149,6 +152,10 @@ class CaltrigWidget(QWidget):
         self.chkbox_3D.setCheckable(True)
         self.chkbox_3D.setChecked(False)
         self.chkbox_3D.triggered.connect(self.toggle_videos)
+        self.chkbox_3D_advanced = QAction("Advanced 3D Visualization", self)
+        self.chkbox_3D_advanced.setCheckable(True)
+        self.chkbox_3D_advanced.setChecked(False)
+        self.chkbox_3D_advanced.triggered.connect(self.toggle_videos)
 
         util_menu = menu.addMenu("&Utilities")
         util_menu.addAction(btn_max_projection_processed)
@@ -157,6 +164,7 @@ class CaltrigWidget(QWidget):
         video_menu.addAction(self.chkbox_cell_video)
         video_menu.addAction(self.chkbox_behavior_video)
         video_menu.addAction(self.chkbox_3D)
+        video_menu.addAction(self.chkbox_3D_advanced)
 
         
 
@@ -614,10 +622,6 @@ class CaltrigWidget(QWidget):
         self.shuffle_num_shuffles.setText("100")
         layout_shuffle_num_shuffles.addWidget(label_shuffle_num_shuffles)
         layout_shuffle_num_shuffles.addWidget(self.shuffle_num_shuffles)
-
-
-        # Populate cell list
-        self.refresh_cell_list()
         
         # Tools for video
         self.pixmapi_play = QStyle.StandardPixmap.SP_MediaPlay
@@ -680,6 +684,7 @@ class CaltrigWidget(QWidget):
         widget_video_subvideos.addWidget(self.imv_cell)
         widget_video_subvideos.addWidget(self.imv_behavior)
         widget_video_subvideos.addWidget(self.visualization_3D)
+        widget_video_subvideos.addWidget(self.visualization_3D_advanced)
 
         layout_video = QVBoxLayout()
         layout_video.addWidget(widget_video_subvideos)
@@ -737,8 +742,36 @@ class CaltrigWidget(QWidget):
 
         # Advanced 3D Visualization Tools
         visualization_3D_advanced_layout = QVBoxLayout()
+
+        layout_list_advanced_cells = QHBoxLayout()
+        layout_list_advanced_A_cell = QVBoxLayout()
+        layout_list_advanced_B_cell = QVBoxLayout()
+        label_list_advanced_A_cell = QLabel("A Cells")
+        self.list_advanced_A_cell = QListWidget()
+        self.list_advanced_A_cell.setMaximumHeight(600)
+        self.list_advanced_A_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        btn_toggle_check_A = QPushButton("Check/Uncheck A Cells")
+        btn_toggle_check_A.setFixedSize(160, 20)
+        btn_toggle_check_A.clicked.connect(lambda: self.toggle_check_all(self.list_advanced_A_cell))
+        layout_list_advanced_A_cell.addWidget(label_list_advanced_A_cell)
+        layout_list_advanced_A_cell.addWidget(self.list_advanced_A_cell)
+        layout_list_advanced_A_cell.addWidget(btn_toggle_check_A)
+        label_list_advanced_B_cell = QLabel("B Cells")
+        self.list_advanced_B_cell = QListWidget()
+        self.list_advanced_B_cell.setMaximumHeight(600)
+        self.list_advanced_B_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        btn_toggle_check_B = QPushButton("Check/Uncheck B Cells")
+        btn_toggle_check_B.setFixedSize(160, 20)
+        btn_toggle_check_B.clicked.connect(lambda: self.toggle_check_all(self.list_advanced_B_cell))
+        layout_list_advanced_B_cell.addWidget(label_list_advanced_B_cell)
+        layout_list_advanced_B_cell.addWidget(self.list_advanced_B_cell)
+        layout_list_advanced_B_cell.addWidget(btn_toggle_check_B)
+        layout_list_advanced_cells.addLayout(layout_list_advanced_A_cell)
+        layout_list_advanced_cells.addLayout(layout_list_advanced_B_cell)
+        visualization_3D_advanced_layout.addLayout(layout_list_advanced_cells)
+
         visualization_3D_advanced_window_size_layout = QHBoxLayout()
-        visualization_3D_advanced_window_size_layout.addWidget(QLabel("Window Size:"))
+        visualization_3D_advanced_window_size_layout.addWidget(QLabel("Number of frames per window:"))
         self.input_3D_window_size = QLineEdit()
         self.input_3D_window_size.setValidator(QIntValidator(1, 10000))
         self.input_3D_window_size.setText("1")
@@ -747,7 +780,7 @@ class CaltrigWidget(QWidget):
         visualization_3D_advanced_statistic_layout = QHBoxLayout()
         label_3D_advanced_statistic = QLabel("Statistic:")
         self.dropdown_3D_advanced_statistic = QComboBox()
-        self.dropdown_3D_advanced_statistic.addItems(["Average Firing", "Average DFF Peak"])
+        self.dropdown_3D_advanced_statistic.addItems(["Event Count Frequency", "Average DFF Peak", "Total DFF Peak"])
         visualization_3D_advanced_statistic_layout.addWidget(label_3D_advanced_statistic)
         visualization_3D_advanced_statistic_layout.addWidget(self.dropdown_3D_advanced_statistic)
         visualization_3D_advanced_layout.addLayout(visualization_3D_advanced_statistic_layout)
@@ -1357,6 +1390,9 @@ class CaltrigWidget(QWidget):
         self.missed_cell_init()
 
         self.imv_cell.scene.sigMouseMoved.connect(self.detect_cell_hover)
+
+        # Populate cell list
+        self.refresh_cell_list()
 
     def highlight_roi_selection(self, type="ellipse"):
         # Get mouse position
@@ -2958,6 +2994,8 @@ class CaltrigWidget(QWidget):
         self.list_rejected_cell.clear()
         self.list_shuffle_target_cell.clear()
         self.list_shuffle_comparison_cell.clear()
+        self.list_advanced_A_cell.clear()
+        self.list_advanced_B_cell.clear()
         cell_ids_to_groups = self.session.cell_ids_to_groups
         good_bad_cells = self.session.data['E']['good_cells'].values
         reject_size = 0
@@ -2973,11 +3011,15 @@ class CaltrigWidget(QWidget):
                 if cell_id in shuffle_cells:
                     self.list_shuffle_target_cell.addItem(self.create_checked_item(cell_name))
                     self.list_shuffle_comparison_cell.addItem(self.create_checked_item(cell_name))
+                    self.list_advanced_A_cell.addItem(self.create_checked_item(cell_name))
+                    self.list_advanced_B_cell.addItem(self.create_checked_item(cell_name))
                 if self.session.data['E']['verified'].loc[{'unit_id': cell_id}].values.item():
                     self.list_cell.item(i-reject_size).setBackground(Qt.green)
                     if cell_id in shuffle_cells:
                         self.list_shuffle_target_cell.item(self.list_shuffle_target_cell.count()-1).setBackground(Qt.green)
                         self.list_shuffle_comparison_cell.item(self.list_shuffle_comparison_cell.count()-1).setBackground(Qt.green)
+                        self.list_advanced_A_cell.item(self.list_advanced_A_cell.count()-1).setBackground(Qt.green)
+                        self.list_advanced_B_cell.item(self.list_advanced_B_cell.count()-1).setBackground(Qt.green)
                     approved_size += 1
             else:
                 self.list_rejected_cell.addItem(str(cell_id))
@@ -3081,6 +3123,10 @@ class CaltrigWidget(QWidget):
             self.visualization_3D.setVisible(True)
         else:
             self.visualization_3D.setVisible(False)
+        if self.chkbox_3D_advanced.isChecked():
+            self.visualization_3D_advanced.setVisible(True)
+        else:
+            self.visualization_3D_advanced.setVisible(False)
         if not self.chkbox_cell_video.isChecked() and not self.chkbox_behavior_video.isChecked() and not self.chkbox_3D.isChecked():
             self.widget_video_cells.setVisible(False)
         else:
@@ -3119,6 +3165,7 @@ class CaltrigWidget(QWidget):
             self.visualized_shuffled.close()
 
         self.visualization_3D.close()
+        self.visualization_3D_advanced.close()
         
         self.main_window_ref.remove_window(self.name)
         event.accept()

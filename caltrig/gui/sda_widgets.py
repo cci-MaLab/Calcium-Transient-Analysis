@@ -237,9 +237,136 @@ def calculate_windowed_data(session, precalculated_values, data_type, window_siz
     data = np.array(data)
     return xr.DataArray(data, coords=[unit_ids, np.arange(E.shape[1])], dims=['unit_id', 'frame'], name=name)
 
+def _forward_fill(y):
+        prev = np.arange(len(y))
+        prev[y == 0] = 0
+        prev = np.maximum.accumulate(prev)
+        return y[prev]
 
+def _precalculate(session):
+    precalculated_values = {}
+    E = session.data['E']
+    C = session.data['C']
+    DFF = session.data['DFF']
+
+    # Unit ids
+    unit_ids = E.unit_id.values
+
+    # Output values
+    C_based_events = np.zeros(C.shape)
+    C_cumulative_events = np.zeros(C.shape)
+    DFF_based_events = np.zeros(DFF.shape)
+    DFF_cumulative_events = np.zeros(DFF.shape)
+    frequency = np.zeros(C.shape)
+    # We are also going to maintain a dictionary for transient information
+    # what frame the transient starts, its duration and the value in terms of C and DFF
+    # Top level are unit_ids which leads to dictionaries of the aforementioned values
+    transient_info = {}
+
+    for i, unit_id in enumerate(unit_ids):
+        row = E.sel(unit_id=unit_id).values
+        C_row = C.sel(unit_id=unit_id).values
+        DFF_row = DFF.sel(unit_id=unit_id).values
+        events = np.nan_to_num(row, nan=0) # Sometimes saving errors can cause NaNs
+        indices = events.nonzero()
+        if indices[0].any():
+            transient_info[unit_id] = {}
+            frame_start = []
+            frame_end = []
+            c_values = []
+            dff_values = []
+            # Split up the indices into groups
+            split_indices = np.split(indices[0], np.where(np.diff(indices[0]) != 1)[0]+1)
+            # Now Split the indices into pairs of first and last indices
+            split_indices = [(indices_group[0], indices_group[-1]+1) for indices_group in split_indices]
+
+            C_based_total = 0
+            DFF_based_total = 0
+            frequency_total = 0
+            indices_to_remove = []
+            for j, (start, end) in enumerate(split_indices):
+                C_based_val = abs(C_row[start:end].max() - C_row[start:end].min())
+                DFF_based_val = abs(DFF_row[start:end].max() - DFF_row[start:end].min())
+
+                if C_based_val == 0 or DFF_based_val == 0:
+                    indices_to_remove.append(j)
+                    continue # Can occur due to erroneous data, skip these
+
+                frame_start.append(start)
+                frame_end.append(end)
+                c_values.append(C_based_val)
+                dff_values.append(DFF_based_val)
+
+                C_based_events[i, start:end] = C_based_val
+                DFF_based_events[i, start:end] = DFF_based_val
+                frequency_total += 1
+                frequency[i, start:end] = frequency_total
+
+                C_based_total += C_based_val
+                DFF_based_total += DFF_based_val
+
+                C_cumulative_events[i, start:end] = C_based_total
+                DFF_cumulative_events[i, start:end] = DFF_based_total
+            
+
+            # Add to info dictionary
+            transient_info[unit_id]['frame_start'] = frame_start
+            transient_info[unit_id]['frame_end'] = frame_end
+            transient_info[unit_id]['C_values'] = c_values
+            transient_info[unit_id]['DFF_values'] = dff_values
+            transient_info[unit_id]['C_total'] = C_based_total
+            transient_info[unit_id]['DFF_total'] = DFF_based_total
+
+            # Remove the erroneous indices
+            split_indices = [split_indices[j] for j in range(len(split_indices)) if j not in indices_to_remove]
+            
+            # Normalize the values by the total in both cases
+            C_based_events[i] /= C_based_total
+            DFF_based_events[i] /= DFF_based_total
+            C_cumulative_events[i] /= C_based_total
+            DFF_cumulative_events[i] /= DFF_based_total
+            frequency[i] /= frequency_total
+
+            # Interpolate the values to fill in the gaps for cumulative events
+            C_cumulative_events[i] = _forward_fill(C_cumulative_events[i])
+            DFF_cumulative_events[i] = _forward_fill(DFF_cumulative_events[i])
+            frequency[i] = _forward_fill(frequency[i])
+
+            # We'll simulate decay for the base events by taking the last value and multiplying it by 0.95
+            for j, (_, end) in enumerate(split_indices):
+                last_val_C = C_based_events[i, end-1]
+                last_val_DFF = DFF_based_events[i, end-1]
+
+                # Be wary of when the next event starts to not overwrite the values
+                next_start = split_indices[j+1][0] if j+1 < len(split_indices) else C_based_events.shape[1]
+
+                # We need to calculate how many frames we need for the decay to be less than 1. 
+                C_no_of_frames = int(min(max(np.ceil(np.emath.logn(0.95, 0.01/last_val_C)), 0), next_start-end))
+                DFF_no_of_frames = int(min(max(np.ceil(np.emath.logn(0.95, 0.01/last_val_DFF)), 0), next_start-end))
+
+
+                # Now we need to calculate the decay values, by exponentiation
+                if C_no_of_frames > 0:
+                    C_decay_powers = np.arange(C_no_of_frames) + 1
+                    C_decay_values = last_val_C * 0.95**C_decay_powers
+                    C_based_events[i, end:end+C_no_of_frames] = C_decay_values
+
+                if DFF_no_of_frames > 0:
+                    DFF_decay_powers = np.arange(DFF_no_of_frames) + 1
+                    DFF_decay_values = last_val_DFF * 0.95**DFF_decay_powers
+                    DFF_based_events[i, end:end+DFF_no_of_frames] = DFF_decay_values
+
+
+    precalculated_values['C_transient'] = xr.DataArray(C_based_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='C_base')
+    precalculated_values['C_cumulative'] = xr.DataArray(C_cumulative_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='C_cumulative')
+    precalculated_values['DFF_transient'] = xr.DataArray(DFF_based_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='DFF_base')
+    precalculated_values['DFF_cumulative'] = xr.DataArray(DFF_cumulative_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='DFF_cumulative')
+    precalculated_values['Frequency'] = xr.DataArray(frequency, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='frequency')
+    precalculated_values['transient_info'] = transient_info
+    
+    return precalculated_values
                 
-class PyVistaWidget(QtInteractor):
+class VisualizationWidget(QtInteractor):
     point_signal = pyqtSignal(int, int)
     def __init__(self, session: DataInstance, executor: Optional[ProcessPoolExecutor], chunk_size=50, visualization_generator=base_visualization, parent=None):
         super().__init__(parent)
@@ -273,7 +400,7 @@ class PyVistaWidget(QtInteractor):
         self.current_frame = 0
         self.kwargs_func = {}
         self.selected_cells = []
-        self.precalculated_values = self._precalculate()
+        self.precalculated_values = _precalculate(self.session)
         # We need to serialize the data so we can speed up the process of submit a process to the executor
         self._update_serialize_data()
         
@@ -317,134 +444,6 @@ class PyVistaWidget(QtInteractor):
         self._picking_text.GetTextProperty().SetColor(1,1,1)
         self.change_colormap(self.cmap)
 
-    def _precalculate(self):
-        precalculated_values = {}
-        E = self.session.data['E']
-        C = self.session.data['C']
-        DFF = self.session.data['DFF']
-
-        # Unit ids
-        unit_ids = E.unit_id.values
-
-        # Output values
-        C_based_events = np.zeros(C.shape)
-        C_cumulative_events = np.zeros(C.shape)
-        DFF_based_events = np.zeros(DFF.shape)
-        DFF_cumulative_events = np.zeros(DFF.shape)
-        frequency = np.zeros(C.shape)
-        # We are also going to maintain a dictionary for transient information
-        # what frame the transient starts, its duration and the value in terms of C and DFF
-        # Top level are unit_ids which leads to dictionaries of the aforementioned values
-        transient_info = {}
-
-        for i, unit_id in enumerate(unit_ids):
-            row = E.sel(unit_id=unit_id).values
-            C_row = C.sel(unit_id=unit_id).values
-            DFF_row = DFF.sel(unit_id=unit_id).values
-            events = np.nan_to_num(row, nan=0) # Sometimes saving errors can cause NaNs
-            indices = events.nonzero()
-            if indices[0].any():
-                transient_info[unit_id] = {}
-                frame_start = []
-                frame_end = []
-                c_values = []
-                dff_values = []
-                # Split up the indices into groups
-                split_indices = np.split(indices[0], np.where(np.diff(indices[0]) != 1)[0]+1)
-                # Now Split the indices into pairs of first and last indices
-                split_indices = [(indices_group[0], indices_group[-1]+1) for indices_group in split_indices]
-
-                C_based_total = 0
-                DFF_based_total = 0
-                frequency_total = 0
-                indices_to_remove = []
-                for j, (start, end) in enumerate(split_indices):
-                    C_based_val = abs(C_row[start:end].max() - C_row[start:end].min())
-                    DFF_based_val = abs(DFF_row[start:end].max() - DFF_row[start:end].min())
-
-                    if C_based_val == 0 or DFF_based_val == 0:
-                        indices_to_remove.append(j)
-                        continue # Can occur due to erroneous data, skip these
-
-                    frame_start.append(start)
-                    frame_end.append(end)
-                    c_values.append(C_based_val)
-                    dff_values.append(DFF_based_val)
-
-                    C_based_events[i, start:end] = C_based_val
-                    DFF_based_events[i, start:end] = DFF_based_val
-                    frequency_total += 1
-                    frequency[i, start:end] = frequency_total
-
-                    C_based_total += C_based_val
-                    DFF_based_total += DFF_based_val
-
-                    C_cumulative_events[i, start:end] = C_based_total
-                    DFF_cumulative_events[i, start:end] = DFF_based_total
-                
-
-                # Add to info dictionary
-                transient_info[unit_id]['frame_start'] = frame_start
-                transient_info[unit_id]['frame_end'] = frame_end
-                transient_info[unit_id]['C_values'] = c_values
-                transient_info[unit_id]['DFF_values'] = dff_values
-                transient_info[unit_id]['C_total'] = C_based_total
-                transient_info[unit_id]['DFF_total'] = DFF_based_total
-
-                # Remove the erroneous indices
-                split_indices = [split_indices[j] for j in range(len(split_indices)) if j not in indices_to_remove]
-                
-                # Normalize the values by the total in both cases
-                C_based_events[i] /= C_based_total
-                DFF_based_events[i] /= DFF_based_total
-                C_cumulative_events[i] /= C_based_total
-                DFF_cumulative_events[i] /= DFF_based_total
-                frequency[i] /= frequency_total
-
-                # Interpolate the values to fill in the gaps for cumulative events
-                C_cumulative_events[i] = self._forward_fill(C_cumulative_events[i])
-                DFF_cumulative_events[i] = self._forward_fill(DFF_cumulative_events[i])
-                frequency[i] = self._forward_fill(frequency[i])
-
-                # We'll simulate decay for the base events by taking the last value and multiplying it by 0.95
-                for j, (_, end) in enumerate(split_indices):
-                    last_val_C = C_based_events[i, end-1]
-                    last_val_DFF = DFF_based_events[i, end-1]
-
-                    # Be wary of when the next event starts to not overwrite the values
-                    next_start = split_indices[j+1][0] if j+1 < len(split_indices) else C_based_events.shape[1]
-
-                    # We need to calculate how many frames we need for the decay to be less than 1. 
-                    C_no_of_frames = int(min(max(np.ceil(np.emath.logn(0.95, 0.01/last_val_C)), 0), next_start-end))
-                    DFF_no_of_frames = int(min(max(np.ceil(np.emath.logn(0.95, 0.01/last_val_DFF)), 0), next_start-end))
-
-
-                    # Now we need to calculate the decay values, by exponentiation
-                    if C_no_of_frames > 0:
-                        C_decay_powers = np.arange(C_no_of_frames) + 1
-                        C_decay_values = last_val_C * 0.95**C_decay_powers
-                        C_based_events[i, end:end+C_no_of_frames] = C_decay_values
-
-                    if DFF_no_of_frames > 0:
-                        DFF_decay_powers = np.arange(DFF_no_of_frames) + 1
-                        DFF_decay_values = last_val_DFF * 0.95**DFF_decay_powers
-                        DFF_based_events[i, end:end+DFF_no_of_frames] = DFF_decay_values
-
-
-        precalculated_values['C_transient'] = xr.DataArray(C_based_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='C_base')
-        precalculated_values['C_cumulative'] = xr.DataArray(C_cumulative_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='C_cumulative')
-        precalculated_values['DFF_transient'] = xr.DataArray(DFF_based_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='DFF_base')
-        precalculated_values['DFF_cumulative'] = xr.DataArray(DFF_cumulative_events, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='DFF_cumulative')
-        precalculated_values['Frequency'] = xr.DataArray(frequency, coords=[unit_ids, np.arange(C.shape[1])], dims=['unit_id', 'frame'], name='frequency')
-        precalculated_values['transient_info'] = transient_info
-        
-        return precalculated_values
-
-    def _forward_fill(self, y):
-        prev = np.arange(len(y))
-        prev[y == 0] = 0
-        prev = np.maximum.accumulate(prev)
-        return y[prev]
         
     def set_data(self, visualization_data):
         self.visualization_data = visualization_data * self.scaling_factor
@@ -710,7 +709,91 @@ class PyVistaWidget(QtInteractor):
         pv.close_all()
         super().closeEvent(event)
         
-   
+
+class VisualizationAdvancedWidget(QtInteractor):
+    def __init__(self, session, parent=None):
+        super().__init__(parent)
+        """
+        Visualization for the advanced components of the visualization, where
+        we'll summarize per cell a statistic in each window. The window size
+        will be specified by the user. Initially we'll render an empty grid
+        and then it will be updated per user specifications.
+        """
+
+        # Create an empty grid
+        x, y = np.meshgrid(np.arange(100), np.arange(100))
+        z = np.zeros_like(x)
+        self.grid = pv.StructuredGrid(x, y, z)
+        self.add_mesh(self.grid, lighting='flat', scalar_bar_args=None, pickable=False)
+        self.background_color = 'black'
+        self.scalar_range = (0, 50)
+        self.change_colormap('fire')
+        self.session = session
+        self.precalculated_values = _precalculate(self.session)
+
+    def change_colormap(self, name):
+        # Update the colormap for the plane (StructuredGrid)
+        self.cmap = name
+        plane_lut = pv.LookupTable(cc.cm[name])  # Create a LookupTable for the plane
+        plane_lut.scalar_range = self.scalar_range  # Apply scalar range
+
+        mapper = None
+        for actor_name in self.actors.keys():
+            if "Grid" in actor_name:
+                mapper = self.actors[actor_name].GetMapper()
+                mapper.SetLookupTable(plane_lut)
+                mapper.SetScalarRange(self.scalar_range)
+                break
+
+        #shape = self.visualization_data.get_shape() 
+        self.show_grid(bounds=(0, 100, 0, 100, -20, 150), color='white')
+        self.render()
+
+    def set_data(self, a_cells, b_cells, window_size, statistic, fpr):
+        """
+        Set the data for the advanced visualization. This will be used to visualize
+        the data in a 2D grid where the x and y axis are the cell ids and the color
+        of the grid is the statistic value for the window size.
+
+        Parameters
+        ----------
+        session : DataInstance
+            The session object that contains all the relevant session data from the parent class.
+        a_cells : list
+            The cell ids for the A cells.
+        b_cells : list
+            The cell ids for the B cells.
+        window_size : int
+            The window size for the statistic.
+        statistic : str
+            The statistic to calculate for each window, can be 'Event Count Frequency', 'Average DFF Peak', 'Total Dff'
+        fpr : float
+            The further processed readout for the statistic. 
+        """
+        # 1.) Iterating through a cells, retrieve the footprint with the relative positions of cell bs
+        a_b_relative_centers = {}
+        for a_cell in a_cells:
+            # Retrieve the center of the a cell
+            a_center = self.session.centroids[a_cell]
+            b_relative_centers = {}
+            # Iterate through the b cells and retrieve the relative positions to a_center
+            for b_cell in b_cells:
+                b_center = self.session.centroids[b_cell]
+                b_relative_center = b_center - a_center
+                b_relative_centers[b_cell] = b_relative_center
+            a_b_relative_centers[a_cell] = b_relative_centers
+        
+        
+
+        
+
+            
+
+    def closeEvent(self, event):
+        self.clear()
+        pv.close_all()
+        super().closeEvent(event)
+
 def check_cofiring(A_starts: List[int], B_starts: List[int], window_size: int, shareA:bool=True, shareB:bool=True, direction:str="bidirectional", omit_first=False, **kwargs):
     """
     Check if two cells are cofiring with each other. This is generally done
