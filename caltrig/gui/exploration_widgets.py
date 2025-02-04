@@ -772,10 +772,10 @@ class CaltrigWidget(QWidget):
 
         visualization_3D_advanced_window_size_layout = QHBoxLayout()
         visualization_3D_advanced_window_size_layout.addWidget(QLabel("Number of frames per window:"))
-        self.input_3D_window_size = QLineEdit()
-        self.input_3D_window_size.setValidator(QIntValidator(1, 10000))
-        self.input_3D_window_size.setText("1")
-        visualization_3D_advanced_window_size_layout.addWidget(self.input_3D_window_size)
+        self.input_3D_advanced_window_size = QLineEdit()
+        self.input_3D_advanced_window_size.setValidator(QIntValidator(1, 10000))
+        self.input_3D_advanced_window_size.setText("1000")
+        visualization_3D_advanced_window_size_layout.addWidget(self.input_3D_advanced_window_size)
         visualization_3D_advanced_layout.addLayout(visualization_3D_advanced_window_size_layout)
         visualization_3D_advanced_statistic_layout = QHBoxLayout()
         label_3D_advanced_statistic = QLabel("Statistic:")
@@ -787,12 +787,22 @@ class CaltrigWidget(QWidget):
         visualization_3D_advanced_fpr_layout = QHBoxLayout()
         label_3D_advanced_fpr = QLabel("Further Processed Readout:")
         self.dropdown_3D_advanced_fpr = QComboBox()
-        self.dropdown_3D_advanced_fpr.addItems(["A", "B-A", "(B-A)²", "(B-A)/A", "|(B-A)/A|", "B/A"])
+        self.dropdown_3D_advanced_fpr.addItems(["B", "B-A", "(B-A)²", "(B-A)/A", "|(B-A)/A|", "B/A"])
         visualization_3D_advanced_fpr_layout.addWidget(label_3D_advanced_fpr)
         visualization_3D_advanced_fpr_layout.addWidget(self.dropdown_3D_advanced_fpr)
         visualization_3D_advanced_layout.addLayout(visualization_3D_advanced_fpr_layout)
         btn_visualize_3D_advanced = QPushButton("Visualize Advanced")
+        btn_visualize_3D_advanced.clicked.connect(self.visualize_3D_advanced)
         visualization_3D_advanced_layout.addWidget(btn_visualize_3D_advanced)
+        self.label_3D_advanced_current_frame = QLabel("Current Window: 1")
+        self.label_3D_advanced_current_frame.setVisible(False)
+        visualization_3D_advanced_layout.addWidget(self.label_3D_advanced_current_frame)
+        self.visualization_3D_advanced_slider = QSlider(Qt.Orientation.Horizontal)
+        self.visualization_3D_advanced_slider.setRange(1, 10)
+        self.visualization_3D_advanced_slider.sliderReleased.connect(self.slider_update_advanced)
+        self.visualization_3D_advanced_slider.sliderMoved.connect(self.update_current_window)
+        self.visualization_3D_advanced_slider.setVisible(False)
+        visualization_3D_advanced_layout.addWidget(self.visualization_3D_advanced_slider)
         visualization_3D_advanced_layout.addStretch()
 
 
@@ -1691,6 +1701,40 @@ class CaltrigWidget(QWidget):
         
         self.cofiring_chkbox.setChecked(False)
         self.visualization_3D.remove_cofiring()
+
+    def visualize_3D_advanced(self):
+        window_size = int(self.input_3D_advanced_window_size.text())
+        statistic = self.dropdown_3D_advanced_statistic.currentText()
+        fpr = self.dropdown_3D_advanced_fpr.currentText()
+
+        # A cells
+        a_cells = []
+        for i in range(self.list_advanced_A_cell.count()):
+            item = self.list_advanced_A_cell.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                a_cells.append(self.extract_id(item))
+        
+        b_cells = []
+        for i in range(self.list_advanced_B_cell.count()):
+            item = self.list_advanced_B_cell.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                b_cells.append(self.extract_id(item))
+        
+        win_size = self.visualization_3D_advanced.set_data(a_cells, b_cells, window_size, statistic, fpr)
+        self.visualization_3D_advanced_slider.setRange(1, win_size)
+        self.visualization_3D_advanced_slider.setValue(1)
+        self.visualization_3D_advanced_slider.setVisible(True)
+        self.label_3D_advanced_current_frame.setVisible(True)
+        self.label_3D_advanced_current_frame.setText(f"Current Window: 1")
+
+    def slider_update_advanced(self):
+        current_frame = self.visualization_3D_advanced_slider.value()
+        self.visualization_3D_advanced.update_current_window(current_frame)
+
+    def update_current_window(self):
+        current_frame = self.visualization_3D_advanced_slider.value()
+        self.label_3D_advanced_current_frame.setText(f"Current Window: {current_frame}")
+
 
     def check_if_results_exist(self):
         idx_to_cells = {"0":"1", "1":"2", "2":"5", "3":"10", "4":"15", "5":"20"}

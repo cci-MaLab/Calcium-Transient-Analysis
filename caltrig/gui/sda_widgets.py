@@ -237,6 +237,70 @@ def calculate_windowed_data(session, precalculated_values, data_type, window_siz
     data = np.array(data)
     return xr.DataArray(data, coords=[unit_ids, np.arange(E.shape[1])], dims=['unit_id', 'frame'], name=name)
 
+def calculate_single_value_windowed_data(session, precalculated_values, statistic, window_size, name=""):
+    E = session.data['E']
+    unit_ids = E.unit_id.values
+
+    data = []
+    for unit_id in unit_ids:
+        unit_id_info = precalculated_values['transient_info'][unit_id]
+        # Run through the unit_id_info and allocate the values to the respective bins
+        no_of_bins = int(np.ceil(E.shape[1]/window_size))
+        window_bins = [[] for _ in range(no_of_bins)]
+        for start, c_val, dff_val in zip(unit_id_info['frame_start'], unit_id_info['C_values'], unit_id_info['DFF_values']):
+            match statistic:
+                case "Event Count Frequency":
+                    window_bins[start//window_size].append(1)
+                case "Average DFF Peak" | "Total DFF":
+                    window_bins[start//window_size].append(dff_val)
+        # Replace any empty lists with 0
+        for i, window_bin in enumerate(window_bins):
+            if not window_bin:
+                window_bins[i] = [0]
+        
+        # To avoid weird things with average and count, we'll just sum the values
+        if "Event Count Frequency" == statistic or "Total DFF" == statistic:
+            window_bins = [[np.sum(bin)] for bin in window_bins]
+    
+        elif "Average DFF Peak" == statistic:
+            for i in range(len(window_bins)):
+                window_bins[i] = np.mean(window_bins[i])
+        window_bins = np.array(window_bins).flatten()
+    
+        data.append(window_bins)
+
+    data = np.array(data)
+    return xr.DataArray(data, coords=[unit_ids, np.arange(no_of_bins)], dims=['unit_id', 'window'], name=name)
+
+def calculate_fpr(a_data: xr.DataArray, b_data: xr.DataArray, fpr: str):
+    # Assign fpr to a specific func
+    match fpr:
+        case "B":
+            func = lambda a, b: b
+        case "B-A":
+            func = lambda a, b: b - a
+        case "(B-A)²":
+            func = lambda a, b: (b - a) ** 2
+        case "(B-A)/A":
+            func = lambda a, b: np.where(a == 0, 0, (b - a) / a)
+        case "|(B-A)/A|":
+            func = lambda a, b: np.where(a == 0, 0, abs((b - a) / a))
+        case "B/A":
+            func = lambda a, b: np.where(a == 0, 0, b / a)
+        case _:
+            raise ValueError(f"Unknown FPR type: {fpr}")
+    
+    result = xr.apply_ufunc(func, a_data, b_data)
+
+    return result
+
+def gaussian_2d(shape=(7,7), sigma=1.5):
+    """Generate a 2D Gaussian distribution centered at 1 with falloff."""
+    m, n = [(s-1)/2 for s in shape]  # Center coordinates
+    y, x = np.ogrid[-m:m+1, -n:n+1]
+    gaussian = np.exp(-(x**2 + y**2) / (2 * sigma**2))
+    return gaussian / gaussian.max()  # Normalize to ensure center is 1     
+
 def _forward_fill(y):
         prev = np.arange(len(y))
         prev[y == 0] = 0
@@ -724,9 +788,10 @@ class VisualizationAdvancedWidget(QtInteractor):
         x, y = np.meshgrid(np.arange(100), np.arange(100))
         z = np.zeros_like(x)
         self.grid = pv.StructuredGrid(x, y, z)
-        self.add_mesh(self.grid, lighting='flat', scalar_bar_args=None, pickable=False)
+        self.add_mesh(self.grid, scalar_bar_args=None, pickable=False)
         self.background_color = 'black'
-        self.scalar_range = (0, 50)
+        self.scalar_range = (0, 10)
+        self.grid_bounds = (0, 100, 0, 100, -5, 80)
         self.change_colormap('fire')
         self.session = session
         self.precalculated_values = _precalculate(self.session)
@@ -745,8 +810,23 @@ class VisualizationAdvancedWidget(QtInteractor):
                 mapper.SetScalarRange(self.scalar_range)
                 break
 
-        #shape = self.visualization_data.get_shape() 
-        self.show_grid(bounds=(0, 100, 0, 100, -20, 150), color='white')
+
+
+        # Update the scalar bar for the plane
+        for scalar_bar_name in list(self.scalar_bars.keys()):
+            self.remove_scalar_bar(scalar_bar_name)
+        self.add_scalar_bar(
+            title='Intensity',
+            color='white',
+            shadow=True,
+            n_labels=5,
+            fmt='%.0f',
+            mapper=mapper,
+        )
+        self.reset_grid()
+
+    def reset_grid(self):
+        self.show_grid(bounds=self.grid_bounds, color='white')
         self.render()
 
     def set_data(self, a_cells, b_cells, window_size, statistic, fpr):
@@ -770,23 +850,77 @@ class VisualizationAdvancedWidget(QtInteractor):
         fpr : float
             The further processed readout for the statistic. 
         """
+        scaling_factor = 10
         # 1.) Iterating through a cells, retrieve the footprint with the relative positions of cell bs
         a_b_relative_centers = {}
+        x_start, x_end, y_start, y_end = 0, 0, 0, 0 # So we can constrain the grid to the smallest possible size
         for a_cell in a_cells:
             # Retrieve the center of the a cell
             a_center = self.session.centroids[a_cell]
             b_relative_centers = {}
             # Iterate through the b cells and retrieve the relative positions to a_center
             for b_cell in b_cells:
+                if a_cell == b_cell:
+                    continue
                 b_center = self.session.centroids[b_cell]
-                b_relative_center = b_center - a_center
+                b_relative_center = np.array(b_center) - np.array(a_center)
+                x_start, x_end, y_start, y_end = min(x_start, b_relative_center[0]), max(x_end, b_relative_center[0]), min(y_start, b_relative_center[1]), max(y_end, b_relative_center[1])
                 b_relative_centers[b_cell] = b_relative_center
             a_b_relative_centers[a_cell] = b_relative_centers
         
-        
+        # 2.) Calculate the statistic for each window
+        sv_win_data = calculate_single_value_windowed_data(self.session, self.precalculated_values, statistic, window_size)
 
+        # 3.) Iterate through the a cells and b cells and calculate fpr
+        a_to_b_fpr = {}
+        for a_cell in a_cells:
+            for b_cell in b_cells:
+                if a_cell == b_cell:
+                    continue
+                fpr_result = calculate_fpr(sv_win_data.sel(unit_id=a_cell), sv_win_data.sel(unit_id=b_cell), fpr)
+                a_to_b_fpr[(a_cell, b_cell)] = fpr_result
         
+        # 4.) Now we are going to create a numpy array with the values above of dim num_win, (x_end-x_start), (y_end-y_start)
+        # We'll add a little bit of padding, so we can encompass any cell that we input
+        padding = 20
+        window_size = sv_win_data.shape[1]
+        grid = np.zeros((window_size, 2*int(x_end-x_start+padding), 2*int(y_end-y_start+padding)))
+        # get the center of each plane
+        center_x = int(x_end-x_start+padding)
+        center_y = int(y_end-y_start+padding)
 
+        # Iterate through num_win and fill in the values
+        for win in range(window_size):
+            for a_cell in a_cells:
+                for b_cell in b_cells:
+                    if a_cell == b_cell:
+                        continue
+                    relative_center = a_b_relative_centers[a_cell][b_cell]
+                    x, y = center_x + relative_center[0], center_y + relative_center[1]
+                    value = gaussian_2d() * a_to_b_fpr[(a_cell, b_cell)].sel(window=win).values * scaling_factor
+                    grid[win, int(x-3):int(x+4), int(y-3):int(y+4)] = value
+        
+        self.bin_size = window_size #Rename it to bin_size to not conflict with pyvista
+        self.data_grid = grid
+        self.current_window = 0
+
+        # Clear current grid
+        self.clear()
+        x, y = np.meshgrid(np.arange(grid.shape[1], dtype=np.float32), np.arange(grid.shape[2], dtype=np.float32))
+        self.grid = pv.StructuredGrid(x, y, grid[0].T)
+        self.grid["scalars"] = grid[0].T.ravel(order='F')
+        self.add_mesh(self.grid, scalar_bar_args=None, pickable=False)
+        self.grid_bounds = (0, grid.shape[1], 0, grid.shape[2], -5, 80)
+
+        self.change_colormap('fire')
+        
+        return self.bin_size
+
+    def update_current_window(self, window):
+        self.current_window = window-1
+        self.grid.points[:,2] = self.data_grid[window].T.ravel(order='F')
+        self.grid["scalars"] = self.data_grid[window].T.ravel(order='F')
+        self.render()
             
 
     def closeEvent(self, event):
