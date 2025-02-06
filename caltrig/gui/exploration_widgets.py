@@ -1364,7 +1364,11 @@ class CaltrigWidget(QWidget):
         widget_plot = QWidget()
         widget_plot.setLayout(layout_plot)
         layout_video_cells_visualize.addWidget(widget_plot)
-        widget_video_cells_visualize = QWidget()
+        widget_video_cells_visualize = QSplitter(Qt.Orientation.Horizontal)
+        widget_video_cells_visualize.setFrameShape(QFrame.StyledPanel)
+        widget_video_cells_visualize.setStyleSheet(
+            "QSplitter::handle{background-color: gray; width: 5px; border: 1px dotted gray}"
+        )
         widget_video_cells_visualize.setLayout(layout_video_cells_visualize)
 
         layout_global_plot_utility = QVBoxLayout()
@@ -1373,7 +1377,11 @@ class CaltrigWidget(QWidget):
         layout_global_cell_switch = QHBoxLayout()
         layout_global_cell_switch.addWidget(self.w_global_signals)
         layout_global_cell_switch.addLayout(layout_global_plot_utility)
-        widget_global_cell_switch = QWidget()
+        widget_global_cell_switch = QSplitter(Qt.Orientation.Horizontal)
+        widget_global_cell_switch.setFrameShape(QFrame.StyledPanel)
+        widget_global_cell_switch.setStyleSheet(
+            "QSplitter::handle{background-color: gray; width: 5px; border: 1px dotted gray}"
+        )
         widget_global_cell_switch.setLayout(layout_global_cell_switch)
         self.tabs_global_cell_switch.addTab(widget_video_cells_visualize, "Per Cell View")
         self.tabs_global_cell_switch.addTab(widget_global_cell_switch, "Global View")
