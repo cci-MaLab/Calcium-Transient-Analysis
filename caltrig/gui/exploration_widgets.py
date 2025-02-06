@@ -232,7 +232,6 @@ class CaltrigWidget(QWidget):
         tabs_signal = QTabWidget()
         tabs_signal_parent.setWidgetResizable(True)
         tabs_signal_parent.setWidget(tabs_signal)
-        tabs_signal_parent.setFixedWidth(350)
         self.tabs_global_cell_switch = QTabWidget() # This is for the bottom half of the screen
 
         tabs_cofiring_options = QTabWidget()
@@ -667,7 +666,6 @@ class CaltrigWidget(QWidget):
 
         # Layouts
         layout_video_cells = QHBoxLayout()
-        layout_video_cells_visualize = QHBoxLayout()
 
         layout_video_tools = QHBoxLayout()
         layout_video_tools.addWidget(self.btn_backward)
@@ -1320,7 +1318,6 @@ class CaltrigWidget(QWidget):
         frame_global_plot_options.setFrameShape(QFrame.Box)
         frame_global_plot_options.setFrameShadow(QFrame.Raised)
         frame_global_plot_options.setLineWidth(3)
-        frame_global_plot_options.setMaximumWidth(300)
         layout_global_plot_options = QVBoxLayout(frame_global_plot_options)
         layout_global_plot_options.addStretch()
         layout_global_plot_options.setDirection(3)
@@ -1339,7 +1336,6 @@ class CaltrigWidget(QWidget):
         layout_plot_utility.addWidget(frame_plot_options)
         widget_plot_utility = QWidget()
         widget_plot_utility.setLayout(layout_plot_utility)
-        widget_plot_utility.setMaximumWidth(320)
 
         tabs_signal.addTab(widget_plot_utility, "Params")
         tabs_signal.addTab(tab_transient_detection, "Event Detection")
@@ -1350,7 +1346,7 @@ class CaltrigWidget(QWidget):
         self.widget_video_cells = QWidget()
         self.widget_video_cells.setLayout(layout_video_cells)
 
-        layout_video_cells_visualize.addWidget(self.widget_video_cells)
+
 
         layout_plot_utility = QVBoxLayout()
         layout_plot_utility.addWidget(btn_clear_traces)
@@ -1358,31 +1354,25 @@ class CaltrigWidget(QWidget):
         layout_plot_utility.addLayout(layout_reject_approve_traces)
         layout_plot_utility.addWidget(tabs_signal_parent)
 
-        layout_plot = QHBoxLayout()
-        layout_plot.addWidget(self.w_signals)
-        layout_plot.addLayout(layout_plot_utility)
+
         widget_plot = QWidget()
-        widget_plot.setLayout(layout_plot)
-        layout_video_cells_visualize.addWidget(widget_plot)
+        widget_plot.setLayout(layout_plot_utility)
         widget_video_cells_visualize = QSplitter(Qt.Orientation.Horizontal)
         widget_video_cells_visualize.setFrameShape(QFrame.StyledPanel)
         widget_video_cells_visualize.setStyleSheet(
             "QSplitter::handle{background-color: gray; width: 5px; border: 1px dotted gray}"
         )
-        widget_video_cells_visualize.setLayout(layout_video_cells_visualize)
 
-        layout_global_plot_utility = QVBoxLayout()
-        layout_global_plot_utility.addWidget(frame_global_plot_options)
+        widget_video_cells_visualize.addWidget(self.w_signals)
+        widget_video_cells_visualize.addWidget(widget_plot)
 
-        layout_global_cell_switch = QHBoxLayout()
-        layout_global_cell_switch.addWidget(self.w_global_signals)
-        layout_global_cell_switch.addLayout(layout_global_plot_utility)
         widget_global_cell_switch = QSplitter(Qt.Orientation.Horizontal)
         widget_global_cell_switch.setFrameShape(QFrame.StyledPanel)
         widget_global_cell_switch.setStyleSheet(
             "QSplitter::handle{background-color: gray; width: 5px; border: 1px dotted gray}"
         )
-        widget_global_cell_switch.setLayout(layout_global_cell_switch)
+        widget_global_cell_switch.addWidget(self.w_global_signals)
+        widget_global_cell_switch.addWidget(frame_global_plot_options)   
         self.tabs_global_cell_switch.addTab(widget_video_cells_visualize, "Per Cell View")
         self.tabs_global_cell_switch.addTab(widget_global_cell_switch, "Global View")
         
