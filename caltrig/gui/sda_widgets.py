@@ -12,6 +12,7 @@ import colorcet as cc
 from concurrent.futures import ProcessPoolExecutor
 from ..core.backend import DataInstance
 import time
+import math
 import pickle
 
 class CurrentVisualizationData():
@@ -74,6 +75,12 @@ class CurrentVisualizationData():
         return self
 
     __rmul__ = __mul__
+
+def round_away_from_zero(value, base=10):
+    if value > 0:
+        return math.ceil(value / base) * base
+    else:
+        return math.floor(value / base) * base
 
 def switch_to_3d_coordinates(x, y, x_start=0, y_start=0):
     """
@@ -251,7 +258,7 @@ def calculate_single_value_windowed_data(session, precalculated_values, statisti
             match statistic:
                 case "Event Count Frequency":
                     window_bins[start//window_size].append(1)
-                case "Average DFF Peak" | "Total DFF":
+                case "Average DFF Peak" | "Total DFF Peak":
                     window_bins[start//window_size].append(dff_val)
         # Replace any empty lists with 0
         for i, window_bin in enumerate(window_bins):
@@ -259,7 +266,7 @@ def calculate_single_value_windowed_data(session, precalculated_values, statisti
                 window_bins[i] = [0]
         
         # To avoid weird things with average and count, we'll just sum the values
-        if "Event Count Frequency" == statistic or "Total DFF" == statistic:
+        if "Event Count Frequency" == statistic or "Total DFF Peak" == statistic:
             window_bins = [[np.sum(bin)] for bin in window_bins]
     
         elif "Average DFF Peak" == statistic:
@@ -282,11 +289,11 @@ def calculate_fpr(a_data: xr.DataArray, b_data: xr.DataArray, fpr: str):
         case "(B-A)²":
             func = lambda a, b: (b - a) ** 2
         case "(B-A)/A":
-            func = lambda a, b: np.where(a == 0, 0, (b - a) / a)
+            func = lambda a, b: np.divide(b - a, a, out=np.zeros_like(a, dtype=float), where=a != 0)
         case "|(B-A)/A|":
-            func = lambda a, b: np.where(a == 0, 0, abs((b - a) / a))
+            func = lambda a, b: np.abs(np.divide(b - a, a, out=np.zeros_like(a, dtype=float), where=a != 0))
         case "B/A":
-            func = lambda a, b: np.where(a == 0, 0, b / a)
+            func = lambda a, b: np.divide(b, a, out=np.zeros_like(a, dtype=float), where=a != 0)
         case _:
             raise ValueError(f"Unknown FPR type: {fpr}")
     
@@ -791,15 +798,17 @@ class VisualizationAdvancedWidget(QtInteractor):
         self.add_mesh(self.grid, scalar_bar_args=None, pickable=False)
         self.background_color = 'black'
         self.scalar_range = (0, 10)
+        self.data_grid = None
         self.grid_bounds = (0, 100, 0, 100, -5, 80)
         self.change_colormap('fire')
         self.session = session
         self.precalculated_values = _precalculate(self.session)
 
-    def change_colormap(self, name):
+    def change_colormap(self, name=None):
         # Update the colormap for the plane (StructuredGrid)
-        self.cmap = name
-        plane_lut = pv.LookupTable(cc.cm[name])  # Create a LookupTable for the plane
+        if name is not None:
+            self.cmap = name
+        plane_lut = pv.LookupTable(cc.cm[self.cmap])  # Create a LookupTable for the plane
         plane_lut.scalar_range = self.scalar_range  # Apply scalar range
 
         mapper = None
@@ -910,20 +919,28 @@ class VisualizationAdvancedWidget(QtInteractor):
         self.grid = pv.StructuredGrid(x, y, grid[0].T)
         self.grid["scalars"] = grid[0].T.ravel(order='F')
         self.add_mesh(self.grid, scalar_bar_args=None, pickable=False)
-        self.grid_bounds = (0, grid.shape[1], 0, grid.shape[2], -5, 80)
 
         # Create a sphere to mark the center
         sphere = pv.Sphere(radius=5, center=(center_x, center_y, 0))
         self.add_mesh(sphere, color='green', pickable=False)
 
-        self.change_colormap('fire')
+        current_slice = grid[0]
+        slice_min, slice_max = current_slice.min(), current_slice.max()
+        self.scalar_range = (slice_min, slice_max)
+        self.grid_bounds = (0, grid.shape[1], 0, grid.shape[2], round_away_from_zero(slice_min)-5, round_away_from_zero(slice_max))
+
+
+        self.change_colormap()
         
         return self.bin_size
 
     def update_current_window(self, window):
         self.current_window = window-1
-        self.grid.points[:,2] = self.data_grid[window].T.ravel(order='F')
-        self.grid["scalars"] = self.data_grid[window].T.ravel(order='F')
+        current_slice = self.data_grid[self.current_window]
+        self.grid.points[:,2] = current_slice.T.ravel(order='F')
+        self.grid["scalars"] = current_slice.T.ravel(order='F')
+        self.scalar_range = (current_slice.min(), current_slice.max())
+        self.change_colormap()
         self.render()
             
 
@@ -1023,3 +1040,4 @@ def check_cofiring(A_starts: List[int], B_starts: List[int], window_size: int, s
                 num_cofiring += 1
 
     return num_cofiring
+
