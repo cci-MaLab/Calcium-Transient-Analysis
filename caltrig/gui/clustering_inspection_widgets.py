@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QVBoxLayout, QLabel, QHBoxLayout, QWidget, QPushButton, QAction, QFileDialog,
                             QComboBox, QListWidget, QAbstractItemView, QSplitter, QApplication, QStyleFactory)
-from PyQt5.QtGui import (QPixmap, QPainter, QPen, QColor, QBrush, QFont)
+from PyQt5.QtGui import (QPixmap, QPainter, QPen, QColor, QBrush, QFont, QIcon)
 from PyQt5.QtCore import Qt
 import pyqtgraph as pg
 from pyqtgraph import PlotItem
@@ -15,6 +15,7 @@ class InspectionWidget(QWidget):
     def __init__(self, session, main_ref, parent=None):
         super().__init__(parent)
         matplotlib.use('Qt5Agg')
+        self.setWindowIcon(QIcon(main_ref.icon_path))
         self.session = session
         self.total_cells = len(self.session.clustering_result["all"]["ids"]) - len(self.session.outliers_list)
         self.selected_plot = 0

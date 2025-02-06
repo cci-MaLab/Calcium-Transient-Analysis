@@ -912,6 +912,10 @@ class VisualizationAdvancedWidget(QtInteractor):
         self.add_mesh(self.grid, scalar_bar_args=None, pickable=False)
         self.grid_bounds = (0, grid.shape[1], 0, grid.shape[2], -5, 80)
 
+        # Create a sphere to mark the center
+        sphere = pv.Sphere(radius=5, center=(center_x, center_y, 0))
+        self.add_mesh(sphere, color='green', pickable=False)
+
         self.change_colormap('fire')
         
         return self.bin_size

@@ -16,3 +16,4 @@ config/*
 # Include the following files
 !docs/
 !docs/**
+!*caltrig_icon.png

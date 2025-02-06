@@ -1,5 +1,6 @@
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMessageBox, QAction,
                             QVBoxLayout, QHBoxLayout, QWidget, QTabWidget)
+from PyQt5.QtGui import QIcon
 from caltrig.gui.main_widgets import (UpdateDialog, ParamDialog, VisualizeInstanceWidget, Viewer, ClusteringToolWidget,
                             GAToolWidget, CaltrigToolWidget, SDAToolWidget)
 
@@ -14,6 +15,8 @@ from .core.backend import DataInstance
 from .gui.clustering_inspection_widgets import InspectionWidget
 import dask
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 class MainWindow(QMainWindow):
     """
     Main window of the application. It displays a window with a menu bar and a central widget, 
@@ -22,6 +25,8 @@ class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
         self.processes = kwargs.pop("processes", True)
         super(MainWindow, self).__init__(*args, **kwargs)
+        self.icon_path = os.path.join(BASE_DIR, "caltrig_icon.png")
+        self.setWindowIcon(QIcon(self.icon_path))
         self.setWindowTitle("Cell Exploration Tool")
         self.setMinimumSize(600, 800)
         

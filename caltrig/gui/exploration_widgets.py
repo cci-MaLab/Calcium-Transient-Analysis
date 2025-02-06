@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAc
                             QScrollArea, QListWidgetItem, QInputDialog, QSizePolicy)
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5 import QtCore
-from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont)
+from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont, QIcon)
 from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem, InfiniteLine, TextItem)
 import pyqtgraph as pg
 import colorcet as cc
@@ -63,6 +63,7 @@ class CaltrigWidget(QWidget):
         self.processes = processes
         self.recalculate_canny_edges = True # Optimization to not call canny on every frame
         self.visualized_shuffled = None
+        self.setWindowIcon(QIcon(main_window_ref.icon_path))
 
         # Initialize executor to load next chunks in the background
         if self.processes:
@@ -3171,7 +3172,7 @@ class CaltrigWidget(QWidget):
             self.visualization_3D_advanced.setVisible(True)
         else:
             self.visualization_3D_advanced.setVisible(False)
-        if not self.chkbox_cell_video.isChecked() and not self.chkbox_behavior_video.isChecked() and not self.chkbox_3D.isChecked():
+        if not self.chkbox_cell_video.isChecked() and not self.chkbox_behavior_video.isChecked() and not self.chkbox_3D.isChecked() and not self.chkbox_3D_advanced.isChecked():
             self.widget_video_cells.setVisible(False)
         else:
             self.widget_video_cells.setVisible(True)
