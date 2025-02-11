@@ -777,7 +777,7 @@ class CaltrigWidget(QWidget):
         visualization_3D_advanced_window_size_layout.addWidget(self.input_3D_advanced_window_size)
         visualization_3D_advanced_layout.addLayout(visualization_3D_advanced_window_size_layout)
         visualization_3D_advanced_statistic_layout = QHBoxLayout()
-        label_3D_advanced_statistic = QLabel("Statistic:")
+        label_3D_advanced_statistic = QLabel("Readout:")
         self.dropdown_3D_advanced_statistic = QComboBox()
         self.dropdown_3D_advanced_statistic.addItems(["Event Count Frequency", "Average DFF Peak", "Total DFF Peak"])
         visualization_3D_advanced_statistic_layout.addWidget(label_3D_advanced_statistic)
@@ -996,12 +996,13 @@ class CaltrigWidget(QWidget):
         
 
         self.tabs_visualization.addTab(visualization_3D_tools, "Signal Settings")
-        self.tabs_visualization.addTab(visualization_3D_advanced_tools, "Advanced Visualization")
         self.tabs_visualization.addTab(cofiring_tools, "Co-Firing")
+        self.tabs_visualization.addTab(tabs_shuffling, "Shuffling")
 
         self.tabs_video_tools.addTab(self.tabs_video, "Cell Video")
         self.tabs_video_tools.addTab(tabs_visualization_parent, "3D Visualization")
-        self.tabs_video_tools.addTab(tabs_shuffling, "Shuffling")
+        self.tabs_video_tools.addTab(visualization_3D_advanced_tools, "Advanced Visualization")
+        
 
         # General plot utility
         layout_plot_utility = QVBoxLayout()
