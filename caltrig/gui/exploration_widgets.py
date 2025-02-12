@@ -741,6 +741,20 @@ class CaltrigWidget(QWidget):
 
         # Advanced 3D Visualization Tools
         visualization_3D_advanced_layout = QVBoxLayout()
+        visualization_3D_advanced_visualize_tab = QTabWidget()
+        visualization_3D_advanced_tool_layout = QVBoxLayout()
+        visualization_3D_advanced_tool = QWidget()
+
+        
+        label_3D_advanced_which_cells = QLabel("Which Cells to Visualize")
+        self.cmb_3D_advanced_which_cells = QComboBox()
+        self.cmb_3D_advanced_which_cells.addItems(["All Cells", "Verified Cells"])
+        self.cmb_3D_advanced_which_cells.addItems([f"Group {group}" for group in unique_groups])
+        self.cmb_3D_advanced_which_cells.currentIndexChanged.connect(self.refresh_cell_list_advanced)
+        visualization_3D_advanced_layout.addWidget(label_3D_advanced_which_cells)
+        visualization_3D_advanced_layout.addWidget(self.cmb_3D_advanced_which_cells)
+        visualization_3D_advanced_layout.addWidget(visualization_3D_advanced_visualize_tab)
+
 
         layout_list_advanced_cells = QHBoxLayout()
         layout_list_advanced_A_cell = QVBoxLayout()
@@ -767,7 +781,7 @@ class CaltrigWidget(QWidget):
         layout_list_advanced_B_cell.addWidget(btn_toggle_check_B)
         layout_list_advanced_cells.addLayout(layout_list_advanced_A_cell)
         layout_list_advanced_cells.addLayout(layout_list_advanced_B_cell)
-        visualization_3D_advanced_layout.addLayout(layout_list_advanced_cells)
+        visualization_3D_advanced_tool_layout.addLayout(layout_list_advanced_cells)
 
         visualization_3D_advanced_window_size_layout = QHBoxLayout()
         visualization_3D_advanced_window_size_layout.addWidget(QLabel("Number of frames per window:"))
@@ -775,34 +789,36 @@ class CaltrigWidget(QWidget):
         self.input_3D_advanced_window_size.setValidator(QIntValidator(1, 10000))
         self.input_3D_advanced_window_size.setText("1000")
         visualization_3D_advanced_window_size_layout.addWidget(self.input_3D_advanced_window_size)
-        visualization_3D_advanced_layout.addLayout(visualization_3D_advanced_window_size_layout)
+        visualization_3D_advanced_tool_layout.addLayout(visualization_3D_advanced_window_size_layout)
         visualization_3D_advanced_statistic_layout = QHBoxLayout()
         label_3D_advanced_statistic = QLabel("Readout:")
         self.dropdown_3D_advanced_statistic = QComboBox()
         self.dropdown_3D_advanced_statistic.addItems(["Event Count Frequency", "Average DFF Peak", "Total DFF Peak"])
         visualization_3D_advanced_statistic_layout.addWidget(label_3D_advanced_statistic)
         visualization_3D_advanced_statistic_layout.addWidget(self.dropdown_3D_advanced_statistic)
-        visualization_3D_advanced_layout.addLayout(visualization_3D_advanced_statistic_layout)
+        visualization_3D_advanced_tool_layout.addLayout(visualization_3D_advanced_statistic_layout)
         visualization_3D_advanced_fpr_layout = QHBoxLayout()
         label_3D_advanced_fpr = QLabel("Further Processed Readout:")
         self.dropdown_3D_advanced_fpr = QComboBox()
         self.dropdown_3D_advanced_fpr.addItems(["B", "B-A", "(B-A)²", "(B-A)/A", "|(B-A)/A|", "B/A"])
         visualization_3D_advanced_fpr_layout.addWidget(label_3D_advanced_fpr)
         visualization_3D_advanced_fpr_layout.addWidget(self.dropdown_3D_advanced_fpr)
-        visualization_3D_advanced_layout.addLayout(visualization_3D_advanced_fpr_layout)
+        visualization_3D_advanced_tool_layout.addLayout(visualization_3D_advanced_fpr_layout)
         btn_visualize_3D_advanced = QPushButton("Visualize Advanced")
         btn_visualize_3D_advanced.clicked.connect(self.visualize_3D_advanced)
-        visualization_3D_advanced_layout.addWidget(btn_visualize_3D_advanced)
+        visualization_3D_advanced_tool_layout.addWidget(btn_visualize_3D_advanced)
         self.label_3D_advanced_current_frame = QLabel("Current Window: 1")
         self.label_3D_advanced_current_frame.setVisible(False)
-        visualization_3D_advanced_layout.addWidget(self.label_3D_advanced_current_frame)
+        visualization_3D_advanced_tool_layout.addWidget(self.label_3D_advanced_current_frame)
         self.visualization_3D_advanced_slider = QSlider(Qt.Orientation.Horizontal)
         self.visualization_3D_advanced_slider.setRange(1, 10)
         self.visualization_3D_advanced_slider.sliderReleased.connect(self.slider_update_advanced)
-        self.visualization_3D_advanced_slider.sliderMoved.connect(self.update_current_window)
+        self.visualization_3D_advanced_slider.valueChanged.connect(self.update_current_window)
         self.visualization_3D_advanced_slider.setVisible(False)
-        visualization_3D_advanced_layout.addWidget(self.visualization_3D_advanced_slider)
-        visualization_3D_advanced_layout.addStretch()
+        visualization_3D_advanced_tool_layout.addWidget(self.visualization_3D_advanced_slider)
+        visualization_3D_advanced_tool_layout.addStretch()
+        visualization_3D_advanced_tool.setLayout(visualization_3D_advanced_tool_layout)
+        visualization_3D_advanced_visualize_tab.addTab(visualization_3D_advanced_tool, "FPR Visualization")
 
 
         # Cofiring Tools
@@ -922,8 +938,8 @@ class CaltrigWidget(QWidget):
         visualization_3D_tools.setLayout(visualization_3D_layout)
 
         # Advanced 3D Visualization Tools
-        visualization_3D_advanced_tools = QWidget()
-        visualization_3D_advanced_tools.setLayout(visualization_3D_advanced_layout)
+        visualization_3D_advanced = QWidget()
+        visualization_3D_advanced.setLayout(visualization_3D_advanced_layout)
 
         # Co-Firing Checkbox layout
         cofiring_chkbox_layout = QHBoxLayout()
@@ -1001,7 +1017,7 @@ class CaltrigWidget(QWidget):
 
         self.tabs_video_tools.addTab(self.tabs_video, "Cell Video")
         self.tabs_video_tools.addTab(tabs_visualization_parent, "3D Visualization")
-        self.tabs_video_tools.addTab(visualization_3D_advanced_tools, "Advanced Visualization")
+        self.tabs_video_tools.addTab(visualization_3D_advanced, "Advanced Visualization")
         
 
         # General plot utility
@@ -1731,9 +1747,8 @@ class CaltrigWidget(QWidget):
         current_frame = self.visualization_3D_advanced_slider.value()
         self.visualization_3D_advanced.update_current_window(current_frame)
 
-    def update_current_window(self):
-        current_frame = self.visualization_3D_advanced_slider.value()
-        self.label_3D_advanced_current_frame.setText(f"Current Window: {current_frame}")
+    def update_current_window(self, value):
+        self.label_3D_advanced_current_frame.setText(f"Current Window: {value}")
 
 
     def check_if_results_exist(self):
@@ -3026,12 +3041,35 @@ class CaltrigWidget(QWidget):
         else:
             return self.session.get_cell_ids(selected_cells)
         
+    def get_advanced_cells(self):
+        selected_cells = self.cmb_3D_advanced_which_cells.currentText()
+        if selected_cells == "All Cells":
+            return self.session.data["E"].unit_id.values
+        elif selected_cells == "Verified Cells":
+            return self.session.get_verified_cells()
+        else:
+            return self.session.get_cell_ids(selected_cells)
+        
     def create_checked_item(self, text, checked=True):
         item = QListWidgetItem(text)
         item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
         if checked:
             item.setCheckState(Qt.CheckState.Checked)
         return item
+
+    def refresh_cell_list_advanced(self):
+        self.list_advanced_A_cell.clear()
+        self.list_advanced_B_cell.clear()
+        advanced_cells = self.get_advanced_cells()
+        good_bad_cells = self.session.data['E']['good_cells'].values
+        for i, cell_id in enumerate(self.session.data['E']['unit_id'].values):
+            if cell_id in advanced_cells:
+                cell_name = f"{cell_id}"
+                self.list_advanced_A_cell.addItem(self.create_checked_item(cell_name))
+                self.list_advanced_B_cell.addItem(self.create_checked_item(cell_name))
+                if good_bad_cells[i]:
+                    self.list_advanced_A_cell.item(self.list_advanced_A_cell.count()-1).setBackground(Qt.green)
+                    self.list_advanced_B_cell.item(self.list_advanced_B_cell.count()-1).setBackground(Qt.green)
 
     def refresh_cell_list(self):
         self.list_cell.clear()
@@ -3115,7 +3153,12 @@ class CaltrigWidget(QWidget):
         self.cmb_shuffle_which_cells.currentIndexChanged.disconnect()
         self.reset_which_cells_local(unique_groups, self.cmb_shuffle_which_cells)
         self.cmb_shuffle_which_cells.currentIndexChanged.connect(self.refresh_cell_list)
+        self.cmb_3D_advanced_which_cells.currentIndexChanged.disconnect()
+        self.reset_which_cells_local(unique_groups, self.cmb_3D_advanced_which_cells)
+        self.cmb_3D_advanced_which_cells.currentIndexChanged.connect(self.refresh_cell_list_advanced)
+
         self.refresh_cell_list()
+        self.refresh_cell_list_advanced()
 
     def reset_which_cells_local(self, unique_groups, list):
         current_selection = list.currentText()
