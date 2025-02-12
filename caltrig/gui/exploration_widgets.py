@@ -820,6 +820,27 @@ class CaltrigWidget(QWidget):
         visualization_3D_advanced_tool.setLayout(visualization_3D_advanced_tool_layout)
         visualization_3D_advanced_visualize_tab.addTab(visualization_3D_advanced_tool, "FPR Visualization")
 
+        # Advanced 3D Visualization Shuffling
+        visualization_3D_advanced_shuffling_layout = QVBoxLayout()
+        visualization_3D_advanced_shuffling = QWidget()
+
+        label_advanced_shuffling_info = QLabel("The settings set in FPR Visualization will be used for shuffling.")
+        visualization_3D_advanced_shuffling_layout.addWidget(label_advanced_shuffling_info)
+        visualization_3D_advanced_shuffling_num_layout = QHBoxLayout()
+        label_advanced_shuffling_num = QLabel("Number of Shuffles:")
+        self.input_advanced_shuffling_num = QLineEdit()
+        self.input_advanced_shuffling_num.setValidator(QIntValidator(10, 9999))
+        self.input_advanced_shuffling_num.setText("100")
+        visualization_3D_advanced_shuffling_num_layout.addWidget(label_advanced_shuffling_num)
+        visualization_3D_advanced_shuffling_num_layout.addWidget(self.input_advanced_shuffling_num)
+        visualization_3D_advanced_shuffling_layout.addLayout(visualization_3D_advanced_shuffling_num_layout)
+        btn_advanced_shuffling = QPushButton("Shuffle")
+        btn_advanced_shuffling.clicked.connect(self.start_advanced_shuffling)
+        visualization_3D_advanced_shuffling_layout.addWidget(btn_advanced_shuffling)
+        visualization_3D_advanced_shuffling_layout.addStretch()
+        visualization_3D_advanced_shuffling.setLayout(visualization_3D_advanced_shuffling_layout)
+        visualization_3D_advanced_visualize_tab.addTab(visualization_3D_advanced_shuffling, "FPR Shuffling")
+
 
         # Cofiring Tools
         cofiring_layout = QVBoxLayout()
@@ -3445,6 +3466,9 @@ class CaltrigWidget(QWidget):
 
         self.visualized_shuffled = shuffle_cofiring(self.session, target_cells, comparison_cells, n=num_of_shuffles, **params)
         self.visualized_shuffled.show()
+
+    def start_advanced_shuffling(self):
+        pass
 
 class PlotItemEnhanced(PlotItem):
     signalChangedSelection = QtCore.Signal(object)
