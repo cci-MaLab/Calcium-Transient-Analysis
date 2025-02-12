@@ -920,9 +920,9 @@ class VisualizationAdvancedWidget(QtInteractor):
         self.grid["scalars"] = grid[0].T.ravel(order='F')
         self.add_mesh(self.grid, scalar_bar_args=None, pickable=False)
 
-        # Create a sphere to mark the center
-        sphere = pv.Sphere(radius=5, center=(center_x, center_y, 0))
-        self.add_mesh(sphere, color='green', pickable=False)
+        # Create the marker for the center
+        marker = create_x_marker((center_x, center_y, 0), size=15.0, color="green", line_width=20)
+        self.add_mesh(marker, color='green', pickable=False)
 
         current_slice = grid[0]
         slice_min, slice_max = current_slice.min(), current_slice.max()
@@ -1041,3 +1041,38 @@ def check_cofiring(A_starts: List[int], B_starts: List[int], window_size: int, s
 
     return num_cofiring
 
+def create_x_marker(center, size=1.0, color="green", line_width=5):
+    """
+    Create an "X" marker using two crossing lines in PyVista.
+
+    Parameters:
+    - center (tuple or list): The (x, y, z) coordinates of the marker center.
+    - size (float): The size of the "X" marker.
+    - color (str): The color of the lines.
+    - line_width (int): The width of the lines.
+
+    Returns:
+    - pv.MultiBlock: A MultiBlock containing the two line segments forming the "X".
+    """
+    center = np.array(center)
+
+    # Define the endpoints of the X
+    p1 = center + np.array([-size, -size, 0])
+    p2 = center + np.array([size, size, 0])
+    p3 = center + np.array([-size, size, 0])
+    p4 = center + np.array([size, -size, 0])
+
+    # Create line segments
+    line1 = pv.Line(p1, p2)
+    line2 = pv.Line(p3, p4)
+
+    # Combine into a MultiBlock
+    marker = pv.MultiBlock([line1, line2])
+    
+    # Assign colors and line width
+    marker[0]["color"] = color
+    marker[1]["color"] = color
+    marker[0]["line_width"] = line_width
+    marker[1]["line_width"] = line_width
+
+    return marker
