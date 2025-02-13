@@ -28,8 +28,8 @@ def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, 
 
     Returns
     -------
-    list of list of int
-        The shuffled data.
+    VisualizeShuffledCofiring
+        The PyQt5 window to visualize the shuffled data.
     """
 
     if seed is not None:
@@ -79,6 +79,34 @@ def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, 
     
     return visualize_shuffled
 
+
+def shuffle_advanced(session, target_cells, comparison_cells, n=100, seed=None, **kwargs):
+    """
+    Shuffle the data with advanced options.
+
+    Parameters
+    ----------
+    session : Session
+        The DataInstance object containing all data for the session.
+    target_cells : list of int
+        The cell IDs that will be used for calculating the co-firing metric.
+    comparison_cells: list of int
+        The cell IDs that will be compared to the target cells.
+    n : int
+        The number of shuffles to perform.
+    seed : int
+        The random seed to use.
+    
+    Returns
+    -------
+    VisualizeShuffledCofiring
+        The PyQt5 window to visualize the shuffled data.
+    """
+    if seed is not None:
+        np.random.seed(seed)
+    
+
+    all_cells = np.unique(target_cells + comparison_cells)
 
 
 def calculate_cofiring_for_group(frame_start, cell_positions, target_cells, comparison_cells, cofiring_distances, omit_first=True, **kwargs):

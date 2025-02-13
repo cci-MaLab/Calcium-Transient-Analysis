@@ -21,7 +21,7 @@ from ..core.exploration_statistics import (GeneralStatsWidget, LocalStatsWidget,
 from .pyqtgraph_override import ImageViewOverride
 from .cofiring_2d_widgets import Cofiring2DWidget
 from .sda_widgets import (base_visualization, VisualizationWidget, VisualizationAdvancedWidget)
-from ..core.shuffling import shuffle_cofiring
+from ..core.shuffling import shuffle_cofiring, shuffle_advanced
 import os
 import matplotlib.pyplot as plt
 import pickle
@@ -63,6 +63,7 @@ class CaltrigWidget(QWidget):
         self.processes = processes
         self.recalculate_canny_edges = True # Optimization to not call canny on every frame
         self.visualized_shuffled = None
+        self.visualized_advanced_shuffled = None
         self.setWindowIcon(QIcon(main_window_ref.icon_path))
 
         # Initialize executor to load next chunks in the background
@@ -617,11 +618,11 @@ class CaltrigWidget(QWidget):
         # No. of Shuffles
         layout_shuffle_num_shuffles = QHBoxLayout()
         label_shuffle_num_shuffles = QLabel("No. of Shuffles:")
-        self.shuffle_num_shuffles = QLineEdit()
-        self.shuffle_num_shuffles.setValidator(QIntValidator(10, 9999))
-        self.shuffle_num_shuffles.setText("100")
+        self.advanced_shuffle_num_shuffles = QLineEdit()
+        self.advanced_shuffle_num_shuffles.setValidator(QIntValidator(10, 9999))
+        self.advanced_shuffle_num_shuffles.setText("100")
         layout_shuffle_num_shuffles.addWidget(label_shuffle_num_shuffles)
-        layout_shuffle_num_shuffles.addWidget(self.shuffle_num_shuffles)
+        layout_shuffle_num_shuffles.addWidget(self.advanced_shuffle_num_shuffles)
         
         # Tools for video
         self.pixmapi_play = QStyle.StandardPixmap.SP_MediaPlay
@@ -834,6 +835,12 @@ class CaltrigWidget(QWidget):
         visualization_3D_advanced_shuffling_num_layout.addWidget(label_advanced_shuffling_num)
         visualization_3D_advanced_shuffling_num_layout.addWidget(self.input_advanced_shuffling_num)
         visualization_3D_advanced_shuffling_layout.addLayout(visualization_3D_advanced_shuffling_num_layout)
+        visualization_3D_advanced_shuffle_type_layout = QHBoxLayout()
+        self.visualization_3D_advanced_shuffle_spatial = QCheckBox("Spatial")
+        self.visualization_3D_advanced_shuffle_temporal = QCheckBox("Temporal")
+        visualization_3D_advanced_shuffle_type_layout.addWidget(self.visualization_3D_advanced_shuffle_spatial)
+        visualization_3D_advanced_shuffle_type_layout.addWidget(self.visualization_3D_advanced_shuffle_temporal)
+        visualization_3D_advanced_shuffling_layout.addLayout(visualization_3D_advanced_shuffle_type_layout)
         btn_advanced_shuffling = QPushButton("Shuffle")
         btn_advanced_shuffling.clicked.connect(self.start_advanced_shuffling)
         visualization_3D_advanced_shuffling_layout.addWidget(btn_advanced_shuffling)
@@ -3271,6 +3278,9 @@ class CaltrigWidget(QWidget):
             window.close()
         if self.visualized_shuffled:
             self.visualized_shuffled.close()
+        
+        if self.visualized_advanced_shuffled:
+            self.visualized_advanced_shuffled.close()
 
         self.visualization_3D.close()
         self.visualization_3D_advanced.close()
@@ -3428,13 +3438,12 @@ class CaltrigWidget(QWidget):
             return
 
         target_cells = [] # Cells that the cofiring will calculated from
-        comparison_cells = [] # target_cells + comparison_cells
+        comparison_cells = []
         for i in range(self.list_shuffle_target_cell.count()):
             item = self.list_shuffle_target_cell.item(i)
             if item.checkState() == Qt.CheckState.Checked:
                 target_cells.append(self.extract_id(item))
         
-        # If contain cells to selected is set to true, then target cells will be compared to themselves
         for i in range(self.list_shuffle_comparison_cell.count()):
             item = self.list_shuffle_comparison_cell.item(i)
             if item.checkState() == Qt.CheckState.Checked:
@@ -3468,7 +3477,48 @@ class CaltrigWidget(QWidget):
         self.visualized_shuffled.show()
 
     def start_advanced_shuffling(self):
-        pass
+        """
+        Initialize advanced shuffling based on the values provided in the FPR tools section
+        """
+
+        # First check if either temporal or spatial shuffling is selected
+        if not (self.visualization_3D_advanced_shuffle_spatial or self.visualization_3D_advanced_shuffle_temporal):
+            return
+        
+        target_cells = [] # Cells that the cofiring will calculated from
+        comparison_cells = []
+        for i in range(self.list_advanced_A_cell.count()):
+            item = self.list_advanced_A_cell.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                target_cells.append(self.extract_id(item))
+        
+        for i in range(self.list_advanced_B_cell.count()):
+            item = self.list_advanced_B_cell.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                comparison_cells.append(self.extract_id(item))
+        
+
+        params = {}
+        if self.visualization_3D_advanced_shuffle_temporal:
+            params["temporal"] = True
+        else:
+            params["temporal"] = False
+        if self.visualization_3D_advanced_shuffle_spatial:
+            params["spatial"] = True
+        else:
+            params["spatial"] = False
+        
+
+        params["shuffling"] = {}
+        params["shuffling"]["window_size"] = int(self.advanced_shuffling_window_size.text())
+
+
+        num_of_shuffles = int(self.advanced_shuffle_num_shuffles.text()) if self.advanced_shuffle_num_shuffles.text() else 100
+
+        self.visualized_advanced_shuffled = shuffle_advanced(self.session, target_cells, comparison_cells, n=num_of_shuffles, **params)
+        self.visualized_advanced_shuffled.show()
+
+
 
 class PlotItemEnhanced(PlotItem):
     signalChangedSelection = QtCore.Signal(object)
