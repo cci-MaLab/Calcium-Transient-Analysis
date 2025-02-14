@@ -337,6 +337,7 @@ class ClusteringToolWidget(QWidget):
         for i in self.event_components:
             self.layout_tools.addWidget(i)
         self.layout_tools.addWidget(self.btn_clustering)
+        self.layout_tools.addStretch()
 
 
         self.setLayout(self.layout_tools)
