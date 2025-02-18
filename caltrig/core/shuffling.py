@@ -1,5 +1,5 @@
 import numpy as np
-from ..gui.sda_widgets import check_cofiring
+from ..gui.sda_widgets import check_cofiring, _precalculate, calculate_fpr, calculate_single_value_windowed_data, add_distance_to_fpr
 from ..gui.pop_up_messages import ProgressWindow
 import matplotlib.pyplot as plt
 import random
@@ -107,6 +107,37 @@ def shuffle_advanced(session, target_cells, comparison_cells, n=100, seed=None, 
     
 
     all_cells = np.unique(target_cells + comparison_cells)
+    window_size = kwargs['shuffling']['window_size']
+    readout = kwargs['shuffling']['readout']
+    fpr = kwargs['shuffling']['fpr']
+
+    # Preliminary Calculations
+    precalculated_values = _precalculate(session)
+    sv_win_data_base = calculate_single_value_windowed_data(session, precalculated_values, readout, window_size)
+    fpr_values_base = calculate_fpr(target_cells, all_cells, sv_win_data_base, fpr)
+    fpr_values_dist_base = add_distance_to_fpr(fpr_values_base, session)
+
+    # Set up the PyQt application and progress window
+    progress_window = ProgressWindow(total_steps=n)
+    progress_window.show()
+
+    shuffled_fprs_dist = []
+    for i in range(n):
+        progress_window.update_progress(i + 1)
+        if kwargs['temporal']:
+            sv_win_data_permuted = permute_sv_win(sv_win_data_base)
+        
+        # Calculate the cofiring metric for the shuffled data
+        shuffled_fpr = calculate_fpr(target_cells, all_cells, sv_win_data_permuted, fpr)
+        shuffled_fprs_dist.append(add_distance_to_fpr(shuffled_fpr, session, shuffle=kwargs['spatial']))
+
+    progress_window.close()
+
+    visualized_shuffled = VisualizeShuffledAdvanced(fpr_values_dist_base, shuffled_fprs_dist, target_cells, all_cells, temporal=kwargs['temporal'], spatial=kwargs['spatial'])
+
+    return visualized_shuffled
+
+
 
 
 def calculate_cofiring_for_group(frame_start, cell_positions, target_cells, comparison_cells, cofiring_distances, omit_first=True, **kwargs):
@@ -153,6 +184,22 @@ def calculate_cofiring_for_group(frame_start, cell_positions, target_cells, comp
 
 
     return total_cofiring, cofiring_distances, kwargs["connections_used"]
+
+def permute_sv_win(sv_win_data_base):
+    """
+    Permute the single value windowed data.
+
+    Parameters:
+    - sv_win_data_base (xr.DataArray): The single value windowed data.
+
+    Returns:
+    - sv_win_data_permuted (xr.DataArray): The permuted single value windowed data.
+    """
+    sv_win_data_permuted = sv_win_data_base.copy()
+    unit_ids = sv_win_data_base.unit_id.values
+    for unit_id in unit_ids:
+        sv_win_data_permuted.loc[{"unit_id": unit_id}] = np.random.permutation(sv_win_data_base.sel(unit_id=unit_id).values)
+    return sv_win_data_permuted
 
 
 def permute_itis_to_start_indices(ieis_dict):
@@ -342,3 +389,109 @@ class VisualizeShuffledCofiring(QWidget):
         table.to_clipboard(index=index)
         
         
+
+class VisualizeShuffledAdvanced(QWidget):
+    """
+    PyQt5 window to visualize shuffled advanced data with a Matplotlib plot,
+    labels for Z-Score and other details, and Matplotlib toolbar.
+    """
+    def __init__(self, fpr_values_base, shuffled_fprs, target_cells, all_cells, temporal=True, spatial=True):
+        super().__init__()
+
+        self.fpr_values_base = fpr_values_base
+        self.shuffled_fprs = shuffled_fprs
+        self.target_cells = target_cells
+        self.all_cells = all_cells
+        self.temporal = temporal
+        self.spatial = spatial
+
+        # Initialize the window
+        self.setWindowTitle("Shuffled Advanced Visualization")
+        self.setGeometry(100, 100, 900, 700)
+
+        # Create Matplotlib figure and axes
+        self.figure, _ = plt.subplots(1, 2 if (temporal and spatial) else 1, figsize=(12, 6))
+        self.canvas = FigureCanvas(self.figure)
+        self.toolbar = NavigationToolbar(self.canvas, self)
+        self.layout = QVBoxLayout()
+        self.layout.addWidget(self.canvas)
+        self.layout.addWidget(self.toolbar)
+        self.setLayout(self.layout)
+        self.update_plot(1)
+
+
+    def update_plot(self, win_num):
+        """
+        Update the plot with the data dependent on the window number chosen.
+        """
+        i = win_num - 1
+        # Get the data for the window number
+        fpr_temporal = {}
+        fpr_spatial = {}
+        for key, value in self.fpr_values_base.items():
+            target_cell = key[0]
+            if target_cell not in fpr_temporal:
+                fpr_temporal[target_cell] = []
+            if target_cell not in fpr_spatial:
+                fpr_spatial[target_cell] = []
+            fpr_temporal[target_cell].append(value[0][i].item())
+            fpr_spatial[target_cell].append(value[1])
+    
+        hist_data = []
+        for key, value in fpr_temporal.items():
+            hist_data.append(np.mean(value))
+
+        shuffled_fpr_temporal = []
+        shuffled_fpr_spatial = []
+        for shuffled_fpr in self.shuffled_fprs:
+            local_fpr_temporal = {}
+            local_fpr_spatial = {}
+            for key, value in shuffled_fpr.items():
+                target_cell = key[0]
+                if target_cell not in local_fpr_temporal:
+                    local_fpr_temporal[target_cell] = []
+                if target_cell not in local_fpr_spatial:
+                    local_fpr_spatial[target_cell] = []
+                local_fpr_temporal[target_cell].append(value[0][i].item())
+                local_fpr_spatial[target_cell].append(value[1])
+            shuffled_fpr_temporal.append(local_fpr_temporal)
+            shuffled_fpr_spatial.append(local_fpr_spatial)
+            
+        shuffled_hist_data = []
+        for shuffled_fpr_temporal_local in shuffled_fpr_temporal:
+            for key, value in shuffled_fpr_temporal_local.items():
+                shuffled_hist_data.append(np.mean(value))
+        
+
+        self.figure.clear()
+        ax = self.figure.subplots(1, 2 if (self.temporal and self.spatial) else 1)
+        i = 0
+        if self.temporal:
+            # First plot histogram of the shuffled data
+            ax[i].hist(shuffled_hist_data, bins=30, color='blue', alpha=0.7, edgecolor='black')
+            for point in hist_data:
+                ax[i].axvline(point, color='red', linestyle='--')
+            ax[i].set_xlabel("FPR")
+            ax[i].set_ylabel("Frequency")
+            ax[i].set_title("FPR Histogram")
+            i += 1
+        if self.spatial:
+            # Now plot the scatterplot of the shuffled data
+            x, y = [], []
+            for key in fpr_temporal.keys():
+                x.extend(fpr_spatial[key])
+                y.extend(fpr_temporal[key])
+            x_shuffled, y_shuffled = [], []
+            for j in range(len(shuffled_fpr_temporal)):
+                for key in shuffled_fpr_temporal[j].keys():
+                    x_shuffled.extend(shuffled_fpr_spatial[j][key])
+                    y_shuffled.extend(shuffled_fpr_temporal[j][key])
+
+            ax[i].scatter(x, y, color='lightskyblue', alpha=0.6, label='Shuffled', s=3)
+            ax[i].scatter(x_shuffled, y_shuffled, color='red', alpha=0.8, label='Original', s=4)
+            ax[i].set_ylabel("FPR")
+            ax[i].set_xlabel("Spatial Distance")
+            ax[i].set_title("Spatial Distance vs FPR")
+            ax[i].legend()
+        self.figure.tight_layout()
+        self.canvas.draw()

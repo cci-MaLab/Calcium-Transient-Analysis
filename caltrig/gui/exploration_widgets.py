@@ -618,11 +618,11 @@ class CaltrigWidget(QWidget):
         # No. of Shuffles
         layout_shuffle_num_shuffles = QHBoxLayout()
         label_shuffle_num_shuffles = QLabel("No. of Shuffles:")
-        self.advanced_shuffle_num_shuffles = QLineEdit()
-        self.advanced_shuffle_num_shuffles.setValidator(QIntValidator(10, 9999))
-        self.advanced_shuffle_num_shuffles.setText("100")
+        self.shuffle_num_shuffles = QLineEdit()
+        self.shuffle_num_shuffles.setValidator(QIntValidator(10, 9999))
+        self.shuffle_num_shuffles.setText("100")
         layout_shuffle_num_shuffles.addWidget(label_shuffle_num_shuffles)
-        layout_shuffle_num_shuffles.addWidget(self.advanced_shuffle_num_shuffles)
+        layout_shuffle_num_shuffles.addWidget(self.shuffle_num_shuffles)
         
         # Tools for video
         self.pixmapi_play = QStyle.StandardPixmap.SP_MediaPlay
@@ -791,13 +791,13 @@ class CaltrigWidget(QWidget):
         self.input_3D_advanced_window_size.setText("1000")
         visualization_3D_advanced_window_size_layout.addWidget(self.input_3D_advanced_window_size)
         visualization_3D_advanced_tool_layout.addLayout(visualization_3D_advanced_window_size_layout)
-        visualization_3D_advanced_statistic_layout = QHBoxLayout()
-        label_3D_advanced_statistic = QLabel("Readout:")
-        self.dropdown_3D_advanced_statistic = QComboBox()
-        self.dropdown_3D_advanced_statistic.addItems(["Event Count Frequency", "Average DFF Peak", "Total DFF Peak"])
-        visualization_3D_advanced_statistic_layout.addWidget(label_3D_advanced_statistic)
-        visualization_3D_advanced_statistic_layout.addWidget(self.dropdown_3D_advanced_statistic)
-        visualization_3D_advanced_tool_layout.addLayout(visualization_3D_advanced_statistic_layout)
+        visualization_3D_advanced_readout_layout = QHBoxLayout()
+        label_3D_advanced_readout = QLabel("Readout:")
+        self.dropdown_3D_advanced_readout = QComboBox()
+        self.dropdown_3D_advanced_readout.addItems(["Event Count Frequency", "Average DFF Peak", "Total DFF Peak"])
+        visualization_3D_advanced_readout_layout.addWidget(label_3D_advanced_readout)
+        visualization_3D_advanced_readout_layout.addWidget(self.dropdown_3D_advanced_readout)
+        visualization_3D_advanced_tool_layout.addLayout(visualization_3D_advanced_readout_layout)
         visualization_3D_advanced_fpr_layout = QHBoxLayout()
         label_3D_advanced_fpr = QLabel("Further Processed Readout:")
         self.dropdown_3D_advanced_fpr = QComboBox()
@@ -1748,7 +1748,7 @@ class CaltrigWidget(QWidget):
 
     def visualize_3D_advanced(self):
         window_size = int(self.input_3D_advanced_window_size.text())
-        statistic = self.dropdown_3D_advanced_statistic.currentText()
+        statistic = self.dropdown_3D_advanced_readout.currentText()
         fpr = self.dropdown_3D_advanced_fpr.currentText()
 
         # A cells
@@ -3482,7 +3482,7 @@ class CaltrigWidget(QWidget):
         """
 
         # First check if either temporal or spatial shuffling is selected
-        if not (self.visualization_3D_advanced_shuffle_spatial or self.visualization_3D_advanced_shuffle_temporal):
+        if not (self.visualization_3D_advanced_shuffle_spatial.isChecked() or self.visualization_3D_advanced_shuffle_temporal.isChecked()):
             return
         
         target_cells = [] # Cells that the cofiring will calculated from
@@ -3497,6 +3497,8 @@ class CaltrigWidget(QWidget):
             if item.checkState() == Qt.CheckState.Checked:
                 comparison_cells.append(self.extract_id(item))
         
+        if not target_cells or not comparison_cells:
+            return        
 
         params = {}
         if self.visualization_3D_advanced_shuffle_temporal:
@@ -3510,10 +3512,13 @@ class CaltrigWidget(QWidget):
         
 
         params["shuffling"] = {}
-        params["shuffling"]["window_size"] = int(self.advanced_shuffling_window_size.text())
+        params["shuffling"]["window_size"] = int(self.input_3D_advanced_window_size.text())
+        params["shuffling"]["readout"] = self.dropdown_3D_advanced_readout.currentText()
+        params["shuffling"]["fpr"] = self.dropdown_3D_advanced_fpr.currentText()
 
 
-        num_of_shuffles = int(self.advanced_shuffle_num_shuffles.text()) if self.advanced_shuffle_num_shuffles.text() else 100
+
+        num_of_shuffles = int(self.input_advanced_shuffling_num.text()) if self.input_advanced_shuffling_num.text() else 100
 
         self.visualized_advanced_shuffled = shuffle_advanced(self.session, target_cells, comparison_cells, n=num_of_shuffles, **params)
         self.visualized_advanced_shuffled.show()

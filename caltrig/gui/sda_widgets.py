@@ -244,7 +244,7 @@ def calculate_windowed_data(session, precalculated_values, data_type, window_siz
     data = np.array(data)
     return xr.DataArray(data, coords=[unit_ids, np.arange(E.shape[1])], dims=['unit_id', 'frame'], name=name)
 
-def calculate_single_value_windowed_data(session, precalculated_values, statistic, window_size, name=""):
+def calculate_single_value_windowed_data(session, precalculated_values, readout, window_size, name=""):
     E = session.data['E']
     unit_ids = E.unit_id.values
 
@@ -255,7 +255,7 @@ def calculate_single_value_windowed_data(session, precalculated_values, statisti
         no_of_bins = int(np.ceil(E.shape[1]/window_size))
         window_bins = [[] for _ in range(no_of_bins)]
         for start, c_val, dff_val in zip(unit_id_info['frame_start'], unit_id_info['C_values'], unit_id_info['DFF_values']):
-            match statistic:
+            match readout:
                 case "Event Count Frequency":
                     window_bins[start//window_size].append(1)
                 case "Average DFF Peak" | "Total DFF Peak":
@@ -266,10 +266,10 @@ def calculate_single_value_windowed_data(session, precalculated_values, statisti
                 window_bins[i] = [0]
         
         # To avoid weird things with average and count, we'll just sum the values
-        if "Event Count Frequency" == statistic or "Total DFF Peak" == statistic:
+        if "Event Count Frequency" == readout or "Total DFF Peak" == readout:
             window_bins = [[np.sum(bin)] for bin in window_bins]
     
-        elif "Average DFF Peak" == statistic:
+        elif "Average DFF Peak" == readout:
             for i in range(len(window_bins)):
                 window_bins[i] = np.mean(window_bins[i])
         window_bins = np.array(window_bins).flatten()
@@ -279,7 +279,7 @@ def calculate_single_value_windowed_data(session, precalculated_values, statisti
     data = np.array(data)
     return xr.DataArray(data, coords=[unit_ids, np.arange(no_of_bins)], dims=['unit_id', 'window'], name=name)
 
-def calculate_fpr(a_data: xr.DataArray, b_data: xr.DataArray, fpr: str):
+def local_fpr(a_data: xr.DataArray, b_data: xr.DataArray, fpr: str):
     # Assign fpr to a specific func
     match fpr:
         case "B":
@@ -300,6 +300,37 @@ def calculate_fpr(a_data: xr.DataArray, b_data: xr.DataArray, fpr: str):
     result = xr.apply_ufunc(func, a_data, b_data)
 
     return result
+
+def calculate_fpr(a_cells, b_cells, sv_win_data, fpr):
+    a_to_b_fpr = {}
+    for a_cell in a_cells:
+        for b_cell in b_cells:
+            if a_cell == b_cell:
+                continue
+            fpr_result = local_fpr(sv_win_data.sel(unit_id=a_cell), sv_win_data.sel(unit_id=b_cell), fpr)
+            a_to_b_fpr[(a_cell, b_cell)] = fpr_result
+    
+    return a_to_b_fpr
+
+def add_distance_to_fpr(fpr, session, shuffle=False):
+    # We need to calculate the distance between the cells
+    centroids = session.centroids
+    if shuffle:
+        values = list(centroids.values())
+        np.random.shuffle(values)
+        centroids = {cell_id: values[i] for i, cell_id in enumerate(centroids.keys())}
+    distances = {}
+    for a_cell, b_cell in fpr.keys():
+        a_x, a_y = centroids[a_cell]
+        b_x, b_y = centroids[b_cell]
+        distance = np.sqrt((a_x - b_x) ** 2 + (a_y - b_y) ** 2)
+        distances[(a_cell, b_cell)] = distance
+    
+    fpr_with_distance = {}
+    for (a_cell, b_cell), value in fpr.items():
+        fpr_with_distance[(a_cell, b_cell)] = (value, distances[(a_cell, b_cell)])
+    
+    return fpr_with_distance
 
 def gaussian_2d(shape=(7,7), sigma=1.5):
     """Generate a 2D Gaussian distribution centered at 1 with falloff."""
@@ -786,7 +817,7 @@ class VisualizationAdvancedWidget(QtInteractor):
         super().__init__(parent)
         """
         Visualization for the advanced components of the visualization, where
-        we'll summarize per cell a statistic in each window. The window size
+        we'll summarize per cell a readout in each window. The window size
         will be specified by the user. Initially we'll render an empty grid
         and then it will be updated per user specifications.
         """
@@ -838,11 +869,11 @@ class VisualizationAdvancedWidget(QtInteractor):
         self.show_grid(bounds=self.grid_bounds, color='white')
         self.render()
 
-    def set_data(self, a_cells, b_cells, window_size, statistic, fpr):
+    def set_data(self, a_cells, b_cells, window_size, readout, fpr):
         """
         Set the data for the advanced visualization. This will be used to visualize
         the data in a 2D grid where the x and y axis are the cell ids and the color
-        of the grid is the statistic value for the window size.
+        of the grid is the readout value for the window size.
 
         Parameters
         ----------
@@ -853,11 +884,11 @@ class VisualizationAdvancedWidget(QtInteractor):
         b_cells : list
             The cell ids for the B cells.
         window_size : int
-            The window size for the statistic.
-        statistic : str
-            The statistic to calculate for each window, can be 'Event Count Frequency', 'Average DFF Peak', 'Total Dff'
+            The window size for the readout.
+        readout : str
+            The readout to calculate for each window, can be 'Event Count Frequency', 'Average DFF Peak', 'Total Dff'
         fpr : float
-            The further processed readout for the statistic. 
+            The further processed readout for the readout. 
         """
         scaling_factor = 10
         # 1.) Iterating through a cells, retrieve the footprint with the relative positions of cell bs
@@ -877,17 +908,11 @@ class VisualizationAdvancedWidget(QtInteractor):
                 b_relative_centers[b_cell] = b_relative_center
             a_b_relative_centers[a_cell] = b_relative_centers
         
-        # 2.) Calculate the statistic for each window
-        sv_win_data = calculate_single_value_windowed_data(self.session, self.precalculated_values, statistic, window_size)
+        # 2.) Calculate the readout for each window
+        sv_win_data = calculate_single_value_windowed_data(self.session, self.precalculated_values, readout, window_size)
 
         # 3.) Iterate through the a cells and b cells and calculate fpr
-        a_to_b_fpr = {}
-        for a_cell in a_cells:
-            for b_cell in b_cells:
-                if a_cell == b_cell:
-                    continue
-                fpr_result = calculate_fpr(sv_win_data.sel(unit_id=a_cell), sv_win_data.sel(unit_id=b_cell), fpr)
-                a_to_b_fpr[(a_cell, b_cell)] = fpr_result
+        a_to_b_fpr = calculate_fpr(a_cells, b_cells, sv_win_data, fpr)
         
         # 4.) Now we are going to create a numpy array with the values above of dim num_win, (x_end-x_start), (y_end-y_start)
         # We'll add a little bit of padding, so we can encompass any cell that we input
