@@ -9,6 +9,7 @@ from matplotlib.backends.backend_qt5agg import (
 )
 import pandas as pd
 from PyQt5.QtWidgets import (QVBoxLayout, QLabel, QWidget, QMenuBar, QAction, QStyle)
+from PyQt5.QtCore import pyqtSignal
 
 def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, **kwargs):
     """Shuffle the data, keeping the co-firing structure.
@@ -110,6 +111,9 @@ def shuffle_advanced(session, target_cells, comparison_cells, n=100, seed=None, 
     window_size = kwargs['shuffling']['window_size']
     readout = kwargs['shuffling']['readout']
     fpr = kwargs['shuffling']['fpr']
+    anchor = kwargs['anchor']
+
+    name = f"Shuffle Advanced, Window Size: {window_size}, Readout: {readout}, FPR: {fpr}, Anchor: {anchor}"
 
     # Preliminary Calculations
     precalculated_values = _precalculate(session)
@@ -128,12 +132,12 @@ def shuffle_advanced(session, target_cells, comparison_cells, n=100, seed=None, 
             sv_win_data_permuted = permute_sv_win(sv_win_data_base)
         
         # Calculate the cofiring metric for the shuffled data
-        shuffled_fpr = calculate_fpr(target_cells, all_cells, sv_win_data_permuted, fpr)
+        shuffled_fpr = calculate_fpr(target_cells, all_cells, sv_win_data_permuted, fpr, sv_win_data_base=sv_win_data_base, anchor=anchor)
         shuffled_fprs_dist.append(add_distance_to_fpr(shuffled_fpr, session, shuffle=kwargs['spatial']))
 
     progress_window.close()
 
-    visualized_shuffled = VisualizeShuffledAdvanced(fpr_values_dist_base, shuffled_fprs_dist, target_cells, all_cells, temporal=kwargs['temporal'], spatial=kwargs['spatial'])
+    visualized_shuffled = VisualizeShuffledAdvanced(name, fpr_values_dist_base, shuffled_fprs_dist, target_cells, all_cells, temporal=kwargs['temporal'], spatial=kwargs['spatial'])
 
     return visualized_shuffled
 
@@ -391,11 +395,12 @@ class VisualizeShuffledCofiring(QWidget):
         
 
 class VisualizeShuffledAdvanced(QWidget):
+    closed = pyqtSignal()
     """
     PyQt5 window to visualize shuffled advanced data with a Matplotlib plot,
     labels for Z-Score and other details, and Matplotlib toolbar.
     """
-    def __init__(self, fpr_values_base, shuffled_fprs, target_cells, all_cells, temporal=True, spatial=True):
+    def __init__(self, name, fpr_values_base, shuffled_fprs, target_cells, all_cells, temporal=True, spatial=True):
         super().__init__()
 
         self.fpr_values_base = fpr_values_base
@@ -404,9 +409,11 @@ class VisualizeShuffledAdvanced(QWidget):
         self.all_cells = all_cells
         self.temporal = temporal
         self.spatial = spatial
+        self.parent = None
+        self.name = name
 
         # Initialize the window
-        self.setWindowTitle("Shuffled Advanced Visualization")
+        self.setWindowTitle(name)
         self.setGeometry(100, 100, 900, 700)
 
         # Create Matplotlib figure and axes
@@ -463,14 +470,16 @@ class VisualizeShuffledAdvanced(QWidget):
                 shuffled_hist_data.append(np.mean(value))
         
 
-        self.figure.clear()
+        self.figure.clf()
         ax = self.figure.subplots(1, 2 if (self.temporal and self.spatial) else 1)
         i = 0
         if self.temporal:
             # First plot histogram of the shuffled data
             ax[i].hist(shuffled_hist_data, bins=30, color='blue', alpha=0.7, edgecolor='black')
-            for point in hist_data:
+            for unit_id, point in zip(fpr_temporal.keys(), hist_data):
                 ax[i].axvline(point, color='red', linestyle='--')
+                ax[i].text(point, ax[i].get_ylim()[1] * 0.95, "Cell " + str(unit_id), 
+                        rotation=90, verticalalignment='top', fontsize=12, color='black')
             ax[i].set_xlabel("FPR")
             ax[i].set_ylabel("Frequency")
             ax[i].set_title("FPR Histogram")
@@ -487,11 +496,15 @@ class VisualizeShuffledAdvanced(QWidget):
                     x_shuffled.extend(shuffled_fpr_spatial[j][key])
                     y_shuffled.extend(shuffled_fpr_temporal[j][key])
 
-            ax[i].scatter(x, y, color='lightskyblue', alpha=0.6, label='Shuffled', s=3)
-            ax[i].scatter(x_shuffled, y_shuffled, color='red', alpha=0.8, label='Original', s=4)
+            ax[i].scatter(x_shuffled, y_shuffled, color='lightskyblue', alpha=0.6, label='Shuffled', s=3)
+            ax[i].scatter(x, y, color='red', alpha=0.8, label='Original', s=4)
             ax[i].set_ylabel("FPR")
             ax[i].set_xlabel("Spatial Distance")
             ax[i].set_title("Spatial Distance vs FPR")
             ax[i].legend()
         self.figure.tight_layout()
         self.canvas.draw()
+
+    def closeEvent(self, event):
+        self.closed.emit()
+        event.accept()

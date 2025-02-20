@@ -838,12 +838,23 @@ class CaltrigWidget(QWidget):
         visualization_3D_advanced_shuffle_type_layout = QHBoxLayout()
         self.visualization_3D_advanced_shuffle_spatial = QCheckBox("Spatial")
         self.visualization_3D_advanced_shuffle_temporal = QCheckBox("Temporal")
+        self.visualization_3D_advanced_shuffle_anchor = QCheckBox("Anchor Temporal")
         visualization_3D_advanced_shuffle_type_layout.addWidget(self.visualization_3D_advanced_shuffle_spatial)
         visualization_3D_advanced_shuffle_type_layout.addWidget(self.visualization_3D_advanced_shuffle_temporal)
+        visualization_3D_advanced_shuffle_type_layout.addWidget(self.visualization_3D_advanced_shuffle_anchor)
         visualization_3D_advanced_shuffling_layout.addLayout(visualization_3D_advanced_shuffle_type_layout)
         btn_advanced_shuffling = QPushButton("Shuffle")
         btn_advanced_shuffling.clicked.connect(self.start_advanced_shuffling)
         visualization_3D_advanced_shuffling_layout.addWidget(btn_advanced_shuffling)
+        self.label_3D_advanced_shuffle_current_frame = QLabel("Current Window: 1")
+        self.label_3D_advanced_shuffle_current_frame.setVisible(False)
+        visualization_3D_advanced_shuffling_layout.addWidget(self.label_3D_advanced_shuffle_current_frame)
+        self.visualization_3D_advanced_shuffle_slider = QSlider(Qt.Orientation.Horizontal)
+        self.visualization_3D_advanced_shuffle_slider.setRange(1, 10)
+        self.visualization_3D_advanced_shuffle_slider.sliderReleased.connect(self.slider_update_shuffle)
+        self.visualization_3D_advanced_shuffle_slider.valueChanged.connect(self.update_current_shuffle_window)
+        self.visualization_3D_advanced_shuffle_slider.setVisible(False)
+        visualization_3D_advanced_shuffling_layout.addWidget(self.visualization_3D_advanced_shuffle_slider)
         visualization_3D_advanced_shuffling_layout.addStretch()
         visualization_3D_advanced_shuffling.setLayout(visualization_3D_advanced_shuffling_layout)
         visualization_3D_advanced_visualize_tab.addTab(visualization_3D_advanced_shuffling, "FPR Shuffling")
@@ -1775,8 +1786,22 @@ class CaltrigWidget(QWidget):
         current_frame = self.visualization_3D_advanced_slider.value()
         self.visualization_3D_advanced.update_current_window(current_frame)
 
+    def slider_update_shuffle(self):
+        current_frame = self.visualization_3D_advanced_shuffle_slider.value()
+        if self.visualized_advanced_shuffled:
+            self.visualized_advanced_shuffled.update_plot(current_frame)
+
     def update_current_window(self, value):
         self.label_3D_advanced_current_frame.setText(f"Current Window: {value}")
+
+    def update_current_shuffle_window(self, value):
+        self.label_3D_advanced_shuffle_current_frame.setText(f"Current Window: {value}")
+
+    def hide_advanced_shuffle_slider(self):
+        self.visualization_3D_advanced_shuffle_slider.setVisible(False)
+        self.label_3D_advanced_shuffle_current_frame.setVisible(False)
+        self.visualized_advanced_shuffled = None
+    
 
 
     def check_if_results_exist(self):
@@ -3509,10 +3534,15 @@ class CaltrigWidget(QWidget):
             params["spatial"] = True
         else:
             params["spatial"] = False
+        if self.visualization_3D_advanced_shuffle_anchor.isChecked():
+            params["anchor"] = True
+        else:
+            params["anchor"] = False 
         
 
         params["shuffling"] = {}
-        params["shuffling"]["window_size"] = int(self.input_3D_advanced_window_size.text())
+        win_size = int(self.input_3D_advanced_window_size.text())
+        params["shuffling"]["window_size"] = win_size
         params["shuffling"]["readout"] = self.dropdown_3D_advanced_readout.currentText()
         params["shuffling"]["fpr"] = self.dropdown_3D_advanced_fpr.currentText()
 
@@ -3521,7 +3551,14 @@ class CaltrigWidget(QWidget):
         num_of_shuffles = int(self.input_advanced_shuffling_num.text()) if self.input_advanced_shuffling_num.text() else 100
 
         self.visualized_advanced_shuffled = shuffle_advanced(self.session, target_cells, comparison_cells, n=num_of_shuffles, **params)
+        self.visualized_advanced_shuffled.parent = self
+        self.visualized_advanced_shuffled.closed.connect(self.hide_advanced_shuffle_slider)
         self.visualized_advanced_shuffled.show()
+        self.visualization_3D_advanced_shuffle_slider.setVisible(True)
+        no_of_bins = int(np.ceil(self.session.data['E'].shape[1]/win_size))
+        self.visualization_3D_advanced_shuffle_slider.setMaximum(no_of_bins)
+        self.visualization_3D_advanced_shuffle_slider.setValue(1)
+        self.label_3D_advanced_shuffle_current_frame.setVisible(True)
 
 
 

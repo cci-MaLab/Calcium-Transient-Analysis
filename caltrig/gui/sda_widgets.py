@@ -301,13 +301,16 @@ def local_fpr(a_data: xr.DataArray, b_data: xr.DataArray, fpr: str):
 
     return result
 
-def calculate_fpr(a_cells, b_cells, sv_win_data, fpr):
+def calculate_fpr(a_cells, b_cells, sv_win_data, fpr, sv_win_data_base=None, anchor=False):
     a_to_b_fpr = {}
     for a_cell in a_cells:
         for b_cell in b_cells:
             if a_cell == b_cell:
                 continue
-            fpr_result = local_fpr(sv_win_data.sel(unit_id=a_cell), sv_win_data.sel(unit_id=b_cell), fpr)
+            if anchor:
+                fpr_result = local_fpr(sv_win_data_base.sel(unit_id=a_cell), sv_win_data.sel(unit_id=b_cell), fpr)
+            else:
+                fpr_result = local_fpr(sv_win_data.sel(unit_id=a_cell), sv_win_data.sel(unit_id=b_cell), fpr)
             a_to_b_fpr[(a_cell, b_cell)] = fpr_result
     
     return a_to_b_fpr
