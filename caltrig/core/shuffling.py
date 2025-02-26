@@ -113,7 +113,7 @@ def shuffle_advanced(session, target_cells, comparison_cells, n=100, seed=None, 
     fpr = kwargs['shuffling']['fpr']
     anchor = kwargs['anchor']
 
-    name = f"Shuffle Advanced, Window Size: {window_size}, Readout: {readout}, FPR: {fpr}, Anchor: {anchor}"
+    name = f"Shuffle Advanced, Window Size: {window_size}, Readout: {readout}, FPR: {fpr}, Anchor: {anchor}, Shuffles: {n}"
 
     # Preliminary Calculations
     precalculated_values = _precalculate(session)
