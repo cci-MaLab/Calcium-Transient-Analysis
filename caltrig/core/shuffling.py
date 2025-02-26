@@ -8,7 +8,7 @@ from matplotlib.backends.backend_qt5agg import (
     NavigationToolbar2QT as NavigationToolbar
 )
 import pandas as pd
-from PyQt5.QtWidgets import (QVBoxLayout, QLabel, QWidget, QMenuBar, QAction, QStyle)
+from PyQt5.QtWidgets import (QVBoxLayout, QLabel, QWidget, QMenuBar, QAction, QStyle, QCheckBox)
 from PyQt5.QtCore import pyqtSignal
 
 def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, **kwargs):
@@ -416,6 +416,7 @@ class VisualizeShuffledAdvanced(QWidget):
         self.spatial = spatial
         self.parent = None
         self.name = name
+        self.win_num = 1
 
         # Initialize the window
         self.setWindowTitle(name)
@@ -428,14 +429,22 @@ class VisualizeShuffledAdvanced(QWidget):
         self.layout = QVBoxLayout()
         self.layout.addWidget(self.canvas)
         self.layout.addWidget(self.toolbar)
+        self.chkbox_colors = QCheckBox("Separate cells by color")
+        self.chkbox_colors.stateChanged.connect(lambda: self.update_plot(-1, separate=self.chkbox_colors.isChecked()))
+        self.layout.addWidget(self.chkbox_colors)
         self.setLayout(self.layout)
         self.update_plot(1)
 
 
-    def update_plot(self, win_num):
+    def update_plot(self, win_num, **kwargs):
         """
         Update the plot with the data dependent on the window number chosen.
         """
+        separate = kwargs.get('separate', False)
+        if win_num == -1:
+            win_num = self.win_num
+        
+        self.win_num = win_num
         i = win_num - 1
         # Get the data for the window number
         fpr_temporal = {}
@@ -449,9 +458,9 @@ class VisualizeShuffledAdvanced(QWidget):
             fpr_temporal[target_cell].append(value[0][i].item())
             fpr_spatial[target_cell].append(value[1])
     
-        hist_data = []
+        hist_data = {}
         for key, value in fpr_temporal.items():
-            hist_data.append(np.mean(value))
+            hist_data[key] = np.mean(value)
 
         shuffled_fpr_temporal = []
         shuffled_fpr_spatial = []
@@ -469,14 +478,23 @@ class VisualizeShuffledAdvanced(QWidget):
             shuffled_fpr_temporal.append(local_fpr_temporal)
             shuffled_fpr_spatial.append(local_fpr_spatial)
             
-        shuffled_hist_data = []
+        shuffled_hist_data = {}
         for shuffled_fpr_temporal_local in shuffled_fpr_temporal:
             for key, value in shuffled_fpr_temporal_local.items():
-                shuffled_hist_data.append(np.mean(value))
+                if key not in shuffled_hist_data:
+                    shuffled_hist_data[key] = []
+                shuffled_hist_data[key].append(np.mean(value))
         
 
         self.figure.clf()
         ax = self.figure.subplots(1, 2 if (self.temporal and self.spatial) else 1)
+        cmap = plt.get_cmap('gist_ncar')
+        num_colors = len(shuffled_hist_data) * 2
+        colors = [cmap(i / num_colors) for i in range(num_colors)]
+        # Negative values will signify the shuffled data
+        mirrored_keys = list(shuffled_hist_data.keys())
+        mirrored_keys.extend([-key for key in shuffled_hist_data.keys()])
+        cell_to_color = { key: colors[idx] for idx, key in enumerate(mirrored_keys) }
         i = 0
         if self.temporal:
             if self.spatial:
@@ -484,11 +502,20 @@ class VisualizeShuffledAdvanced(QWidget):
             else:
                 target_axes = ax
             # First plot histogram of the shuffled data
-            target_axes.hist(shuffled_hist_data, bins=30, color='blue', alpha=0.7, edgecolor='black')
+            if not separate:
+                target_axes.hist(self.values_to_list(shuffled_hist_data), bins=30, color='blue', alpha=0.7, edgecolor='black')
+            else:
+                # Separate the cells by color
+                for key, value in shuffled_hist_data.items():
+                    target_axes.hist(value, bins=30, color=cell_to_color[key], alpha=0.7, edgecolor='black', label=f"Cell {key}")
+                    
             # Keep track of the values so in case of overlap we shift the text
             used_values = {}
-            for unit_id, point in zip(fpr_temporal.keys(), hist_data):
-                target_axes.axvline(point, color='red', linestyle='--')
+            for unit_id, point in zip(fpr_temporal.keys(), self.values_to_list(hist_data)):
+                if separate:
+                    target_axes.axvline(point, color=cell_to_color[unit_id], linestyle='--')
+                else:
+                    target_axes.axvline(point, color='red', linestyle='--')
                 if point not in used_values:
                     used_values[point] = 0
                 else:
@@ -500,31 +527,51 @@ class VisualizeShuffledAdvanced(QWidget):
             target_axes.set_xlabel("FPR")
             target_axes.set_ylabel("Frequency")
             target_axes.set_title("FPR Histogram")
+            if separate:
+                target_axes.legend()
             i += 1
         if self.spatial:
-            # Now plot the scatterplot of the shuffled data
-            x, y = [], []
-            for key in fpr_temporal.keys():
-                x.extend(fpr_spatial[key])
-                y.extend(fpr_temporal[key])
-            x_shuffled, y_shuffled = [], []
-            for j in range(len(shuffled_fpr_temporal)):
-                for key in shuffled_fpr_temporal[j].keys():
-                    x_shuffled.extend(shuffled_fpr_spatial[j][key])
-                    y_shuffled.extend(shuffled_fpr_temporal[j][key])
-            
             if i == 0:
                 target_axes = ax
             else:
                 target_axes = ax[1]
-            target_axes.scatter(x_shuffled, y_shuffled, color='lightskyblue', alpha=0.6, label='Shuffled', s=3)
-            target_axes.scatter(x, y, color='red', alpha=0.8, label='Original', s=4)
+            # Now plot the scatterplot of the shuffled data
+            if not separate:
+                x, y = [], []
+                for key in fpr_temporal.keys():
+                    x.extend(fpr_spatial[key])
+                    y.extend(fpr_temporal[key])
+                x_shuffled, y_shuffled = [], []
+                for j in range(len(shuffled_fpr_temporal)):
+                    for key in shuffled_fpr_temporal[j].keys():
+                        x_shuffled.extend(shuffled_fpr_spatial[j][key])
+                        y_shuffled.extend(shuffled_fpr_temporal[j][key])
+                target_axes.scatter(x_shuffled, y_shuffled, color='lightskyblue', alpha=0.6, label='Shuffled', s=3)
+                target_axes.scatter(x, y, color='red', alpha=0.8, label='Original', s=4)
+            else:
+                for key in fpr_temporal.keys():
+                    target_axes.scatter(fpr_spatial[key], fpr_temporal[key], color=cell_to_color[key], alpha=0.8, label=f"Cell {key}", s=4)
+                for j in range(len(shuffled_fpr_temporal)):
+                    for key in shuffled_fpr_temporal[j].keys():
+                        target_axes.scatter(shuffled_fpr_spatial[j][key], shuffled_fpr_temporal[j][key], color=cell_to_color[-key], alpha=0.6, label=f"Shuffled Cell {key}", s=3)
+
             target_axes.set_ylabel("FPR")
             target_axes.set_xlabel("Spatial Distance")
             target_axes.set_title("Spatial Distance vs FPR")
             target_axes.legend()
+            if separate:
+                # Deal with duplicate labels
+                handles, labels = target_axes.get_legend_handles_labels()
+                by_label = dict(zip(labels, handles))
+                target_axes.legend(by_label.values(), by_label.keys())
         self.figure.tight_layout()
         self.canvas.draw()
+
+    def values_to_list(self, data):
+        """
+        Convert a dictionary of values to a list.
+        """
+        return np.array([value for value in data.values()]).flatten()
 
     def closeEvent(self, event):
         self.closed.emit()
