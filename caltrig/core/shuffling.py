@@ -485,10 +485,18 @@ class VisualizeShuffledAdvanced(QWidget):
                 target_axes = ax
             # First plot histogram of the shuffled data
             target_axes.hist(shuffled_hist_data, bins=30, color='blue', alpha=0.7, edgecolor='black')
+            # Keep track of the values so in case of overlap we shift the text
+            used_values = {}
             for unit_id, point in zip(fpr_temporal.keys(), hist_data):
                 target_axes.axvline(point, color='red', linestyle='--')
-                target_axes.text(point, target_axes.get_ylim()[1] * 0.95, "Cell " + str(unit_id), 
-                        rotation=90, verticalalignment='top', fontsize=12, color='black')
+                if point not in used_values:
+                    used_values[point] = 0
+                else:
+                    used_values[point] += 1
+                coef = (0.95 - used_values[point] * 0.05) % 1                
+                y_value = target_axes.get_ylim()[1] * coef
+                target_axes.text(point, y_value, "Cell " + str(unit_id), 
+                        rotation=70, verticalalignment='top', fontsize=12, color='black')
             target_axes.set_xlabel("FPR")
             target_axes.set_ylabel("Frequency")
             target_axes.set_title("FPR Histogram")
