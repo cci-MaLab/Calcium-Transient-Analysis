@@ -3551,6 +3551,8 @@ class CaltrigWidget(QWidget):
         num_of_shuffles = int(self.input_advanced_shuffling_num.text()) if self.input_advanced_shuffling_num.text() else 100
 
         self.visualized_advanced_shuffled = shuffle_advanced(self.session, target_cells, comparison_cells, n=num_of_shuffles, **params)
+        if self.visualized_advanced_shuffled is None:
+            return
         self.visualized_advanced_shuffled.parent = self
         self.visualized_advanced_shuffled.closed.connect(self.hide_advanced_shuffle_slider)
         self.visualized_advanced_shuffled.show()

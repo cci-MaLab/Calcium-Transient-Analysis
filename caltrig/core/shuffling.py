@@ -134,6 +134,9 @@ def shuffle_advanced(session, target_cells, comparison_cells, n=100, seed=None, 
         # Calculate the cofiring metric for the shuffled data
         shuffled_fpr = calculate_fpr(target_cells, all_cells, sv_win_data_permuted, fpr, sv_win_data_base=sv_win_data_base, anchor=anchor)
         shuffled_fprs_dist.append(add_distance_to_fpr(shuffled_fpr, session, shuffle=kwargs['spatial']))
+        # If at any point the window is closed, break the loop
+        if progress_window.isHidden():
+            return None
 
     progress_window.close()
 
