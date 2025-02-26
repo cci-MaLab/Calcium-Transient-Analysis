@@ -130,6 +130,8 @@ def shuffle_advanced(session, target_cells, comparison_cells, n=100, seed=None, 
         progress_window.update_progress(i + 1)
         if kwargs['temporal']:
             sv_win_data_permuted = permute_sv_win(sv_win_data_base)
+        else:
+            sv_win_data_permuted = sv_win_data_base
         
         # Calculate the cofiring metric for the shuffled data
         shuffled_fpr = calculate_fpr(target_cells, all_cells, sv_win_data_permuted, fpr, sv_win_data_base=sv_win_data_base, anchor=anchor)
@@ -477,15 +479,19 @@ class VisualizeShuffledAdvanced(QWidget):
         ax = self.figure.subplots(1, 2 if (self.temporal and self.spatial) else 1)
         i = 0
         if self.temporal:
+            if self.spatial:
+                target_axes = ax[0]
+            else:
+                target_axes = ax
             # First plot histogram of the shuffled data
-            ax[i].hist(shuffled_hist_data, bins=30, color='blue', alpha=0.7, edgecolor='black')
+            target_axes.hist(shuffled_hist_data, bins=30, color='blue', alpha=0.7, edgecolor='black')
             for unit_id, point in zip(fpr_temporal.keys(), hist_data):
-                ax[i].axvline(point, color='red', linestyle='--')
-                ax[i].text(point, ax[i].get_ylim()[1] * 0.95, "Cell " + str(unit_id), 
+                target_axes.axvline(point, color='red', linestyle='--')
+                target_axes.text(point, target_axes.get_ylim()[1] * 0.95, "Cell " + str(unit_id), 
                         rotation=90, verticalalignment='top', fontsize=12, color='black')
-            ax[i].set_xlabel("FPR")
-            ax[i].set_ylabel("Frequency")
-            ax[i].set_title("FPR Histogram")
+            target_axes.set_xlabel("FPR")
+            target_axes.set_ylabel("Frequency")
+            target_axes.set_title("FPR Histogram")
             i += 1
         if self.spatial:
             # Now plot the scatterplot of the shuffled data
@@ -498,13 +504,17 @@ class VisualizeShuffledAdvanced(QWidget):
                 for key in shuffled_fpr_temporal[j].keys():
                     x_shuffled.extend(shuffled_fpr_spatial[j][key])
                     y_shuffled.extend(shuffled_fpr_temporal[j][key])
-
-            ax[i].scatter(x_shuffled, y_shuffled, color='lightskyblue', alpha=0.6, label='Shuffled', s=3)
-            ax[i].scatter(x, y, color='red', alpha=0.8, label='Original', s=4)
-            ax[i].set_ylabel("FPR")
-            ax[i].set_xlabel("Spatial Distance")
-            ax[i].set_title("Spatial Distance vs FPR")
-            ax[i].legend()
+            
+            if i == 0:
+                target_axes = ax
+            else:
+                target_axes = ax[1]
+            target_axes.scatter(x_shuffled, y_shuffled, color='lightskyblue', alpha=0.6, label='Shuffled', s=3)
+            target_axes.scatter(x, y, color='red', alpha=0.8, label='Original', s=4)
+            target_axes.set_ylabel("FPR")
+            target_axes.set_xlabel("Spatial Distance")
+            target_axes.set_title("Spatial Distance vs FPR")
+            target_axes.legend()
         self.figure.tight_layout()
         self.canvas.draw()
 

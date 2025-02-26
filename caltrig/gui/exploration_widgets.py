@@ -3526,11 +3526,11 @@ class CaltrigWidget(QWidget):
             return        
 
         params = {}
-        if self.visualization_3D_advanced_shuffle_temporal:
+        if self.visualization_3D_advanced_shuffle_temporal.isChecked():
             params["temporal"] = True
         else:
             params["temporal"] = False
-        if self.visualization_3D_advanced_shuffle_spatial:
+        if self.visualization_3D_advanced_shuffle_spatial.isChecked():
             params["spatial"] = True
         else:
             params["spatial"] = False
