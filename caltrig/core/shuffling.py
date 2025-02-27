@@ -430,17 +430,17 @@ class VisualizeShuffledAdvanced(QWidget):
         self.layout.addWidget(self.canvas)
         self.layout.addWidget(self.toolbar)
         self.chkbox_colors = QCheckBox("Separate cells by color")
-        self.chkbox_colors.stateChanged.connect(lambda: self.update_plot(-1, separate=self.chkbox_colors.isChecked()))
+        self.chkbox_colors.stateChanged.connect(lambda: self.update_plot(-1))
         self.layout.addWidget(self.chkbox_colors)
         self.setLayout(self.layout)
         self.update_plot(1)
 
 
-    def update_plot(self, win_num, **kwargs):
+    def update_plot(self, win_num):
         """
         Update the plot with the data dependent on the window number chosen.
         """
-        separate = kwargs.get('separate', False)
+        separate = self.chkbox_colors.isChecked()
         if win_num == -1:
             win_num = self.win_num
         
