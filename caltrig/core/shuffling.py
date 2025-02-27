@@ -119,7 +119,7 @@ def shuffle_advanced(session, target_cells, comparison_cells, n=100, seed=None, 
     precalculated_values = _precalculate(session)
     sv_win_data_base = calculate_single_value_windowed_data(session, precalculated_values, readout, window_size)
     fpr_values_base = calculate_fpr(target_cells, all_cells, sv_win_data_base, fpr)
-    fpr_values_dist_base = add_distance_to_fpr(fpr_values_base, session)
+    fpr_values_dist_base = add_distance_to_fpr(fpr_values_base, session, target_cells, all_cells)
 
     # Set up the PyQt application and progress window
     progress_window = ProgressWindow(total_steps=n)
@@ -135,7 +135,7 @@ def shuffle_advanced(session, target_cells, comparison_cells, n=100, seed=None, 
         
         # Calculate the cofiring metric for the shuffled data
         shuffled_fpr = calculate_fpr(target_cells, all_cells, sv_win_data_permuted, fpr, sv_win_data_base=sv_win_data_base, anchor=anchor)
-        shuffled_fprs_dist.append(add_distance_to_fpr(shuffled_fpr, session, shuffle=kwargs['spatial']))
+        shuffled_fprs_dist.append(add_distance_to_fpr(shuffled_fpr, session, target_cells, all_cells, shuffle=kwargs['spatial']))
         # If at any point the window is closed, break the loop
         if progress_window.isHidden():
             return None

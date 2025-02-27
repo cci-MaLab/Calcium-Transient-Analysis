@@ -315,17 +315,26 @@ def calculate_fpr(a_cells, b_cells, sv_win_data, fpr, sv_win_data_base=None, anc
     
     return a_to_b_fpr
 
-def add_distance_to_fpr(fpr, session, shuffle=False):
+def add_distance_to_fpr(fpr, session, a_cells, b_cells, shuffle=False):
     # We need to calculate the distance between the cells
     centroids = session.centroids
+    new_centroids = {}
     if shuffle:
-        values = list(centroids.values())
-        np.random.shuffle(values)
-        centroids = {cell_id: values[i] for i, cell_id in enumerate(centroids.keys())}
+        # We need to anchor the a cell positions and only shuffle the b cell positions
+        for a_cell in a_cells:
+            selected_b_cells = list(b_cells)
+            selected_b_cells.remove(a_cell)
+            b_positions_shuffled = [centroids[cell] for cell in selected_b_cells]
+            np.random.shuffle(b_positions_shuffled)
+            new_centroids[a_cell] = {cell: b_positions_shuffled[i] for i, cell in enumerate(selected_b_cells)}
+            new_centroids[a_cell][a_cell] = centroids[a_cell]
+    else:
+        new_centroids = {cell: centroids for cell in a_cells}
+
     distances = {}
     for a_cell, b_cell in fpr.keys():
-        a_x, a_y = centroids[a_cell]
-        b_x, b_y = centroids[b_cell]
+        a_x, a_y = new_centroids[a_cell][a_cell]
+        b_x, b_y = new_centroids[a_cell][b_cell]
         distance = np.sqrt((a_x - b_x) ** 2 + (a_y - b_y) ** 2)
         distances[(a_cell, b_cell)] = distance
     
