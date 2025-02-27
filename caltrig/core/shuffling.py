@@ -429,11 +429,16 @@ class VisualizeShuffledAdvanced(QWidget):
         self.canvas = FigureCanvas(self.figure)
         self.toolbar = NavigationToolbar(self.canvas, self)
         self.layout = QVBoxLayout()
-        self.layout.addWidget(self.canvas)
         self.layout.addWidget(self.toolbar)
+        self.layout.addWidget(self.canvas)
+        chkbox_layout = QVBoxLayout()
         self.chkbox_colors = QCheckBox("Separate cells by color")
+        chkbox_layout.addWidget(self.chkbox_colors)
+        self.chkbox_average_spatial = QCheckBox("Average spatial distance")
+        chkbox_layout.addWidget(self.chkbox_average_spatial)
+        self.chkbox_average_spatial.stateChanged.connect(lambda: self.update_plot(-1))
         self.chkbox_colors.stateChanged.connect(lambda: self.update_plot(-1))
-        self.layout.addWidget(self.chkbox_colors)
+        self.layout.addLayout(chkbox_layout)
         self.setLayout(self.layout)
         self.update_plot(self.win_num)
 
@@ -443,6 +448,7 @@ class VisualizeShuffledAdvanced(QWidget):
         Update the plot with the data dependent on the window number chosen.
         """
         separate = self.chkbox_colors.isChecked()
+        average_spatial = self.chkbox_average_spatial.isChecked()
         if win_num == -1:
             win_num = self.win_num
         
@@ -548,14 +554,47 @@ class VisualizeShuffledAdvanced(QWidget):
                     for key in shuffled_fpr_temporal[j].keys():
                         x_shuffled.extend(shuffled_fpr_spatial[j][key])
                         y_shuffled.extend(shuffled_fpr_temporal[j][key])
-                target_axes.scatter(x_shuffled, y_shuffled, color='lightskyblue', alpha=0.6, label='Shuffled', s=3)
-                target_axes.scatter(x, y, color='red', alpha=0.8, label='Original', s=4)
+                s = 3
+                if average_spatial:
+                    x = np.mean(x)
+                    x_shuffled = np.mean(x_shuffled)
+                    y = np.mean(y)
+                    y_shuffled = np.mean(y_shuffled)
+                    s = 6
+                target_axes.scatter(x_shuffled, y_shuffled, color='lightskyblue', alpha=0.6, label='Shuffled', s=6)
+                s = 4 if not average_spatial else 8
+                target_axes.scatter(x, y, color='red', alpha=0.8, label='Original', s=s)
             else:
                 for key in fpr_temporal.keys():
-                    target_axes.scatter(fpr_spatial[key], fpr_temporal[key], color=cell_to_color[key], alpha=0.8, label=f"Cell {key}", s=4)
-                for j in range(len(shuffled_fpr_temporal)):
-                    for key in shuffled_fpr_temporal[j].keys():
-                        target_axes.scatter(shuffled_fpr_spatial[j][key], shuffled_fpr_temporal[j][key], color=cell_to_color[-key], alpha=0.6, label=f"Shuffled Cell {key}", s=3)
+                    x = fpr_spatial[key]
+                    y = fpr_temporal[key]
+                    s = 4
+                    if average_spatial:
+                        x = np.mean(x)
+                        y = np.mean(y)
+                        s = 8
+                    target_axes.scatter(x, y, color=cell_to_color[key], alpha=0.8, label=f"Cell {key}", s=8)
+                
+                shuffled_fpr_temp_adjusted = {}
+                shuffled_fpr_spatial_adjusted = {}
+                for key in shuffled_fpr_temporal[0].keys():
+                    for j in range(len(shuffled_fpr_temporal)):
+                        if key not in shuffled_fpr_temp_adjusted:
+                            shuffled_fpr_temp_adjusted[key] = []
+                        shuffled_fpr_temp_adjusted[key].extend(shuffled_fpr_temporal[j][key])
+                        if key not in shuffled_fpr_spatial_adjusted:
+                            shuffled_fpr_spatial_adjusted[key] = []
+                        shuffled_fpr_spatial_adjusted[key].extend(shuffled_fpr_spatial[j][key])
+
+                for key in shuffled_fpr_temp_adjusted.keys():
+                    x = shuffled_fpr_spatial_adjusted[key]
+                    y = shuffled_fpr_temp_adjusted[key]
+                    s = 3
+                    if average_spatial:
+                        x = np.mean(x)
+                        y = np.mean(y)
+                        s = 6
+                    target_axes.scatter(x, y, color=cell_to_color[-key], alpha=0.6, label=f"Shuffled Cell {key}", s=s)
 
             target_axes.set_ylabel("FPR")
             target_axes.set_xlabel("Spatial Distance")
