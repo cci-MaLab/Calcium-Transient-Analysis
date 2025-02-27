@@ -81,7 +81,7 @@ def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, 
     return visualize_shuffled
 
 
-def shuffle_advanced(session, target_cells, comparison_cells, n=100, seed=None, **kwargs):
+def shuffle_advanced(session, target_cells, comparison_cells, n=100, seed=None, current_window=1, **kwargs):
     """
     Shuffle the data with advanced options.
 
@@ -142,7 +142,9 @@ def shuffle_advanced(session, target_cells, comparison_cells, n=100, seed=None, 
 
     progress_window.close()
 
-    visualized_shuffled = VisualizeShuffledAdvanced(name, fpr_values_dist_base, shuffled_fprs_dist, target_cells, all_cells, temporal=kwargs['temporal'], spatial=kwargs['spatial'])
+    visualized_shuffled = VisualizeShuffledAdvanced(name, fpr_values_dist_base, shuffled_fprs_dist, target_cells,
+                                                     all_cells, temporal=kwargs['temporal'], spatial=kwargs['spatial'],
+                                                     current_window=current_window)
 
     return visualized_shuffled
 
@@ -405,7 +407,7 @@ class VisualizeShuffledAdvanced(QWidget):
     PyQt5 window to visualize shuffled advanced data with a Matplotlib plot,
     labels for Z-Score and other details, and Matplotlib toolbar.
     """
-    def __init__(self, name, fpr_values_base, shuffled_fprs, target_cells, all_cells, temporal=True, spatial=True):
+    def __init__(self, name, fpr_values_base, shuffled_fprs, target_cells, all_cells, temporal=True, spatial=True, current_window=1):
         super().__init__()
 
         self.fpr_values_base = fpr_values_base
@@ -416,7 +418,7 @@ class VisualizeShuffledAdvanced(QWidget):
         self.spatial = spatial
         self.parent = None
         self.name = name
-        self.win_num = 1
+        self.win_num = current_window
 
         # Initialize the window
         self.setWindowTitle(name)
@@ -433,7 +435,7 @@ class VisualizeShuffledAdvanced(QWidget):
         self.chkbox_colors.stateChanged.connect(lambda: self.update_plot(-1))
         self.layout.addWidget(self.chkbox_colors)
         self.setLayout(self.layout)
-        self.update_plot(1)
+        self.update_plot(self.win_num)
 
 
     def update_plot(self, win_num):
@@ -572,6 +574,13 @@ class VisualizeShuffledAdvanced(QWidget):
         Convert a dictionary of values to a list.
         """
         return np.array([value for value in data.values()]).flatten()
+    
+
+    def get_id(self):
+        """
+        Get the ID of the window. This will be a combination of the name target and all cells.
+        """
+        return f"{self.name} - Target Cells: {self.target_cells} - All Cells: {self.all_cells}"
 
     def closeEvent(self, event):
         self.closed.emit()

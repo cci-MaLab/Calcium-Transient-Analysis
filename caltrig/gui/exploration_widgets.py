@@ -63,7 +63,7 @@ class CaltrigWidget(QWidget):
         self.processes = processes
         self.recalculate_canny_edges = True # Optimization to not call canny on every frame
         self.visualized_shuffled = None
-        self.visualized_advanced_shuffled = None
+        self.visualized_advanced_shuffled = {}
         self.setWindowIcon(QIcon(main_window_ref.icon_path))
 
         # Initialize executor to load next chunks in the background
@@ -785,7 +785,8 @@ class CaltrigWidget(QWidget):
         visualization_3D_advanced_tool_layout.addLayout(layout_list_advanced_cells)
 
         visualization_3D_advanced_window_size_layout = QHBoxLayout()
-        visualization_3D_advanced_window_size_layout.addWidget(QLabel("Number of frames per window:"))
+        self.label_3D_advanced_window_size = QLabel("Number of frames per window:")
+        visualization_3D_advanced_window_size_layout.addWidget(self.label_3D_advanced_window_size)
         self.input_3D_advanced_window_size = QLineEdit()
         self.input_3D_advanced_window_size.setValidator(QIntValidator(1, 10000))
         self.input_3D_advanced_window_size.setText("1000")
@@ -1789,7 +1790,8 @@ class CaltrigWidget(QWidget):
     def slider_update_shuffle(self):
         current_frame = self.visualization_3D_advanced_shuffle_slider.value()
         if self.visualized_advanced_shuffled:
-            self.visualized_advanced_shuffled.update_plot(current_frame)
+            for name, win in self.visualized_advanced_shuffled.items():
+                win.update_plot(current_frame)
 
     def update_current_window(self, value):
         self.label_3D_advanced_current_frame.setText(f"Current Window: {value}")
@@ -1797,10 +1799,13 @@ class CaltrigWidget(QWidget):
     def update_current_shuffle_window(self, value):
         self.label_3D_advanced_shuffle_current_frame.setText(f"Current Window: {value}")
 
-    def hide_advanced_shuffle_slider(self):
-        self.visualization_3D_advanced_shuffle_slider.setVisible(False)
-        self.label_3D_advanced_shuffle_current_frame.setVisible(False)
-        self.visualized_advanced_shuffled = None
+    def hide_advanced_shuffle_slider(self, id):
+        del self.visualized_advanced_shuffled[id]
+        if not self.visualized_advanced_shuffled:
+            self.visualization_3D_advanced_shuffle_slider.setVisible(False)
+            self.label_3D_advanced_shuffle_current_frame.setVisible(False)
+            self.input_3D_advanced_window_size.setDisabled(False)
+            self.label_3D_advanced_window_size.setText("Number of frames per window:")
     
 
 
@@ -3305,7 +3310,8 @@ class CaltrigWidget(QWidget):
             self.visualized_shuffled.close()
         
         if self.visualized_advanced_shuffled:
-            self.visualized_advanced_shuffled.close()
+            for window in self.visualized_advanced_shuffled.values():
+                window.close()
 
         self.visualization_3D.close()
         self.visualization_3D_advanced.close()
@@ -3546,21 +3552,27 @@ class CaltrigWidget(QWidget):
         params["shuffling"]["readout"] = self.dropdown_3D_advanced_readout.currentText()
         params["shuffling"]["fpr"] = self.dropdown_3D_advanced_fpr.currentText()
 
-
+        current_window = int(self.visualization_3D_advanced_shuffle_slider.value()) if self.visualization_3D_advanced_shuffle_slider.isVisible() else 1
 
         num_of_shuffles = int(self.input_advanced_shuffling_num.text()) if self.input_advanced_shuffling_num.text() else 100
-
-        self.visualized_advanced_shuffled = shuffle_advanced(self.session, target_cells, comparison_cells, n=num_of_shuffles, **params)
-        if self.visualized_advanced_shuffled is None:
+        self.input_3D_advanced_window_size.setDisabled(True)
+        self.label_3D_advanced_window_size.setText(f"Close plots to enable window size input: ")
+        window_shuffled_advanced = shuffle_advanced(self.session, target_cells, comparison_cells, n=num_of_shuffles, current_window=current_window, **params)
+        if window_shuffled_advanced is None:
+            self.input_3D_advanced_window_size.setDisabled(False)
+            self.label_3D_advanced_window_size.setText(f"Number of frames per window:")
             return
-        self.visualized_advanced_shuffled.parent = self
-        self.visualized_advanced_shuffled.closed.connect(self.hide_advanced_shuffle_slider)
-        self.visualized_advanced_shuffled.show()
-        self.visualization_3D_advanced_shuffle_slider.setVisible(True)
-        no_of_bins = int(np.ceil(self.session.data['E'].shape[1]/win_size))
-        self.visualization_3D_advanced_shuffle_slider.setMaximum(no_of_bins)
-        self.visualization_3D_advanced_shuffle_slider.setValue(1)
-        self.label_3D_advanced_shuffle_current_frame.setVisible(True)
+        window_shuffled_advanced.parent = self
+        window_shuffled_advanced.closed.connect(lambda : self.hide_advanced_shuffle_slider(window_shuffled_advanced.get_id()))
+        window_shuffled_advanced.show()
+        self.visualized_advanced_shuffled[window_shuffled_advanced.get_id()] = window_shuffled_advanced
+        # Disable the advanced window size input to ensure that the window size is consistent
+        if len(self.visualized_advanced_shuffled) == 1:
+            self.visualization_3D_advanced_shuffle_slider.setVisible(True)
+            no_of_bins = int(np.ceil(self.session.data['E'].shape[1]/win_size))
+            self.visualization_3D_advanced_shuffle_slider.setMaximum(no_of_bins)
+            self.visualization_3D_advanced_shuffle_slider.setValue(1)
+            self.label_3D_advanced_shuffle_current_frame.setVisible(True)
 
 
 
