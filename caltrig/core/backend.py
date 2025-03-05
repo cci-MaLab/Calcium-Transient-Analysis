@@ -682,7 +682,7 @@ class DataInstance:
 
         self.unit_id_consistency()
 
-        self.data['unit_ids'] = self.data['C'].coords['unit_id'].values
+        self.data['unit_ids'] = np.sort(self.data['C'].coords['unit_id'].values)
         self.config_path = config_path   
     
         self.data['filtered_C'] = self.get_filtered_C
