@@ -8,7 +8,7 @@ from matplotlib.backends.backend_qt5agg import (
     NavigationToolbar2QT as NavigationToolbar
 )
 import pandas as pd
-from PyQt5.QtWidgets import (QVBoxLayout, QLabel, QWidget, QMenuBar, QAction, QStyle, QCheckBox)
+from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QWidget, QMenuBar, QAction, QStyle, QCheckBox, QVBoxLayout)
 from PyQt5.QtCore import pyqtSignal
 
 def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, **kwargs):
@@ -146,7 +146,7 @@ def shuffle_advanced(session, target_cells, comparison_cells, n=100, seed=None, 
                                                      all_cells, temporal=kwargs['temporal'], spatial=kwargs['spatial'],
                                                      current_window=current_window)
 
-    return visualized_shuffled
+    return visualized_shuffled if visualized_shuffled.global_z_score is not None else None
 
 
 
@@ -416,6 +416,7 @@ class VisualizeShuffledAdvanced(QWidget):
         self.all_cells = all_cells
         self.temporal = temporal
         self.spatial = spatial
+        self.global_z_score = self.calculate_z_score()
         self.parent = None
         self.name = name
         self.win_num = current_window
@@ -431,11 +432,14 @@ class VisualizeShuffledAdvanced(QWidget):
         self.layout = QVBoxLayout()
         self.layout.addWidget(self.toolbar)
         self.layout.addWidget(self.canvas)
-        chkbox_layout = QVBoxLayout()
+        chkbox_layout = QHBoxLayout()
         self.chkbox_colors = QCheckBox("Separate cells by color")
         chkbox_layout.addWidget(self.chkbox_colors)
         self.chkbox_average_spatial = QCheckBox("Average spatial distance")
         chkbox_layout.addWidget(self.chkbox_average_spatial)
+        self.chkbox_show_z_score = QCheckBox("Show Global Z-Score")
+        chkbox_layout.addWidget(self.chkbox_show_z_score)
+        self.chkbox_show_z_score.stateChanged.connect(lambda: self.update_plot(-1))
         self.chkbox_average_spatial.stateChanged.connect(lambda: self.update_plot(-1))
         self.chkbox_colors.stateChanged.connect(lambda: self.update_plot(-1))
         self.layout.addLayout(chkbox_layout)
@@ -495,7 +499,8 @@ class VisualizeShuffledAdvanced(QWidget):
         
 
         self.figure.clf()
-        ax = self.figure.subplots(1, 2 if (self.temporal and self.spatial) else 1)
+        num_plots = [self.temporal, self.spatial, self.chkbox_show_z_score.isChecked()].count(True)
+        ax = self.figure.subplots(1, num_plots)
         cmap = plt.get_cmap('gist_ncar')
         num_colors = len(shuffled_hist_data) * 2
         colors = [cmap(i / num_colors) for i in range(num_colors)]
@@ -505,7 +510,7 @@ class VisualizeShuffledAdvanced(QWidget):
         cell_to_color = { key: colors[idx] for idx, key in enumerate(mirrored_keys) }
         i = 0
         if self.temporal:
-            if self.spatial:
+            if num_plots > 1:
                 target_axes = ax[0]
             else:
                 target_axes = ax
@@ -539,10 +544,10 @@ class VisualizeShuffledAdvanced(QWidget):
                 target_axes.legend()
             i += 1
         if self.spatial:
-            if i == 0:
-                target_axes = ax
+            if num_plots > 1:
+                target_axes = ax[i]
             else:
-                target_axes = ax[1]
+                target_axes = ax
             # Now plot the scatterplot of the shuffled data
             if not separate:
                 x, y = [], []
@@ -605,6 +610,28 @@ class VisualizeShuffledAdvanced(QWidget):
                 handles, labels = target_axes.get_legend_handles_labels()
                 by_label = dict(zip(labels, handles))
                 target_axes.legend(by_label.values(), by_label.keys())
+        if self.chkbox_show_z_score.isChecked():
+            if num_plots > 1:
+                target_axes = ax[-1]
+            else:
+                target_axes = ax
+            # Each Cell ID will have it's own color and the x axis should say the Window Number
+            for key, value in self.global_z_score.items():
+                target_axes.scatter(range(1, len(value) + 1), value, label=f"Cell {key}", color=cell_to_color[key])
+            xs = list(range(1, len(value) + 1))
+            for x in xs:
+                target_axes.axvline(x=x, color='red', linestyle=':', linewidth=1)
+            target_axes.axhline(y=0, color='black', linestyle='-', linewidth=1)
+            # Two horizontal line at -1.96 and 1.96 with text
+            target_axes.axhline(y=1.96, color='black', linestyle='--', linewidth=1)
+            target_axes.text(0, 1.96, "1.96", color='black', fontsize=12)
+            target_axes.axhline(y=-1.96, color='black', linestyle='--', linewidth=1)
+            target_axes.text(0, -1.96, "-1.96", color='black', fontsize=12)
+            target_axes.set_xlabel("Window Number")
+            target_axes.set_ylabel("Z-Score")
+            target_axes.set_title("Z-Score Per Window")
+            target_axes.legend()
+        
         self.figure.tight_layout()
         self.canvas.draw()
 
@@ -620,6 +647,62 @@ class VisualizeShuffledAdvanced(QWidget):
         Get the ID of the window. This will be a combination of the name target and all cells.
         """
         return f"{self.name} - Target Cells: {self.target_cells} - All Cells: {self.all_cells}"
+
+    def calculate_z_score(self):
+        """
+        This function will iterate through all the windows and calculate the Z-Score for each cell in each window.
+        """
+
+        # Get the number of windows from the first key
+        num_windows = next(iter(self.fpr_values_base.values()))[0].shape[0]
+        z_scores = {}
+
+        progress_window = ProgressWindow(total_steps=num_windows, text="Calculating Z-Scores")
+        progress_window.show()
+
+        for i in range(num_windows):
+            fpr_temporal = {}
+            for key, value in self.fpr_values_base.items():
+                target_cell = key[0]
+                if target_cell not in fpr_temporal:
+                    fpr_temporal[target_cell] = []
+                fpr_temporal[target_cell].append(value[0][i].item())
+            
+            hist_data = {}
+            for key, value in fpr_temporal.items():
+                hist_data[key] = np.mean(value)
+
+            # Very slow for now, should come up with a solution to speed this up
+            shuffled_fpr_temporal = []
+            for shuffled_fpr in self.shuffled_fprs:
+                local_fpr_temporal = {}
+                for key, value in shuffled_fpr.items():
+                    target_cell = key[0]
+                    if target_cell not in local_fpr_temporal:
+                        local_fpr_temporal[target_cell] = []
+                    local_fpr_temporal[target_cell].append(value[0][i].item())
+                shuffled_fpr_temporal.append(local_fpr_temporal)
+                
+            shuffled_hist_data = {}
+            for shuffled_fpr_temporal_local in shuffled_fpr_temporal:
+                for key, value in shuffled_fpr_temporal_local.items():
+                    if key not in shuffled_hist_data:
+                        shuffled_hist_data[key] = []
+                    shuffled_hist_data[key].append(np.mean(value))
+            
+            mean_shuffled = {cell_id: np.mean(self.values_to_list(shuffled_hist_data)) for cell_id in hist_data.keys()}
+            std_shuffled = {cell_id: np.std(self.values_to_list(shuffled_hist_data)) for cell_id in hist_data.keys()}
+            for key, value in hist_data.items():
+                if key not in z_scores:
+                    z_scores[key] = []
+                z_scores[key].append((value - mean_shuffled[key]) / std_shuffled[key])
+
+            progress_window.update_progress(i + 1)
+            if progress_window.isHidden():
+                return None
+        
+        return z_scores
+
 
     def closeEvent(self, event):
         self.closed.emit()

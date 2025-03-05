@@ -16,10 +16,11 @@ def print_error(s, extra_info="", severity=QMessageBox.Critical):
 
 
 class ProgressWindow(QDialog):
-    def __init__(self, total_steps, parent=None):
+    def __init__(self, total_steps, text="Shuffling", parent=None):
         super().__init__(parent)
         self.setWindowTitle("Progress")
         self.setGeometry(600, 300, 300, 100)
+        self.text = text
 
         layout = QVBoxLayout(self)
 
@@ -34,5 +35,5 @@ class ProgressWindow(QDialog):
 
     def update_progress(self, step):
         self.progress_bar.setValue(step)
-        self.label.setText(f"Shuffling {step}/{self.progress_bar.maximum()}...")
+        self.label.setText(f"{self.text} {step}/{self.progress_bar.maximum()}...")
         QApplication.processEvents()
