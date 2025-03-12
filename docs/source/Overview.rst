@@ -6,27 +6,68 @@ Overview
 Installation
 ------------
 
-To install, clone the repository and run the following command:
+**Prerequisites:**
+
+Before you begin, ensure that `Conda <https://docs.conda.io/en/latest/>`_ is installed on your system. You can download and install either `Anaconda <https://www.anaconda.com/download/success>`_ or the lighter `Miniconda <https://www.anaconda.com/docs/getting-started/miniconda/install>`_ distribution.
+
+**Step 1: Clone the Repository**
+
+Clone the repository to your local machine:
+
+.. code-block:: bash
+    
+    git clone https://github.com/cci-MaLab/Calcium-Transient-Analysis.git
+    cd Calcium-Transient-Analysis
+    
+
+**Step 2: Create the Conda Environment**
+
+For full functionality including machine learning support with PyTorch, create the environment using the provided YAML file:
 
 .. code-block:: bash
 
-    conda env create -f environment.yml
+    conda env create -f environment_ml.yml
 
-For machine learning purposes we use pytorch. We are aware
-of the relatively large install requirement for this package
-and that not all users require the machine learning parts of 
-the GUI, hence we've also included a basic yml file that omits ml. 
+
+If you do not require the machine learning parts of the GUI (which include PyTorch and have larger install requirements), you can create a lighter environment instead:
 
 .. code-block:: bash
 
     conda env create -f environment_basic.yml
 
-We also provide an equivalent pip requirements file for
-those who prefer to use pip:
+
+.. note:: The environment name is specified in the YAML file under the `name:` field. It will be set to `cell_exploration_ml` or `cell_exploration` depending on which aformentioned `.yml` file was picked. We will assume here that `environment_ml.yml` was used for the rest of the guide.
+
+**Step 3: Activate the Environment**
+
+After creating the environment, activate it with:
 
 .. code-block:: bash
 
+    conda activate cell_exploration_ml
+
+**Step 4: Run the Application**
+
+With the environment activated, run the main application by executing:
+
+.. code-block:: bash
+
+
+    python main.py
+
+On subsequent runs, you will only need to activate the environment and run the application, a.k.a. steps 3 and 4.
+
+**Alternative: Using pip**
+
+If you prefer pip over conda, we provide a requirements file for a basic installation:
+
+.. code-block:: bash
+
+
     pip install -r requirements_basic.txt
+
+
+
 
 .. _how to use:
 
@@ -49,12 +90,46 @@ Once the GUI is loaded you should see the following window:
 ~~~~~~
   
 
-To load in a specific dataset, click *File* -> *Load Data*. You can 
-also load in other datasets as well and their corresponding
+To load in a specific dataset, click *File* -> *Load Data* then proceed to
+select the config file you have created in :ref:`before_you_start:creating the config file`.
+You can also load in other datasets as well and their corresponding
 max projection of cell footprints will be visualized. If you wish 
 to save the currently loaded setup of datasets, click *File* -> *Save*,
 this will create a json file that will point to all loaded config.ini files.
+To load in a saved setup, click *File* -> *Load Saved State*. Below is an
+example of what a generated json file could look like:
 
+
+.. code-block:: json
+
+    {
+        "C:/Users/Michal Lange/Documents/Calcium-Transient-Analysis/config_files/configA58S4.ini": null,
+        "C:/Users/Michal Lange/Documents/Calcium-Transient-Analysis/config_files/configA34D1S1.ini": null,
+        "defaults": {
+            "ALP": {
+                "window": 20,
+                "delay": 0
+            },
+            "ILP": {
+                "window": 20,
+                "delay": 0
+            },
+            "RNF": {
+                "window": 20,
+                "delay": 0
+            },
+            "ALP_Timeout": {
+                "window": 20,
+                "delay": 0
+            },
+            "distance_metric": "euclidean"
+        }
+    }
+
+The defaults and distance_metric parts can be ignored as they are utilized for the cell clustering
+part of the GUI and is not part of CalTrig. File paths can be added or removed
+as needed from the json file, however it is recommended to use the GUI to save and load the state to
+avoid any issues.
 
 CalTrig
 -------

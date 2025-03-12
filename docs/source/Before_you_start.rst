@@ -221,6 +221,9 @@ Creating the Config File
 ------------------------
 
 The final step is to create a config.ini file that will tell the GUI where to find the necessary data.
+This file can be saved anywhere convenient for the user as the GUI contains a file picker to select
+the desired config file. For ease of use, it is recommended to save the config file near the CalTrig
+folder.
 Below is a template that you can adjust to your needs:
 
 .. code-block:: ini

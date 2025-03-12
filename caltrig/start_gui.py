@@ -453,7 +453,7 @@ class MainWindow(QMainWindow):
                 extended_json = self.path_list.copy()
                 extended_json["defaults"] = self.event_defaults
                 with open(filename, 'w') as f:
-                    json.dump(extended_json, f)
+                    json.dump(extended_json, f, indent=4)
 
     def closeEvent(self, event):
         """
