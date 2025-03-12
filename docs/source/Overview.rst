@@ -67,6 +67,12 @@ If you prefer pip over conda, we provide a requirements file for a basic install
     pip install -r requirements_basic.txt
 
 
+.. _demo data:
+
+Demo Data
+---------
+
+You can test the GUI out with demo data provided at this `link <https://drive.google.com/drive/folders/143QBRTsuf5SMr1bU-a6rqJvcvzux7Z9r>`_.
 
 
 .. _how to use:
