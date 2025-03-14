@@ -236,3 +236,17 @@ Below is a template that you can adjust to your needs:
     data_path = C:\path\to\folder\that\contains\data
     video_path = C:\path\to\folder\that\contains\videos
     behavior_path = C:\path\to\folder\that\contains\behavior.csv
+
+What About Non-CNMF signals
+---------------------------
+If you have data that was not generated from the CNMF process, you could still try
+to integrate it into the GUI. We recommend to look at each of the signals
+and see, which ones adhere most closely to the CNMF data structures.
+If you don't have a corresponding signal, then you could try to generate
+0 arrays of the same shape as the CNMF data. However, this could lead to 
+some issues with a few of the features in the GUI.
+
+At the very least, you should have the equivalent `A`, `C`, `DFF` and a video file. If you only have
+a single video file, then you could copy it for the other expected video files. All of this
+is theoretical and hasn't been tested, before. In case of any problems, please open an issue
+on the `GitHub <https://github.com/cci-MaLab/Calcium-Transient-Analysis/issues>`_ page.
