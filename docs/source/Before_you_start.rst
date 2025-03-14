@@ -7,8 +7,8 @@ project and a more comprehensive guide if you come from a different CNMF related
 
 .. _non-minian projects:
 
-Non-Minian Projects
--------------------
+Non-Minian CNMF Projects
+------------------------
 
 If your project is based on non-Minian approach, you can look at the delineation of data structures
 below, so you can reach parity. Since there a multitude of different approaches to store CNMF related
