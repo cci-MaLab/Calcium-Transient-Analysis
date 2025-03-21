@@ -43,7 +43,7 @@ class CurrentVisualizationData():
         points = points.values()
         x_coords, y_coords = zip(*points)
         # So it aligns with the data and PyVista convention we need to subtract the start values and flip the y and x values
-        x_coords, y_coords = switch_to_3d_coordinates(x_coords, y_coords, self.x_start, self.y_start)     
+        x_coords, y_coords = switch_to_3d_coordinates(x_coords, y_coords, self.x_start, self.y_start, self.x_end, self.y_end)     
         self.points = {"x": x_coords, "y": y_coords}
         # Keep a local dict cell_id to coords
         self.cell_id_coords = {cell_id: (x, y) for cell_id, x, y in zip(cell_ids, x_coords, y_coords)}
@@ -82,7 +82,7 @@ def round_away_from_zero(value, base=10):
     else:
         return math.floor(value / base) * base
 
-def switch_to_3d_coordinates(x, y, x_start=0, y_start=0):
+def switch_to_3d_coordinates(x, y, x_start=0, y_start=0, x_end=None, y_end=None):
     """
     The PyVista coordinates begin in the bottom left corner, while the 2d plane
     coordinates begin in the top left corner. Therefore, we need to first subtract
@@ -98,6 +98,11 @@ def switch_to_3d_coordinates(x, y, x_start=0, y_start=0):
     x_start, y_start = int(x_start), int(y_start)
     
     x, y = x - x_start, y - y_start
+    # Sometimes the value can end up in the peripheral area, we need to make sure it is within the bounds
+    if x_end is not None:
+        x = np.clip(x, 0, x_end-x_start-1)
+    if y_end is not None:
+        y = np.clip(y, 0, y_end-y_start-1)    
     return x, y
 
 def base_visualization(serialized_data, start_frame=0, end_frame=50):
