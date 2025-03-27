@@ -8,7 +8,7 @@ from matplotlib.backends.backend_qt5agg import (
     NavigationToolbar2QT as NavigationToolbar
 )
 import pandas as pd
-from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QWidget, QMenuBar, QAction, QStyle, QCheckBox, QVBoxLayout)
+from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QWidget, QMenuBar, QAction, QStyle, QCheckBox, QVBoxLayout, QApplication)
 from PyQt5.QtCore import pyqtSignal
 
 def shuffle_cofiring(session, target_cells, comparison_cells, n=500, seed=None, **kwargs):
@@ -420,10 +420,20 @@ class VisualizeShuffledAdvanced(QWidget):
         self.parent = None
         self.name = name
         self.win_num = current_window
+        self.hist_data = {}
 
         # Initialize the window
         self.setWindowTitle(name)
         self.setGeometry(100, 100, 900, 700)
+
+        # Add menu bar to copy data to clipboard
+        self.menu = QMenuBar()
+        pixmapi_tools = QStyle.StandardPixmap.SP_FileDialogListView
+        btn_copy = QAction(self.style().standardIcon(pixmapi_tools), "&Copy Data to Clipboard", self)
+        btn_copy.setStatusTip("Data related utilities")
+        btn_copy.triggered.connect(self.copy_to_clipboard)
+        stats_menu = self.menu.addMenu("&Tools")
+        stats_menu.addAction(btn_copy)
 
         # Create Matplotlib figure and axes
         self.figure, _ = plt.subplots(1, 2 if (temporal and spatial) else 1, figsize=(12, 6))
@@ -521,7 +531,9 @@ class VisualizeShuffledAdvanced(QWidget):
                 # Separate the cells by color
                 for key, value in shuffled_hist_data.items():
                     target_axes.hist(value, bins=30, color=cell_to_color[key], alpha=0.7, edgecolor='black', label=f"Cell {key}")
-                    
+
+            # Save histogram data to later copy to clipboard
+            self.hist_data = {}   
             # Keep track of the values so in case of overlap we shift the text
             used_values = {}
             for unit_id, point in zip(fpr_temporal.keys(), self.values_to_list(hist_data)):
@@ -702,6 +714,28 @@ class VisualizeShuffledAdvanced(QWidget):
                 return None
         
         return z_scores
+
+    def copy_to_clipboard(self):
+        '''
+        Copy the data from the table to the clipboard.
+        The copy format will look something like this:
+        Cell A | 2
+        Cell Bs | 3 4 5 ...
+        # of Cell Bs | 3
+        Shuffling Type | Temporal, Spatial, Temporal + Spatial
+        Original Data Z Score | 2.3
+        Original data value | 0.2
+        For each time window:
+        Window Number | 1
+        Then there will be two columns, one for the binned FPR value and the other for the # of cells in that bin
+        FPR range | # of cell Bs
+
+        All of the above data can be extracted from the matplotlib plot
+        '''
+        clipboard = QApplication.clipboard()
+        text = []
+
+        #for cell_a in 
 
 
     def closeEvent(self, event):
