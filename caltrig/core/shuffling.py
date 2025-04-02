@@ -416,11 +416,10 @@ class VisualizeShuffledAdvanced(QWidget):
         self.all_cells = all_cells
         self.temporal = temporal
         self.spatial = spatial
-        self.global_z_score = self.calculate_z_score()
+        self.precompute_metrics()
         self.parent = None
         self.name = name
         self.win_num = current_window
-        self.hist_data = {}
 
         # Initialize the window
         self.setWindowTitle(name)
@@ -434,6 +433,7 @@ class VisualizeShuffledAdvanced(QWidget):
         btn_copy.triggered.connect(self.copy_to_clipboard)
         stats_menu = self.menu.addMenu("&Tools")
         stats_menu.addAction(btn_copy)
+
 
         # Create Matplotlib figure and axes
         self.figure, _ = plt.subplots(1, 2 if (temporal and spatial) else 1, figsize=(12, 6))
@@ -453,6 +453,7 @@ class VisualizeShuffledAdvanced(QWidget):
         self.chkbox_average_spatial.stateChanged.connect(lambda: self.update_plot(-1))
         self.chkbox_colors.stateChanged.connect(lambda: self.update_plot(-1))
         self.layout.addLayout(chkbox_layout)
+        self.layout.setMenuBar(self.menu)
         self.setLayout(self.layout)
         self.update_plot(self.win_num)
 
@@ -467,46 +468,14 @@ class VisualizeShuffledAdvanced(QWidget):
             win_num = self.win_num
         
         self.win_num = win_num
-        i = win_num - 1
-        # Get the data for the window number
-        fpr_temporal = {}
-        fpr_spatial = {}
-        for key, value in self.fpr_values_base.items():
-            target_cell = key[0]
-            if target_cell not in fpr_temporal:
-                fpr_temporal[target_cell] = []
-            if target_cell not in fpr_spatial:
-                fpr_spatial[target_cell] = []
-            fpr_temporal[target_cell].append(value[0][i].item())
-            fpr_spatial[target_cell].append(value[1])
-    
-        hist_data = {}
-        for key, value in fpr_temporal.items():
-            hist_data[key] = np.mean(value)
-
-        shuffled_fpr_temporal = []
-        shuffled_fpr_spatial = []
-        for shuffled_fpr in self.shuffled_fprs:
-            local_fpr_temporal = {}
-            local_fpr_spatial = {}
-            for key, value in shuffled_fpr.items():
-                target_cell = key[0]
-                if target_cell not in local_fpr_temporal:
-                    local_fpr_temporal[target_cell] = []
-                if target_cell not in local_fpr_spatial:
-                    local_fpr_spatial[target_cell] = []
-                local_fpr_temporal[target_cell].append(value[0][i].item())
-                local_fpr_spatial[target_cell].append(value[1])
-            shuffled_fpr_temporal.append(local_fpr_temporal)
-            shuffled_fpr_spatial.append(local_fpr_spatial)
-            
-        shuffled_hist_data = {}
-        for shuffled_fpr_temporal_local in shuffled_fpr_temporal:
-            for key, value in shuffled_fpr_temporal_local.items():
-                if key not in shuffled_hist_data:
-                    shuffled_hist_data[key] = []
-                shuffled_hist_data[key].append(np.mean(value))
         
+        # Get the data for the window number
+        shuffled_hist_data = self.shuffled_hist_data[self.win_num]
+        fpr_temporal = self.fpr_temporal[self.win_num]
+        fpr_spatial = self.fpr_spatial[self.win_num]
+        shuffled_fpr_temporal = self.shuffled_fpr_temporal[self.win_num]
+        shuffled_fpr_spatial = self.shuffled_fpr_spatial[self.win_num]
+        hist_data = self.hist_data[self.win_num]        
 
         self.figure.clf()
         num_plots = [self.temporal, self.spatial, self.chkbox_show_z_score.isChecked()].count(True)
@@ -531,9 +500,6 @@ class VisualizeShuffledAdvanced(QWidget):
                 # Separate the cells by color
                 for key, value in shuffled_hist_data.items():
                     target_axes.hist(value, bins=30, color=cell_to_color[key], alpha=0.7, edgecolor='black', label=f"Cell {key}")
-
-            # Save histogram data to later copy to clipboard
-            self.hist_data = {}   
             # Keep track of the values so in case of overlap we shift the text
             used_values = {}
             for unit_id, point in zip(fpr_temporal.keys(), self.values_to_list(hist_data)):
@@ -647,6 +613,85 @@ class VisualizeShuffledAdvanced(QWidget):
         self.figure.tight_layout()
         self.canvas.draw()
 
+    def precompute_metrics(self):
+        """
+        Precompute the metrics for both z-score and histogram data.
+        """
+        num_windows = next(iter(self.fpr_values_base.values()))[0].shape[0]
+
+        # Get the data for the window number
+        fpr_temporal = {}
+        fpr_spatial = {}
+        shuffled_fpr_temporal = {}
+        shuffled_fpr_spatial = {}
+        shuffled_hist_data = {}
+        hist_data = {}
+        z_scores = {}
+
+        progress_window = ProgressWindow(total_steps=num_windows, text="Precomputing Metrics")
+        progress_window.show()
+
+        for i in range(num_windows):
+            fpr_temporal[i+1] = {}
+            fpr_spatial[i+1] = {}
+            shuffled_fpr_temporal[i+1] = []
+            shuffled_fpr_spatial[i+1] = []
+            shuffled_hist_data[i+1] = {}
+            hist_data[i+1] = {}
+            for key, value in self.fpr_values_base.items():
+                target_cell = key[0]
+                if target_cell not in fpr_temporal[i+1]:
+                    fpr_temporal[i+1][target_cell] = []
+                if target_cell not in fpr_spatial[i+1]:
+                    fpr_spatial[i+1][target_cell] = []
+                fpr_temporal[i+1][target_cell].append(value[0][i].item())
+                fpr_spatial[i+1][target_cell].append(value[1])
+        
+            
+            for key, value in fpr_temporal[i+1].items():
+                hist_data[i+1][key] = np.mean(value)
+            
+
+            for shuffled_fpr in self.shuffled_fprs:
+                local_fpr_temporal = {}
+                local_fpr_spatial = {}
+                for key, value in shuffled_fpr.items():
+                    target_cell = key[0]
+                    if target_cell not in local_fpr_temporal:
+                        local_fpr_temporal[target_cell] = []
+                    if target_cell not in local_fpr_spatial:
+                        local_fpr_spatial[target_cell] = []
+                    local_fpr_temporal[target_cell].append(value[0][i].item())
+                    local_fpr_spatial[target_cell].append(value[1])
+                shuffled_fpr_temporal[i+1].append(local_fpr_temporal)
+                shuffled_fpr_spatial[i+1].append(local_fpr_spatial)
+                
+            shuffled_hist_data[i+1] = {}
+            for shuffled_fpr_temporal_local in shuffled_fpr_temporal[i+1]:
+                for key, value in shuffled_fpr_temporal_local.items():
+                    if key not in shuffled_hist_data[i+1]:
+                        shuffled_hist_data[i+1][key] = []
+                    shuffled_hist_data[i+1][key].append(np.mean(value))
+
+            mean_shuffled = {cell_id: np.mean(self.values_to_list(shuffled_hist_data[i+1])) for cell_id in hist_data[i+1].keys()}
+            std_shuffled = {cell_id: np.std(self.values_to_list(shuffled_hist_data[i+1])) for cell_id in hist_data[i+1].keys()}
+            for key, value in hist_data[i+1].items():
+                if key not in z_scores:
+                    z_scores[key] = []
+                z_scores[key].append((value - mean_shuffled[key]) / std_shuffled[key])
+
+            progress_window.update_progress(i + 1)
+
+        self.global_z_score = z_scores
+        self.fpr_temporal = fpr_temporal
+        self.fpr_spatial = fpr_spatial
+        self.shuffled_fpr_temporal = shuffled_fpr_temporal
+        self.shuffled_fpr_spatial = shuffled_fpr_spatial
+        self.hist_data = hist_data
+        self.shuffled_hist_data = shuffled_hist_data
+        progress_window.close()
+
+
     def values_to_list(self, data):
         """
         Convert a dictionary of values to a list.
@@ -660,83 +705,96 @@ class VisualizeShuffledAdvanced(QWidget):
         """
         return f"{self.name} - Target Cells: {self.target_cells} - All Cells: {self.all_cells}"
 
-    def calculate_z_score(self):
-        """
-        This function will iterate through all the windows and calculate the Z-Score for each cell in each window.
-        """
-
-        # Get the number of windows from the first key
-        num_windows = next(iter(self.fpr_values_base.values()))[0].shape[0]
-        z_scores = {}
-
-        progress_window = ProgressWindow(total_steps=num_windows, text="Calculating Z-Scores")
-        progress_window.show()
-
-        for i in range(num_windows):
-            fpr_temporal = {}
-            for key, value in self.fpr_values_base.items():
-                target_cell = key[0]
-                if target_cell not in fpr_temporal:
-                    fpr_temporal[target_cell] = []
-                fpr_temporal[target_cell].append(value[0][i].item())
-            
-            hist_data = {}
-            for key, value in fpr_temporal.items():
-                hist_data[key] = np.mean(value)
-
-            # Very slow for now, should come up with a solution to speed this up
-            shuffled_fpr_temporal = []
-            for shuffled_fpr in self.shuffled_fprs:
-                local_fpr_temporal = {}
-                for key, value in shuffled_fpr.items():
-                    target_cell = key[0]
-                    if target_cell not in local_fpr_temporal:
-                        local_fpr_temporal[target_cell] = []
-                    local_fpr_temporal[target_cell].append(value[0][i].item())
-                shuffled_fpr_temporal.append(local_fpr_temporal)
-                
-            shuffled_hist_data = {}
-            for shuffled_fpr_temporal_local in shuffled_fpr_temporal:
-                for key, value in shuffled_fpr_temporal_local.items():
-                    if key not in shuffled_hist_data:
-                        shuffled_hist_data[key] = []
-                    shuffled_hist_data[key].append(np.mean(value))
-            
-            mean_shuffled = {cell_id: np.mean(self.values_to_list(shuffled_hist_data)) for cell_id in hist_data.keys()}
-            std_shuffled = {cell_id: np.std(self.values_to_list(shuffled_hist_data)) for cell_id in hist_data.keys()}
-            for key, value in hist_data.items():
-                if key not in z_scores:
-                    z_scores[key] = []
-                z_scores[key].append((value - mean_shuffled[key]) / std_shuffled[key])
-
-            progress_window.update_progress(i + 1)
-            if progress_window.isHidden():
-                return None
-        
-        return z_scores
-
     def copy_to_clipboard(self):
         '''
         Copy the data from the table to the clipboard.
         The copy format will look something like this:
+        For each Cell A
         Cell A | 2
         Cell Bs | 3 4 5 ...
         # of Cell Bs | 3
         Shuffling Type | Temporal, Spatial, Temporal + Spatial
-        Original Data Z Score | 2.3
-        Original data value | 0.2
         For each time window:
         Window Number | 1
         Then there will be two columns, one for the binned FPR value and the other for the # of cells in that bin
-        FPR range | # of cell Bs
-
-        All of the above data can be extracted from the matplotlib plot
+        Distance | FPR
         '''
+        copy_lines = []
+    
+        # Process each target cell separately
+        for cell_id in self.target_cells:
+            cell_block = []
+            # Use tab separation for cells (not a literal comma)
+            cell_block.append(f"Cell A:\t{cell_id}")
+            
+            # Build list of comparison cells (Cell Bs)
+            comparison_cells = [str(cell) for cell in self.all_cells if cell != cell_id]
+            cell_block.append(f"Cell Bs:\t{' '.join(comparison_cells)}")
+            cell_block.append(f"# of Cell Bs:\t{len(comparison_cells)}")
+            
+            # Determine shuffling type
+            shuffling_type = ""
+            if self.temporal:
+                shuffling_type += "Temporal"
+            if self.spatial:
+                shuffling_type += (" + " if shuffling_type else "") + "Spatial"
+            cell_block.append(f"Shuffling Type:\t{shuffling_type}")
+            
+            # Blank line to separate cell info from window data
+            cell_block.append("")
+            
+            # ---- Arrange window data side-by-side ----
+            # Assume self.fpr_spatial and self.fpr_temporal are dicts keyed by window number.
+            windows = sorted(self.fpr_spatial.keys())
+            
+            # Gather per-window (distance, FPR) pairs for the current cell and track maximum rows
+            window_data = {}
+            max_rows = 0
+            for win in windows:
+                dists = self.fpr_spatial[win][cell_id]
+                fprs  = self.fpr_temporal[win][cell_id]
+                pairs = list(zip(dists, fprs))
+                window_data[win] = pairs
+                if len(pairs) > max_rows:
+                    max_rows = len(pairs)
+            
+            # Build header row for windows: two columns per window plus an extra gap column.
+            header_parts = []
+            for win in windows:
+                header_parts.append(f"Window {win} - Distance")
+                header_parts.append(f"Window {win} - FPR")
+                header_parts.append("")  # extra gap column
+            cell_block.append("\t".join(header_parts))
+            
+            # Build data rows: one row per index up to max_rows.
+            for i in range(max_rows):
+                row_parts = []
+                for win in windows:
+                    pairs = window_data[win]
+                    if i < len(pairs):
+                        dist, fpr = pairs[i]
+                        row_parts.append(str(dist))
+                        row_parts.append(str(fpr))
+                    else:
+                        row_parts.append("")
+                        row_parts.append("")
+                    row_parts.append("")  # gap column between windows
+                cell_block.append("\t".join(row_parts))
+            
+            # Add a couple of blank lines to separate blocks for different cells.
+            cell_block.append("")
+            cell_block.append("")
+            
+            copy_lines.extend(cell_block)
+        
+        # Join all lines into a single string and copy it to the clipboard.
+        copy_string = "\n".join(copy_lines)
         clipboard = QApplication.clipboard()
-        text = []
+        clipboard.setText(copy_string)
 
-        #for cell_a in 
 
+            
+            
 
     def closeEvent(self, event):
         self.closed.emit()
