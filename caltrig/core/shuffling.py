@@ -786,7 +786,84 @@ class VisualizeShuffledAdvanced(QWidget):
             cell_block.append("")
             
             copy_lines.extend(cell_block)
-        
+
+        # Shuffled data
+        # It will keep the same format as above except we will have a new line for each shuffled data
+        copy_lines.append("Shuffled Data:")
+        copy_lines.append("")
+        for i in range(len(self.shuffled_fprs)):
+            copy_lines.append(f"Shuffled Data {i+1}:")
+            copy_lines.append("")
+            # Process each target cell separately
+            for cell_id in self.target_cells:
+                cell_block = []
+                # Use tab separation for cells (not a literal comma)
+                cell_block.append(f"Cell A:\t{cell_id}")
+                
+                # Build list of comparison cells (Cell Bs)
+                comparison_cells = [str(cell) for cell in self.all_cells if cell != cell_id]
+                cell_block.append(f"Cell Bs:\t{' '.join(comparison_cells)}")
+                cell_block.append(f"# of Cell Bs:\t{len(comparison_cells)}")
+                
+                # Determine shuffling type
+                shuffling_type = ""
+                if self.temporal:
+                    shuffling_type += "Temporal"
+                if self.spatial:
+                    shuffling_type += (" + " if shuffling_type else "") + "Spatial"
+                cell_block.append(f"Shuffling Type:\t{shuffling_type}")
+                
+                # Blank line to separate cell info from window data
+                cell_block.append("")
+                
+                # ---- Arrange window data side-by-side ----
+                # Assume self.fpr_spatial and self.fpr_temporal are dicts keyed by window number.
+                windows = sorted(self.fpr_spatial.keys())
+                
+                # Gather per-window (distance, FPR) pairs for the current cell and track maximum rows
+                window_data = {}
+                max_rows = 0
+                for win in windows:
+                    dists = self.shuffled_fpr_spatial[win][i][cell_id]
+                    fprs  = self.shuffled_fpr_temporal[win][i][cell_id]
+                    pairs = list(zip(dists, fprs))
+                    window_data[win] = pairs
+                    if len(pairs) > max_rows:
+                        max_rows = len(pairs)
+                
+                
+                # Build header row for windows: two columns per window plus an extra gap column.
+                header_parts = []
+                for win in windows:
+                    header_parts.append(f"Window {win} - Distance")
+                    header_parts.append(f"Window {win} - FPR")
+                    header_parts.append("")
+                
+                cell_block.append("\t".join(header_parts))
+
+                for j in range(max_rows):
+                    row_parts = []
+                    for win in windows:
+                        pairs = window_data[win]
+                        if j < len(pairs):
+                            dist, fpr = pairs[j]
+                            row_parts.append(str(dist))
+                            row_parts.append(str(fpr))
+                        else:
+                            row_parts.append("")
+                            row_parts.append("")
+                        row_parts.append("")
+                
+                    cell_block.append("\t".join(row_parts))
+                
+                cell_block.append("")
+                cell_block.append("")
+
+                copy_lines.extend(cell_block)
+
+
+
+
         # Join all lines into a single string and copy it to the clipboard.
         copy_string = "\n".join(copy_lines)
         clipboard = QApplication.clipboard()
