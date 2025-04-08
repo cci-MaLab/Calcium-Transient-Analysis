@@ -6,6 +6,7 @@ Welcome to CalTrig Documentation!
 
    Before_you_start
    Overview
+   Appendix
 
 .. toctree:: 
    :maxdepth: 1
