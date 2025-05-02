@@ -16,9 +16,10 @@ import math
 import pickle
 
 class CurrentVisualizationData():
-    def __init__(self, data, max_height, start_frame, end_frame, x_start, x_end, y_start, y_end, scaling_factor=10):
+    def __init__(self, data, max_height, min_height, start_frame, end_frame, x_start, x_end, y_start, y_end, scaling_factor=10):
         self.data = data
-        self.max_height = max_height
+        self.max_height = round_away_from_zero(max_height, 1)
+        self.min_height = round_away_from_zero(min_height, 1)
         self.start_frame = start_frame
         self.end_frame = end_frame
         self.x_start = x_start
@@ -130,20 +131,16 @@ def base_visualization(serialized_data, start_frame=0, end_frame=50):
         name = name + "_averaged" if average else name
         if name in precalculated_values:
             xr_data = precalculated_values[name]
-            max_height = xr_data.max().values
             signal = xr_data.sel(unit_id=ids).sel(frame=slice(start_frame, end_frame-1))
         else:
             xr_data = calculate_windowed_data(session, precalculated_values, data_type, window_size,
                                               cumulative=cumulative, normalize=normalize, average=average, name=name)
             precalculated_values[name] = xr_data
-            max_height = xr_data.max().values
             signal = xr_data.sel(unit_id=ids).sel(frame=slice(start_frame, end_frame-1))
     else:
         if data_type in session.data:
-            max_height = session.data[data_type].max().values
             signal = session.data[data_type].sel(frame=slice(start_frame, end_frame-1)) # -1 since it is inclusive
         else:
-            max_height = precalculated_values[data_type].max().values
             signal = precalculated_values[data_type].sel(frame=slice(start_frame, end_frame-1)) # -1 since it is inclusive
         signal = signal.sel(unit_id=ids)
     if smoothing_size != 1:
@@ -164,11 +161,12 @@ def base_visualization(serialized_data, start_frame=0, end_frame=50):
     A = A[:, y_start:y_end, x_start:x_end]
 
     Y = np.tensordot(signal, A, axes=([0], [0])).swapaxes(1, 2) # In order to maintain parity with the 2D visualization
-
+    max_height = Y.max()
+    min_height = Y.min()
     #Since we swapped the axes we need to swap the x and y values
     x_start, x_end, y_start, y_end = y_start, y_end, x_start, x_end
     
-    CV = CurrentVisualizationData(Y, max_height, start_frame, end_frame, x_start, x_end, y_start, y_end)
+    CV = CurrentVisualizationData(Y, max_height, min_height, start_frame, end_frame, x_start, x_end, y_start, y_end)
     centroids = session.centroids_max
     # Include only the ones that rea in ids
     centroids = {id: centroids[id] for id in ids}
@@ -541,7 +539,8 @@ class VisualizationWidget(QtInteractor):
         self.cells = None
 
         # Instantiate PyVista scene
-        self.scalar_range = (0, 50)
+        self.scalar_range = (-0.1, 1)
+        self.ranges_changed = False
         self.background_color = 'black'
         self.points_3d = None
         self.cmap = "fire"
@@ -566,8 +565,17 @@ class VisualizationWidget(QtInteractor):
         
     def set_data(self, visualization_data):
         self.visualization_data = visualization_data * self.scaling_factor
+        self.readjust_ranges()
         self.reset_grid()
         self.cell_id_to_index = self.visualization_data.cell_id_to_index
+
+    def readjust_ranges(self):
+        min_height = self.visualization_data.min_height if self.visualization_data.min_height < self.scalar_range[0] else self.scalar_range[0]
+        max_height = self.visualization_data.max_height if self.visualization_data.max_height > self.scalar_range[1] else self.scalar_range[1]
+        new_scalar_range = (min(min_height, -0.1), max_height) # 0.01 to avoid the grid overlapping with the plane
+        if new_scalar_range != self.scalar_range:
+            self.scalar_range = new_scalar_range
+            self.ranges_changed = True
     
     def chunk_load(self, serialized_data, start_frame, end_frame):
         return self.executor.submit(self.visualization_generator, serialized_data, start_frame=start_frame, end_frame=end_frame)
@@ -578,7 +586,7 @@ class VisualizationWidget(QtInteractor):
         self.populate_3D_scene()
     
     def set_frame(self, frame=0):
-        self.check_frame(frame)       
+        self.check_frame(frame)  
         # Now we can set the frame
         frame_3d_data = self.visualization_data.get_3d_data(frame)
         frame_scalars = frame_3d_data["frame"].ravel(order='F')
@@ -589,6 +597,9 @@ class VisualizationWidget(QtInteractor):
         self.render()
 
         self.current_frame = frame
+        if self.ranges_changed:
+            self.change_colormap(self.cmap)
+            self.ranges_changed = False
 
     def check_frame(self, frame):
         """
@@ -619,36 +630,49 @@ class VisualizationWidget(QtInteractor):
                 else: # In range of the next chunk, we need to swap the current chunk with the next chunk and update the next chunk
                     self.visualization_data = self.visualization_data_buffered
                     self.visualization_data_buffered = self.chunk_load(self.serialized_data, next_chunk_start, next_chunk_start+self.chunk_size)
+            self.readjust_ranges()
 
     def change_colormap(self, name):
-        # Update the colormap for the plane (StructuredGrid)
         self.cmap = name
-        plane_lut = pv.LookupTable(cc.cm[name])  # Create a LookupTable for the plane
-        plane_lut.scalar_range = self.scalar_range  # Apply scalar range
+        plane_lut = pv.LookupTable(cc.cm[name], n_values=256)
+        actual_min = self.scalar_range[0] * self.scaling_factor
+        actual_max = self.scalar_range[1] * self.scaling_factor
+        plane_lut.scalar_range = (actual_min, actual_max)
+
+        n_ticks = 5
+        ticks = np.linspace(actual_min, actual_max, n_ticks)
+        plane_lut.annotations = {
+            float(t): f"{(t / self.scaling_factor):.0f}"
+            for t in ticks
+        }
 
         mapper = None
-        for actor_name in self.actors.keys():
+        for actor_name, actor in self.actors.items():
             if "Grid" in actor_name:
-                mapper = self.actors[actor_name].GetMapper()
+                mapper = actor.GetMapper()
                 mapper.SetLookupTable(plane_lut)
-                mapper.SetScalarRange(self.scalar_range)
+                mapper.SetScalarRange(actual_min, actual_max)
                 break
 
+        for name in list(self.scalar_bars.keys()):
+            self.remove_scalar_bar(name)
 
-
-        # Update the scalar bar for the plane
-        for scalar_bar_name in list(self.scalar_bars.keys()):
-            self.remove_scalar_bar(scalar_bar_name)
-        self.add_scalar_bar(
+        bar_actor = self.add_scalar_bar(
             title='Spike Intensity',
             color='white',
             shadow=True,
-            n_labels=5,
-            fmt='%.0f',
+            n_labels=n_ticks,
             mapper=mapper,
         )
+
+        bar_actor.DrawTickLabelsOff()
+
         shape = self.visualization_data.get_shape() 
-        self.show_grid(bounds=(0, shape["x"], 0, shape["y"], -20, 150), color='white')
+        self.show_grid(
+            bounds=(0, shape["x"], 0, shape["y"], actual_min, actual_max),
+            axes_ranges=(0, shape["x"], 0, shape["y"], self.scalar_range[0], self.scalar_range[1]),
+            color='white'
+        )
         self.render()
 
     def change_func(self, func, **kwargs):
@@ -659,6 +683,7 @@ class VisualizationWidget(QtInteractor):
         chunk_start = self.current_frame - self.current_frame % self.chunk_size
 
         self._update_serialize_data()
+        self.scalar_range = (-0.1, 1)
         self.set_data(self.visualization_generator(self.serialized_data, start_frame=chunk_start, end_frame=chunk_start+self.chunk_size))
         self.set_frame(self.current_frame)  
 
@@ -809,7 +834,8 @@ class VisualizationWidget(QtInteractor):
 
         # Reset the gridlines
         shape = self.visualization_data.get_shape() 
-        self.show_grid(bounds=(0, shape["x"], 0, shape["y"], -20, 150), color='white')
+        self.show_grid(bounds=(0, shape["x"], 0, shape["y"], self.scalar_range[0] * self.scaling_factor, self.scalar_range[1] * self.scaling_factor),
+                       axes_ranges=(0, shape["x"], 0, shape["y"], self.scalar_range[0], self.scalar_range[1]), color='white')
         self.render()
 
     def remove_cofiring(self, check_params=None):
@@ -820,7 +846,8 @@ class VisualizationWidget(QtInteractor):
             self.remove_arrow(ids)
         self.arrows = {"params": ""}
         shape = self.visualization_data.get_shape() 
-        self.show_grid(bounds=(0, shape["x"], 0, shape["y"], -20, 150), color='white')
+        self.show_grid(bounds=(0, shape["x"], 0, shape["y"], self.scalar_range[0] * self.scaling_factor, self.scalar_range[1] * self.scaling_factor),
+                       axes_ranges=(0, shape["x"], 0, shape["y"], self.scalar_range[0], self.scalar_range[1]), color='white')
         self.render()
 
     def closeEvent(self, event):
