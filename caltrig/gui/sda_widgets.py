@@ -841,7 +841,8 @@ class VisualizationAdvancedWidget(QtInteractor):
 
         # Create an empty grid
         x, y = np.meshgrid(np.arange(100), np.arange(100))
-        z = np.zeros_like(x)
+        x, y = x.astype(np.float32), y.astype(np.float32)
+        z = np.zeros_like(x, dtype=np.float32)
         self.grid = pv.StructuredGrid(x, y, z)
         self.add_mesh(self.grid, scalar_bar_args=None, pickable=False)
         self.background_color = 'black'
