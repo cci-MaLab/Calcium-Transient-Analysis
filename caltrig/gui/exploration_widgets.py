@@ -1622,6 +1622,7 @@ class CaltrigWidget(QWidget):
         self.cofiring_individual_cell_list.clear()
 
     def update_cofiring_window(self, reset_list=True):
+        self.update_precalculated_values() # In case E has changed
         window_size = int(self.cofiring_window_size.text())
         visualize_cofiring = self.cofiring_chkbox.isChecked()
 
@@ -1729,7 +1730,19 @@ class CaltrigWidget(QWidget):
             self.dropdown_3D_data_types.clear()
             self.dropdown_3D_data_types.addItems(["C", "DFF", "Transient Count"])
 
+    def update_precalculated_values(self):
+        """
+        In the case that the E matrix has changed we need to update the precalculated values
+        for both advanced and normal visualization.
+        """
+        if self.session.changed_events:
+            self.visualization_3D.update_precalculated_values()
+            self.visualization_3D_advanced.update_precalculated_values()
+            self.session.changed_events = False
+        
+
     def visualize_3D(self):
+        self.update_precalculated_values() # In case E has changed
         visualization_function = self.dropdown_3D_functions.currentText()
         visualization_type = self.dropdown_3D_data_types.currentText()
         scaling = self.slider_3D_scaling.value()
@@ -1759,6 +1772,7 @@ class CaltrigWidget(QWidget):
         self.visualization_3D.remove_cofiring()
 
     def visualize_3D_advanced(self):
+        self.update_precalculated_values() # In case E has changed
         window_size = int(self.input_3D_advanced_window_size.text())
         statistic = self.dropdown_3D_advanced_readout.currentText()
         fpr = self.dropdown_3D_advanced_fpr.currentText()
@@ -3464,6 +3478,7 @@ class CaltrigWidget(QWidget):
         First step is to extract the cell ids that are needed to be shuffled, then we
         pass all other relevant parameters to the shuffling function.
         """
+        self.update_precalculated_values() # In case E has changed
         # First check if either temporal or spatial shuffling is selected
         if not (self.chkbox_shuffle_temporal.isChecked() or self.chkbox_shuffle_spatial.isChecked()):
             return
@@ -3511,7 +3526,7 @@ class CaltrigWidget(QWidget):
         """
         Initialize advanced shuffling based on the values provided in the FPR tools section
         """
-
+        self.update_precalculated_values() # In case E has changed
         # First check if either temporal or spatial shuffling is selected
         if not (self.visualization_3D_advanced_shuffle_spatial.isChecked() or self.visualization_3D_advanced_shuffle_temporal.isChecked()):
             return

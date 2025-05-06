@@ -541,6 +541,7 @@ class DataInstance:
         self.distance_metric = 'euclidean'
         self.missed_signals = {}
         self.load_events(self.events_type)
+        self.changed_events = False # This is necessary to in the case of recalculating values for sda_widgets
         self.noise_values = {}
         self.cell_ids_to_groups = {} # This differs from self.group as it is used for preselected groups by the user
         # Create the default image
@@ -1282,12 +1283,14 @@ class DataInstance:
         E.loc[dict(unit_id=unit_id)] = new_e
         # Now save the E array to disk
         overwrite_xarray(E, self.cnmf_path)
+        self.changed_events = True
     
     def clear_E(self, unit_id):
         E = self.data['E']
         E.load()
         E.loc[dict(unit_id=unit_id)] = 0
         overwrite_xarray(E, self.cnmf_path)
+        self.changed_events = True
 
     def backup_data(self, name: str):
         """
@@ -1317,6 +1320,7 @@ class DataInstance:
             events[x_values] = 0          
             E.loc[dict(unit_id=unit_id)] = events
         overwrite_xarray(E, self.cnmf_path)
+        self.changed_events = True
 
     def add_to_E(self, add_selected_events_local: Dict[int, List[int]]):
         E = self.data['E']
@@ -1326,12 +1330,7 @@ class DataInstance:
             events[x_values] = 1          
             E.loc[dict(unit_id=unit_id)] = events
         overwrite_xarray(E, self.cnmf_path)
-    
-    def save_E(self):
-        """
-        Save the E array to disk
-        """
-        overwrite_xarray(self.data['E'], self.cnmf_path)
+        self.changed_events = True
 
     def reject_cells(self, cells: List[int]):
         """

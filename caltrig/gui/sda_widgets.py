@@ -517,7 +517,7 @@ class VisualizationWidget(QtInteractor):
         self.current_frame = 0
         self.kwargs_func = {}
         self.selected_cells = []
-        self.precalculated_values = _precalculate(self.session)
+        self.precalculated_values = self.update_precalculated_values()
         # We need to serialize the data so we can speed up the process of submit a process to the executor
         self._update_serialize_data()
         
@@ -546,6 +546,9 @@ class VisualizationWidget(QtInteractor):
         self.cmap = "fire"
         self.arrows = {"params": ""}
         self.populate_3D_scene()
+
+    def update_precalculated_values(self):
+        self.precalculated_values = _precalculate(self.session)
 
     def populate_3D_scene(self):
         shape = self.visualization_data.get_shape()
@@ -878,6 +881,9 @@ class VisualizationAdvancedWidget(QtInteractor):
         self.grid_bounds = (0, 100, 0, 100, -5, 80)
         self.change_colormap('fire')
         self.session = session
+        self.update_precalculated_values()
+
+    def update_precalculated_values(self):
         self.precalculated_values = _precalculate(self.session)
 
     def change_colormap(self, name=None):
