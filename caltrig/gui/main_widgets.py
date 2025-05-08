@@ -1,12 +1,171 @@
 from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout, QWidget,
                             QCheckBox, QGridLayout, QFrame, QGraphicsView, QGraphicsScene, QPushButton, 
-                            QComboBox, QMainWindow, QSpacerItem, QBoxLayout, QSizePolicy)
+                            QComboBox, QMainWindow, QSpacerItem, QBoxLayout, QSizePolicy, QFileDialog)
 from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QImage, QPixmap)
 from PyQt5.QtCore import (Qt)
 import bisect
+import os
 from ..core.backend import DataInstance
 
 from ..core.genetic_algorithm import Genetic_Algorithm
+
+
+class ConfigFileDialog(QDialog):
+    """
+    Dialog to generate a new config file.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Generate Config File")
+        self.setMinimumWidth(600)
+
+        self.current_folder = None
+
+        layout = QVBoxLayout()
+        
+        # Create form layout for input fields
+        form_layout = QGridLayout()
+        
+        # Mouse ID
+        mouse_label = QLabel("Mouse ID:")
+        self.mouse_input = QLineEdit()
+        form_layout.addWidget(mouse_label, 0, 0)
+        form_layout.addWidget(self.mouse_input, 0, 1)
+        
+        # Day
+        day_label = QLabel("Day:")
+        self.day_input = QLineEdit()
+        form_layout.addWidget(day_label, 1, 0)
+        form_layout.addWidget(self.day_input, 1, 1)
+        
+        # Session
+        session_label = QLabel("Session:")
+        self.session_input = QLineEdit()
+        form_layout.addWidget(session_label, 2, 0)
+        form_layout.addWidget(self.session_input, 2, 1)
+        
+        # Group (Optional)
+        group_label = QLabel("Group (Optional):")
+        self.group_input = QLineEdit()
+        form_layout.addWidget(group_label, 3, 0)
+        form_layout.addWidget(self.group_input, 3, 1)
+        
+        # Data Path
+        self.data_input = QLineEdit()
+        self.data_button = QPushButton("Choose Data Folder")
+        self.data_button.clicked.connect(self.browse_data_folder)
+        form_layout.addWidget(self.data_input, 4, 1)
+        form_layout.addWidget(self.data_button, 4, 0)
+        
+        # Video Path
+        self.video_input = QLineEdit()
+        self.video_button = QPushButton("Choose Video Folder")
+        self.video_button.clicked.connect(self.browse_video_folder)
+        form_layout.addWidget(self.video_input, 5, 1)
+        form_layout.addWidget(self.video_button, 5, 0)
+        
+        # Behavior Path
+        self.behavior_input = QLineEdit()
+        self.behavior_button = QPushButton("Choose Behavior File")
+        self.behavior_button.clicked.connect(self.browse_behavior_file)
+        form_layout.addWidget(self.behavior_input, 6, 1)
+        form_layout.addWidget(self.behavior_button, 6, 0)
+        
+        layout.addLayout(form_layout)
+        
+        # Add OK and Cancel buttons
+        QBtn = QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        self.buttonBox = QDialogButtonBox(QBtn)
+        self.buttonBox.accepted.connect(self.generate_config_file)
+        self.buttonBox.rejected.connect(self.reject)
+        layout.addWidget(self.buttonBox)
+        
+        self.setLayout(layout)
+    
+    def browse_data_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select Data Folder", self.current_folder)
+        if folder:
+            self.data_input.setText(folder)
+            self.current_folder = folder
+    
+    def browse_video_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select Video Folder", self.current_folder)
+        if folder:
+            self.video_input.setText(folder)
+            self.current_folder = folder
+    
+    def browse_behavior_file(self):
+        file, _ = QFileDialog.getOpenFileName(self, "Select Behavior File", self.current_folder, "CSV Files (*.csv);;All Files (*)")
+        if file:
+            self.behavior_input.setText(file)
+            # Remove the file path from the current folder to avoid confusion
+            self.current_folder = os.path.dirname(self.current_folder)
+            
+    def get_config_data(self):
+        """Returns the configuration data as a dictionary"""
+        day = f"D{self.day_input.text()}" if self.day_input.text() and not self.day_input.text().startswith("D") else self.day_input.text()
+        session = f"S{self.session_input.text()}" if self.session_input.text() and not self.session_input.text().startswith("S") else self.session_input.text()
+        return {
+            "mouse_id": self.mouse_input.text(),
+            "day": day,
+            "session": session,
+            "group": self.group_input.text(),
+            "data_path": self.data_input.text(),
+            "video_path": self.video_input.text(),
+            "behavior_path": self.behavior_input.text()
+        }
+    
+    def generate_config_file(self):
+        config_data = self.get_config_data()
+        for key, value in config_data.items():
+            if not value and not key == "group":
+                self.show_error_message(f"{key.replace('_', ' ').capitalize()} cannot be empty.")
+                return
+        
+        # Create the confid file in the same directory as where the script is run
+        path_name = f"{config_data['mouse_id']}_{config_data['day']}_{config_data['session']}.ini"
+        path_name = path_name + config_data["group"] if config_data["group"] else path_name
+        config_file_path = os.path.join(os.getcwd(), path_name)
+        # Open the file in write mode
+        with open(config_file_path, "w") as config_file:
+            config_file.write("[Session_Info]\n")
+            # Write the configuration data to the file
+            for key, value in config_data.items():
+                if key == "group":
+                    if not value:
+                        config_file.write(f"{key} = None\n")
+                        continue
+                config_file.write(f"{key} = {value}\n")
+    
+        # Show success message
+        self.show_success_message(f"Config file generated: {path_name}")
+        
+        self.accept()
+    
+    def show_error_message(self, message):
+        error_dialog = QDialog(self)
+        error_dialog.setWindowTitle("Error")
+        error_layout = QVBoxLayout()
+        error_label = QLabel(message)
+        error_layout.addWidget(error_label)
+        error_button = QPushButton("OK")
+        error_button.clicked.connect(error_dialog.accept)
+        error_layout.addWidget(error_button)
+        error_dialog.setLayout(error_layout)
+        error_dialog.exec_()
+    
+    def show_success_message(self, message):
+        success_dialog = QDialog(self)
+        success_dialog.setWindowTitle("Success")
+        success_layout = QVBoxLayout()
+        success_label = QLabel(message)
+        success_layout.addWidget(success_label)
+        success_button = QPushButton("OK")
+        success_button.clicked.connect(success_dialog.accept)
+        success_layout.addWidget(success_button)
+        success_dialog.setLayout(success_layout)
+        success_dialog.exec_()
+
 
 
 class ParamDialog(QDialog):
@@ -1013,3 +1172,5 @@ class GridQLabel(QLabel):
         self.setBaseSize(300,300)
         self.setStyleSheet("font-size: 14pt;")
         self.setLineWidth(2)
+
+

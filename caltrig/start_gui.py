@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QStyle, QFileDialog, QMe
                             QVBoxLayout, QHBoxLayout, QWidget, QTabWidget)
 from PyQt5.QtGui import QIcon
 from caltrig.gui.main_widgets import (UpdateDialog, ParamDialog, VisualizeInstanceWidget, Viewer, ClusteringToolWidget,
-                            GAToolWidget, CaltrigToolWidget, SDAToolWidget)
+                            GAToolWidget, CaltrigToolWidget, SDAToolWidget, ConfigFileDialog)
 
 from .gui.genetic_algorithm_widgets import GAWindowWidget,GAGenerationScoreWindowWidget
 from .gui.exploration_widgets import CaltrigWidget
@@ -63,12 +63,16 @@ class MainWindow(QMainWindow):
         button_update = QAction(self.style().standardIcon(pixmapi_update), "&Update Default Parameters", self)
         button_update.setStatusTip("Update the default parameters of the events")
         button_update.triggered.connect(self.update_defaults)
+        button_generate_ini = QAction(self.style().standardIcon(pixmapi_update), "&Generate INI File", self)
+        button_generate_ini.setStatusTip("Generate INI File")
+        button_generate_ini.triggered.connect(self.generate_ini_file)
         menu = self.menuBar()
         file_menu = menu.addMenu("&File")
         file_menu.addAction(button_folder)
         file_menu.addAction(button_save)
         file_menu.addAction(button_load)
         file_menu.addAction(button_update)
+        file_menu.addAction(button_generate_ini)
 
         # Tool Widgets        
         self.current_selection = None
@@ -170,6 +174,14 @@ class MainWindow(QMainWindow):
             return
         self.event_defaults = result
         self.cl_tools.update_defaults(self.event_defaults)
+
+    def generate_ini_file(self):
+        """
+        Opens a dialog to generate an INI file for the current selection.
+        """
+        config_dialog = ConfigFileDialog()
+        if config_dialog.exec():
+            pass
 
     def start_caltrig(self, current_selection=None):
         """
