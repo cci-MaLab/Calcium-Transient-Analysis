@@ -106,7 +106,7 @@ class ConfigFileDialog(QDialog):
         day = f"D{self.day_input.text()}" if self.day_input.text() and not self.day_input.text().startswith("D") else self.day_input.text()
         session = f"S{self.session_input.text()}" if self.session_input.text() and not self.session_input.text().startswith("S") else self.session_input.text()
         return {
-            "mouse_id": self.mouse_input.text(),
+            "mouseid": self.mouse_input.text(),
             "day": day,
             "session": session,
             "group": self.group_input.text(),
