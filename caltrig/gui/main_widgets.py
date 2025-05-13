@@ -123,8 +123,8 @@ class ConfigFileDialog(QDialog):
                 return
         
         # Create the confid file in the same directory as where the script is run
-        path_name = f"{config_data['mouseid']}_{config_data['day']}_{config_data['session']}.ini"
-        path_name = path_name + config_data["group"] if config_data["group"] else path_name
+        path_name = f"{config_data['mouseid']}_{config_data['day']}_{config_data['session']}"
+        path_name = f"{path_name}_{config_data["group"]}.ini" if config_data["group"] else f"{path_name}.ini"
         config_file_path = os.path.join(os.getcwd(), path_name)
         # Open the file in write mode
         with open(config_file_path, "w") as config_file:
