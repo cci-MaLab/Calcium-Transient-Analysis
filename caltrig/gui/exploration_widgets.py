@@ -839,10 +839,8 @@ class CaltrigWidget(QWidget):
         visualization_3D_advanced_shuffle_type_layout = QHBoxLayout()
         self.visualization_3D_advanced_shuffle_spatial = QCheckBox("Spatial")
         self.visualization_3D_advanced_shuffle_temporal = QCheckBox("Temporal")
-        self.visualization_3D_advanced_shuffle_anchor = QCheckBox("Anchor Temporal")
         visualization_3D_advanced_shuffle_type_layout.addWidget(self.visualization_3D_advanced_shuffle_spatial)
         visualization_3D_advanced_shuffle_type_layout.addWidget(self.visualization_3D_advanced_shuffle_temporal)
-        visualization_3D_advanced_shuffle_type_layout.addWidget(self.visualization_3D_advanced_shuffle_anchor)
         visualization_3D_advanced_shuffling_layout.addLayout(visualization_3D_advanced_shuffle_type_layout)
         btn_advanced_shuffling = QPushButton("Shuffle")
         btn_advanced_shuffling.clicked.connect(self.start_advanced_shuffling)
@@ -3555,10 +3553,7 @@ class CaltrigWidget(QWidget):
             params["spatial"] = True
         else:
             params["spatial"] = False
-        if self.visualization_3D_advanced_shuffle_anchor.isChecked():
-            params["anchor"] = True
-        else:
-            params["anchor"] = False 
+        params["anchor"] = True
         
 
         params["shuffling"] = {}
