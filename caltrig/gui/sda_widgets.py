@@ -248,14 +248,14 @@ def calculate_windowed_data(session, precalculated_values, data_type, window_siz
     return xr.DataArray(data, coords=[unit_ids, np.arange(E.shape[1])], dims=['unit_id', 'frame'], name=name)
 
 def calculate_single_value_windowed_data(session, precalculated_values, readout, window_size, name=""):
+    unit_ids = list(precalculated_values['transient_info'].keys())
     E = session.data['E']
-    unit_ids = E.unit_id.values
+    no_of_bins = int(np.ceil(E.shape[1]/window_size))
 
     data = []
     for unit_id in unit_ids:
         unit_id_info = precalculated_values['transient_info'][unit_id]
         # Run through the unit_id_info and allocate the values to the respective bins
-        no_of_bins = int(np.ceil(E.shape[1]/window_size))
         window_bins = [[] for _ in range(no_of_bins)]
         for start, c_val, dff_val in zip(unit_id_info['frame_start'], unit_id_info['C_values'], unit_id_info['DFF_values']):
             match readout:
@@ -961,6 +961,21 @@ class VisualizationAdvancedWidget(QtInteractor):
         
         # 2.) Calculate the readout for each window
         sv_win_data = calculate_single_value_windowed_data(self.session, self.precalculated_values, readout, window_size)
+
+        # 2.1) Check if a_cells and b_cells are in sv_win_data
+        missing_cells = set()
+        for a_cell in a_cells:
+            if a_cell not in sv_win_data.coords['unit_id'].values:
+                missing_cells.add(a_cell)
+        
+        for b_cell in b_cells:
+            if b_cell not in sv_win_data.coords['unit_id'].values:
+                missing_cells.add(b_cell)
+        
+        if len(missing_cells) > 0:
+            print_error("Missing Transients", extra_info=f"The following cells have no registered transients: {missing_cells}\n" + 
+                         "Deselect the cells from the A Cell and B Cell list or register transients", severity=QMessageBox.Warning)
+            return None
 
         # 3.) Iterate through the a cells and b cells and calculate fpr
         a_to_b_fpr = calculate_fpr(a_cells, b_cells, sv_win_data, fpr)

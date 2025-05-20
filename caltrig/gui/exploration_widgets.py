@@ -1789,6 +1789,8 @@ class CaltrigWidget(QWidget):
                 b_cells.append(self.extract_id(item))
         
         win_size = self.visualization_3D_advanced.set_data(a_cells, b_cells, window_size, statistic, fpr)
+        if win_size is None:
+            return
         self.visualization_3D_advanced_slider.setRange(1, win_size)
         self.visualization_3D_advanced_slider.setValue(1)
         self.visualization_3D_advanced_slider.setVisible(True)
