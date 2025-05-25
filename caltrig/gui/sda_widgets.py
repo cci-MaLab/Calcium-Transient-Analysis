@@ -876,7 +876,9 @@ class VisualizationAdvancedWidget(QtInteractor):
         self.grid = pv.StructuredGrid(x, y, z)
         self.add_mesh(self.grid, scalar_bar_args=None, pickable=False)
         self.background_color = 'black'
-        self.scalar_range = (0, 10)
+        self.scalar_range = (0, 5)
+        self.ranges_changed = False
+        self.scaling_factor = 10
         self.data_grid = None
         self.grid_bounds = (0, 100, 0, 100, -5, 80)
         self.change_colormap('fire')
@@ -886,41 +888,87 @@ class VisualizationAdvancedWidget(QtInteractor):
     def update_precalculated_values(self):
         self.precalculated_values = _precalculate(self.session)
 
+    def update_scaling_factor(self, scaling):
+        """
+        Update the scaling factor for the visualization. This will change the z-axis of the grid.
+        """
+        self.scaling_factor = scaling
+        self.update_current_window(self.current_window+1)
+        self.change_colormap()
+
     def change_colormap(self, name=None):
         # Update the colormap for the plane (StructuredGrid)
         if name is not None:
             self.cmap = name
-        plane_lut = pv.LookupTable(cc.cm[self.cmap])  # Create a LookupTable for the plane
-        plane_lut.scalar_range = self.scalar_range  # Apply scalar range
+        
+        # Create a LookupTable for the plane
+        plane_lut = pv.LookupTable(cc.cm[self.cmap], n_values=256)
+        
+        # Scale the values for visual representation but keep original for display
+        actual_min = self.scalar_range[0] * self.scaling_factor
+        actual_max = self.scalar_range[1] * self.scaling_factor
+        
+        # Use scaled values for color mapping
+        plane_lut.scalar_range = (actual_min, actual_max)
+        
+        # Create annotations to show actual unscaled values
+        n_ticks = 5
+        ticks = np.linspace(actual_min, actual_max, n_ticks)
+        plane_lut.annotations = {
+            float(t): f"{(t / self.scaling_factor):.2f}"  # Convert back to unscaled for display
+            for t in ticks
+        }
 
+        # Apply to the grid
         mapper = None
         for actor_name in self.actors.keys():
             if "Grid" in actor_name:
                 mapper = self.actors[actor_name].GetMapper()
                 mapper.SetLookupTable(plane_lut)
-                mapper.SetScalarRange(self.scalar_range)
+                mapper.SetScalarRange(actual_min, actual_max)  # Use scaled range for colors
                 break
 
-
-
-        # Update the scalar bar for the plane
+        # Update the scalar bar
         for scalar_bar_name in list(self.scalar_bars.keys()):
             self.remove_scalar_bar(scalar_bar_name)
-        self.add_scalar_bar(
+        
+        bar_actor = self.add_scalar_bar(
             title='Intensity',
             color='white',
             shadow=True,
-            n_labels=5,
-            fmt='%.0f',
+            n_labels=n_ticks,
             mapper=mapper,
         )
-        self.reset_grid()
-
-    def reset_grid(self):
-        self.show_grid(bounds=self.grid_bounds, color='white')
+        
+        # Disable default tick labels since we use annotations
+        bar_actor.DrawTickLabelsOff()
+        
+        # The key part: separate visual scaling from displayed values
+        # Use SCALED values for bounds (visual) but UNSCALED for axes_ranges (display)
+        self.show_grid(
+            bounds=(self.grid_bounds[0], self.grid_bounds[1], 
+                    self.grid_bounds[2], self.grid_bounds[3], 
+                    actual_min - 0.1, actual_max),  # Use scaled values for visual bounds
+            axes_ranges=(self.grid_bounds[0], self.grid_bounds[1], 
+                        self.grid_bounds[2], self.grid_bounds[3], 
+                        self.scalar_range[0], self.scalar_range[1]),  # Use unscaled values for display
+            color='white'
+        )
+        
         self.render()
+        
 
-    def set_data(self, a_cells, b_cells, window_size, readout, fpr):
+    def readjust_ranges(self):
+        # Work with unscaled values
+        min_height = self.data_grid[self.current_window].min() if self.data_grid[self.current_window].min() < self.scalar_range[0] else self.scalar_range[0]
+        max_height = self.data_grid[self.current_window].max() if self.data_grid[self.current_window].max() > self.scalar_range[1] else self.scalar_range[1]
+        new_scalar_range = (min(min_height, -0.1), max_height)  # Use unscaled values
+        
+        if new_scalar_range != self.scalar_range:
+            self.scalar_range = new_scalar_range
+            self.ranges_changed = True
+
+    def set_data(self, a_cells, b_cells, window_size, readout, fpr, scaling = 10):
         """
         Set the data for the advanced visualization. This will be used to visualize
         the data in a 2D grid where the x and y axis are the cell ids and the color
@@ -940,8 +988,11 @@ class VisualizationAdvancedWidget(QtInteractor):
             The readout to calculate for each window, can be 'Event Count Frequency', 'Average DFF Peak', 'Total Dff'
         fpr : float
             The further processed readout for the readout. 
+        scaling : int
+            The scaling factor for the readout, by default 10. This changes the z-axis of the grid.
         """
-        scaling_factor = 10
+        self.scaling_factor = scaling
+        self.scalar_range = (0, 5)
         # 1.) Iterating through a cells, retrieve the footprint with the relative positions of cell bs
         a_b_relative_centers = {}
         x_start, x_end, y_start, y_end = 0, 0, 0, 0 # So we can constrain the grid to the smallest possible size
@@ -997,40 +1048,54 @@ class VisualizationAdvancedWidget(QtInteractor):
                         continue
                     relative_center = a_b_relative_centers[a_cell][b_cell]
                     x, y = center_x + relative_center[0], center_y + relative_center[1]
-                    value = gaussian_2d() * a_to_b_fpr[(a_cell, b_cell)].sel(window=win).values * scaling_factor
+                    value = gaussian_2d() * a_to_b_fpr[(a_cell, b_cell)].sel(window=win).values
                     grid[win, int(x-3):int(x+4), int(y-3):int(y+4)] = value
         
-        self.bin_size = window_size #Rename it to bin_size to not conflict with pyvista
-        self.data_grid = grid
+        self.bin_size = window_size
+        self.data_grid = grid  # Store UNSCALED data
         self.current_window = 0
 
         # Clear current grid
         self.clear()
         x, y = np.meshgrid(np.arange(grid.shape[1], dtype=np.float32), np.arange(grid.shape[2], dtype=np.float32))
-        self.grid = pv.StructuredGrid(x, y, grid[0].T)
-        self.grid["scalars"] = grid[0].T.ravel(order='F')
+        self.grid = pv.StructuredGrid(x, y, grid[0].T * self.scaling_factor)  # Apply scaling here
+        self.grid["scalars"] = (grid[0].T * self.scaling_factor).ravel(order='F')  # And here
         self.add_mesh(self.grid, scalar_bar_args=None, pickable=False)
 
         # Create the marker for the center
         marker = create_x_marker((center_x, center_y, 0), size=15.0, color="green", line_width=20)
         self.add_mesh(marker, color='green', pickable=False)
 
-        current_slice = grid[0]
-        slice_min, slice_max = current_slice.min(), current_slice.max()
-        self.scalar_range = (slice_min, slice_max)
-        self.grid_bounds = (0, grid.shape[1], 0, grid.shape[2], round_away_from_zero(slice_min)-5, round_away_from_zero(slice_max))
+        # Store both UNSCALED and SCALED range for proper display
+        unscaled_min, unscaled_max = grid[0].min(), grid[0].max()
+        self.scalar_range = (unscaled_min, unscaled_max)  # Unscaled for axis labels
+        
+        # Set bounds for the grid - use scaled values for visual height
+        self.grid_bounds = (0, grid.shape[1], 0, grid.shape[2], 
+                            unscaled_min * self.scaling_factor - 0.5, 
+                            unscaled_max * self.scaling_factor)
 
-
+        self.readjust_ranges()
         self.change_colormap()
         
         return self.bin_size
 
     def update_current_window(self, window):
         self.current_window = window-1
-        current_slice = self.data_grid[self.current_window]
-        self.grid.points[:,2] = current_slice.T.ravel(order='F')
-        self.grid["scalars"] = current_slice.T.ravel(order='F')
-        self.scalar_range = (current_slice.min(), current_slice.max())
+        # Get unscaled data
+        current_data = self.data_grid[self.current_window]
+        
+        # Apply scaling only for visual representation
+        scaled_data = current_data * self.scaling_factor
+        
+        # Update the grid with scaled values
+        self.grid.points[:,2] = scaled_data.T.ravel(order='F')
+        self.grid["scalars"] = scaled_data.T.ravel(order='F')
+        
+        # Update scalar ranges - store unscaled values
+        self.scalar_range = (current_data.min(), current_data.max())
+        
+        self.readjust_ranges()
         self.change_colormap()
         self.render()
             

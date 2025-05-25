@@ -806,9 +806,6 @@ class CaltrigWidget(QWidget):
         visualization_3D_advanced_fpr_layout.addWidget(label_3D_advanced_fpr)
         visualization_3D_advanced_fpr_layout.addWidget(self.dropdown_3D_advanced_fpr)
         visualization_3D_advanced_tool_layout.addLayout(visualization_3D_advanced_fpr_layout)
-        btn_visualize_3D_advanced = QPushButton("Visualize Advanced")
-        btn_visualize_3D_advanced.clicked.connect(self.visualize_3D_advanced)
-        visualization_3D_advanced_tool_layout.addWidget(btn_visualize_3D_advanced)
         self.label_3D_advanced_current_frame = QLabel("Current Window: 1")
         self.label_3D_advanced_current_frame.setVisible(False)
         visualization_3D_advanced_tool_layout.addWidget(self.label_3D_advanced_current_frame)
@@ -821,6 +818,31 @@ class CaltrigWidget(QWidget):
         visualization_3D_advanced_tool_layout.addStretch()
         visualization_3D_advanced_tool.setLayout(visualization_3D_advanced_tool_layout)
         visualization_3D_advanced_visualize_tab.addTab(visualization_3D_advanced_tool, "FPR Visualization")
+
+        # Advanced 3D Z Axis Scaling
+        frame_3D_advanced_scaling = QFrame()
+        frame_3D_advanced_scaling.setFrameShape(QFrame.StyledPanel)
+        frame_3D_advanced_scaling.setFrameShadow(QFrame.Raised)
+        frame_3D_advanced_scaling.setLineWidth(3)
+        layout_3D_advanced_scaling = QVBoxLayout(frame_3D_advanced_scaling)
+        label_3D_advanced_slider = QLabel("Scale Z Axis")
+        self.slider_advanced_value = QLabel("10")
+        self.slider_advanced_value.setFixedWidth(30)
+        self.slider_3D_advanced_scaling = QSlider(Qt.Orientation.Horizontal)
+        self.slider_3D_advanced_scaling.setRange(1, 1000)
+        self.slider_3D_advanced_scaling.setValue(10)
+        self.slider_3D_advanced_scaling.valueChanged.connect(lambda: self.slider_advanced_value.setText(str(self.slider_3D_advanced_scaling.value())))
+        self.slider_3D_advanced_scaling.sliderReleased.connect(self.slider_update_3D_advanced_scaling)
+        layout_3D_advanced_slider_controls = QHBoxLayout()
+        layout_3D_advanced_slider_controls.addWidget(self.slider_3D_advanced_scaling)
+        layout_3D_advanced_slider_controls.addWidget(self.slider_advanced_value)
+        layout_3D_advanced_scaling.addWidget(label_3D_advanced_slider)
+        layout_3D_advanced_scaling.addLayout(layout_3D_advanced_slider_controls)
+        visualization_3D_advanced_tool_layout.addWidget(frame_3D_advanced_scaling)
+
+        btn_visualize_3D_advanced = QPushButton("Visualize Advanced")
+        btn_visualize_3D_advanced.clicked.connect(self.visualize_3D_advanced)
+        visualization_3D_advanced_tool_layout.addWidget(btn_visualize_3D_advanced)
 
         # Advanced 3D Visualization Shuffling
         visualization_3D_advanced_shuffling_layout = QVBoxLayout()
@@ -1774,6 +1796,7 @@ class CaltrigWidget(QWidget):
         window_size = int(self.input_3D_advanced_window_size.text())
         statistic = self.dropdown_3D_advanced_readout.currentText()
         fpr = self.dropdown_3D_advanced_fpr.currentText()
+        scaling = self.slider_3D_advanced_scaling.value()
 
         # A cells
         a_cells = []
@@ -1788,7 +1811,7 @@ class CaltrigWidget(QWidget):
             if item.checkState() == Qt.CheckState.Checked:
                 b_cells.append(self.extract_id(item))
         
-        win_size = self.visualization_3D_advanced.set_data(a_cells, b_cells, window_size, statistic, fpr)
+        win_size = self.visualization_3D_advanced.set_data(a_cells, b_cells, window_size, statistic, fpr, scaling)
         if win_size is None:
             return
         self.visualization_3D_advanced_slider.setRange(1, win_size)
@@ -1800,6 +1823,10 @@ class CaltrigWidget(QWidget):
     def slider_update_advanced(self):
         current_frame = self.visualization_3D_advanced_slider.value()
         self.visualization_3D_advanced.update_current_window(current_frame)
+
+    def slider_update_3D_advanced_scaling(self):
+        scaling = self.slider_3D_advanced_scaling.value()
+        self.visualization_3D_advanced.update_scaling_factor(scaling)
 
     def slider_update_shuffle(self):
         current_frame = self.visualization_3D_advanced_shuffle_slider.value()
