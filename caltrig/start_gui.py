@@ -26,7 +26,15 @@ class MainWindow(QMainWindow):
         self.processes = kwargs.pop("processes", True)
         super(MainWindow, self).__init__(*args, **kwargs)
         self.icon_path = os.path.join(BASE_DIR, "caltrig_icon.png")
-        self.setWindowIcon(QIcon(self.icon_path))
+        # Check if icon exists and set it with proper error handling
+        self.icon_path = os.path.join(BASE_DIR, "caltrig_icon.png")
+        if os.path.exists(self.icon_path):
+            app_icon = QIcon(self.icon_path)
+            self.setWindowIcon(app_icon)
+            # Also set application-wide icon
+            QApplication.setWindowIcon(app_icon)
+        else:
+            print(f"Warning: Icon file not found at {self.icon_path}")
         self.setWindowTitle("Cell Exploration Tool")
         self.setMinimumSize(600, 800)
         
