@@ -5,10 +5,10 @@ from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QAc
                             QSlider, QLabel, QListWidget, QAbstractItemView, QLineEdit, QSplitter,
                             QApplication, QStyleFactory, QFrame, QTabWidget, QMenuBar, QCheckBox,
                             QTextEdit, QComboBox, QGraphicsTextItem, QMessageBox, QFileDialog,
-                            QScrollArea, QListWidgetItem, QInputDialog, QSizePolicy)
+                            QScrollArea, QListWidgetItem, QInputDialog, QSizePolicy, QGraphicsRectItem)
 from PyQt5.QtCore import (Qt, QTimer)
 from PyQt5 import QtCore
-from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont, QIcon)
+from PyQt5.QtGui import (QIntValidator, QDoubleValidator, QFont, QIcon, QBrush, QColor, QPen)
 from pyqtgraph import (PlotItem, PlotCurveItem, ScatterPlotItem, InfiniteLine, TextItem)
 import pyqtgraph as pg
 import colorcet as cc
@@ -439,6 +439,20 @@ class CaltrigWidget(QWidget):
         self.view_btn_update = QPushButton("Update View")
         self.view_btn_update.clicked.connect(self.update_plot_view)
 
+        # Window Size Preview Utility
+        self.window_size_preview_label = QLabel("Window Size")
+        self.window_size_preview_input = QLineEdit()
+        self.window_size_preview_input.setValidator(QIntValidator(1, 100000))
+        self.window_size_preview_input.setText("1000")
+        self.window_size_preview_chkbox = QCheckBox("Preview")
+        self.window_size_preview_chkbox.clicked.connect(self.update_plot_preview)
+        self.window_size_preview_btn = QPushButton("Update Size")
+        self.window_size_preview_btn.clicked.connect(lambda: self.update_plot_preview(btn_clicked=True))
+        self.window_size_preview_event_chkbox = QCheckBox("Event Window")
+        self.window_size_preview_event_chkbox.clicked.connect(lambda: self.update_plot_preview(btn_clicked=False))
+        self.window_size_preview_event_dropdown = QComboBox()
+        self.window_size_preview_event_dropdown.addItems(["RNF", "ALP", "ILP", "ALP_Timeout"])
+        self.window_size_preview_event_dropdown.currentIndexChanged.connect(lambda: self.update_plot_preview(btn_clicked=False))
 
 
         self.chkbox_plot_options_C = QCheckBox("C Signal")
@@ -1290,7 +1304,13 @@ class CaltrigWidget(QWidget):
         view_utility = QFrame()
         view_utility.setFrameShape(QFrame.Box)
         view_utility.setFrameShadow(QFrame.Raised)
-        view_utility.setLineWidth(3)     
+        view_utility.setLineWidth(3)
+
+        # Window Size Preview
+        window_preview_utility = QFrame()
+        window_preview_utility.setFrameShape(QFrame.Box)
+        window_preview_utility.setFrameShadow(QFrame.Raised)
+        window_preview_utility.setLineWidth(3) 
 
         # SavGol Layouts
         layout_savgol = QVBoxLayout(savgol_utility)
@@ -1357,13 +1377,27 @@ class CaltrigWidget(QWidget):
         layout_plot_view.addWidget(self.view_btn_update)
         layout_plot_view.addStretch()
         
-        
+
+
+        # Window Size Preview Layout
+        layout_window_preview = QVBoxLayout(window_preview_utility)
+        layout_window_size_preview = QHBoxLayout()
+        layout_window_size_preview.addWidget(self.window_size_preview_label)
+        layout_window_size_preview.addWidget(self.window_size_preview_input)
+        layout_window_preview.addLayout(layout_window_size_preview)
+        layout_window_preview.addWidget(self.window_size_preview_btn)
+        layout_window_preview.addWidget(self.window_size_preview_chkbox)
+        layout_window_preview.addWidget(self.window_size_preview_event_chkbox)
+        layout_window_preview.addWidget(self.window_size_preview_event_dropdown)
+
+
         
         # Param Tabs
         tab_params = QTabWidget()
         tab_params.addTab(savgol_utility, "SavGol")
         tab_params.addTab(noise_utility, "Noise")
         tab_params.addTab(view_utility, "View")
+        tab_params.addTab(window_preview_utility, "Window Size Preview")
 
         # Plot options
         frame_plot_options = QFrame()
@@ -2185,6 +2219,42 @@ class CaltrigWidget(QWidget):
                 item.getViewBox().setXRange(x_start, x_end, padding=0)
             i += 1
 
+    def update_plot_preview(self, btn_clicked=False):
+        '''
+        This function updates the plot preview based on the current settings.
+        It is called when the user changes the view settings or clicks the update button.
+        '''
+        if btn_clicked:
+            self.window_size_preview_chkbox.setChecked(True)
+        
+        signal_length = self.session.data["C"].shape[1]
+        window_size = int(self.window_size_preview_input.text())
+        if window_size > signal_length:
+            window_size = signal_length
+            self.window_size_preview_input.setText(str(signal_length))
+
+        events = None
+        if self.window_size_preview_event_chkbox.isChecked():
+            # Get the Event Type
+            event_type = self.window_size_preview_event_dropdown.currentText()
+            if event_type in self.session.data:
+                events = np.argwhere(self.session.data[event_type].values == 1)
+
+        if self.window_size_preview_chkbox.isChecked():
+            i = 0
+            while self.w_signals.getItem(i,0) is not None:
+                item = self.w_signals.getItem(i,0)
+                if isinstance(item, PlotItemEnhanced):
+                    item.add_window_preview(window_size, signal_length, events=events)
+                i += 1
+        else:
+            i = 0
+            while self.w_signals.getItem(i,0) is not None:
+                item = self.w_signals.getItem(i,0)
+                if isinstance(item, PlotItemEnhanced):
+                    item.remove_window_preview()
+                i += 1
+
     def detect_cell_hover(self, event):
         point = self.imv_cell.getImageItem().mapFromScene(event)
         x, y = point.x(), point.y()
@@ -2849,6 +2919,10 @@ class CaltrigWidget(QWidget):
 
 
                 last_i += 1
+        
+        # Check if preview is enabled
+        if self.window_size_preview_chkbox.isChecked():
+            self.update_plot_preview()
 
         if missed_ids and not single_plot_mode:
             for i, id in enumerate(missed_ids):
@@ -3627,6 +3701,7 @@ class PlotItemEnhanced(PlotItem):
         self.selected_events = set()
         self.clicked_points = []
         self.selected = False
+        self.window_previews = []
         
 
     def clear_event_curves(self):
@@ -3706,6 +3781,50 @@ class PlotItemEnhanced(PlotItem):
                     else:
                         self.setTitle(title, color="#FFFFFF")
                         self.selected = False
+
+
+    def add_window_preview(self, window_size, signal_length, events=None):
+        """
+        Add a window preview to the plot item. This will add vertical red lines every window_size frames.
+        If lines already exist, they will be removed first. If it is event based then transparent rectangles
+        will be drawn over the plot from the event start to the window_size frames after the event start.
+        """
+        self.remove_window_preview()
+        
+        if window_size <= 1:
+            return
+        
+        self.window_previews = []
+        if events is not None:
+            for event_start in events:
+                # Draw a rectangle from the event start to the event start + window_size
+                rect = QGraphicsRectItem(
+                    event_start,             # x
+                    -10,        # y (bottom)
+                    window_size,          # width
+                    50  # height
+                )
+                rect.setBrush(QBrush(QColor(200, 100, 100, 50)))
+                rect.setPen(QPen(Qt.NoPen))
+
+                self.addItem(rect)
+                self.window_previews.append(rect)
+
+        else:
+            # Use Signal length to determine how many vertical lines to draw
+            for i in range(0, signal_length, window_size):
+                # Draw a vertical line at every window_size frames
+                line = InfiniteLine(pos=i, angle=90, pen=(200, 100, 100, 200))
+                self.addItem(line)
+                self.window_previews.append(line)
+
+
+    def remove_window_preview(self):
+        if self.window_previews:
+            for item in self.window_previews:
+                self.removeItem(item)
+            self.window_previews = None
+
 
 
     def add_point(self, event):
