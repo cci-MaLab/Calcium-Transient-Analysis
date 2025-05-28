@@ -517,7 +517,7 @@ class VisualizeShuffledAdvanced(QWidget):
                         rotation=70, verticalalignment='top', fontsize=12, color='black')
             target_axes.set_xlabel("FPR")
             target_axes.set_ylabel("Frequency")
-            target_axes.set_title("FPR Histogram")
+            target_axes.set_title(f"FPR Histogram for Window {self.win_num}")
             if separate:
                 target_axes.legend()
             i += 1
@@ -581,7 +581,7 @@ class VisualizeShuffledAdvanced(QWidget):
 
             target_axes.set_ylabel("FPR")
             target_axes.set_xlabel("Spatial Distance")
-            target_axes.set_title("Spatial Distance vs FPR")
+            target_axes.set_title(f"Spatial Distance vs FPR for Window {self.win_num}")
             target_axes.legend()
             if separate:
                 # Deal with duplicate labels
@@ -607,7 +607,7 @@ class VisualizeShuffledAdvanced(QWidget):
             target_axes.text(0, -1.96, "-1.96", color='black', fontsize=12)
             target_axes.set_xlabel("Window Number")
             target_axes.set_ylabel("Z-Score")
-            target_axes.set_title("Z-Score Per Window")
+            target_axes.set_title("Z-Score for all Windows")
             target_axes.legend()
         
         self.figure.tight_layout()
