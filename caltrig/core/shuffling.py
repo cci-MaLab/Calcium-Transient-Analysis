@@ -593,9 +593,38 @@ class VisualizeShuffledAdvanced(QWidget):
                 target_axes = ax[-1]
             else:
                 target_axes = ax
+            
+            # Track overlapping points
+            point_registry = {}  # Format: {(x, y): count}
+            jitter_amount = 0.1  # Amount to shift points horizontally
+            
             # Each Cell ID will have it's own color and the x axis should say the Window Number
             for key, value in self.global_z_score.items():
-                target_axes.scatter(range(1, len(value) + 1), value, label=f"Cell {key}", color=cell_to_color[key])
+                # Convert to arrays for easier processing
+                x_coords = list(range(1, len(value) + 1))
+                y_coords = value
+                
+                # Check for overlapping points and apply jitter
+                jittered_x = []
+                for x, y in zip(x_coords, y_coords):
+                    # Round y for practical overlap detection
+                    point_key = (x, round(float(y), 3))
+                    if point_key in point_registry:
+                        # Point exists, apply jitter based on count
+                        count = point_registry[point_key]
+                        # Alternate left/right shift based on count parity
+                        shift = jitter_amount * (1 if count % 2 else -1) * ((count + 1) // 2)
+                        jittered_x.append(x + shift)
+                        point_registry[point_key] += 1
+                    else:
+                        # New point, no jitter needed
+                        jittered_x.append(x)
+                        point_registry[point_key] = 1
+                
+                # Plot with semi-transparency and jittered x-coordinates
+                target_axes.scatter(jittered_x, y_coords, label=f"Cell {key}", 
+                                  color=cell_to_color[key], alpha=0.7)  # Added alpha for semi-transparency
+            
             xs = list(range(1, len(value) + 1))
             for x in xs:
                 target_axes.axvline(x=x, color='red', linestyle=':', linewidth=1)

@@ -442,8 +442,12 @@ class CaltrigWidget(QWidget):
         # Window Size Preview Utility
         self.window_size_preview_label = QLabel("Window Size")
         self.window_size_preview_input = QLineEdit()
-        self.window_size_preview_input.setValidator(QIntValidator(1, 100000))
+        self.window_size_preview_input.setValidator(QIntValidator(-100000, 100000))
         self.window_size_preview_input.setText("1000")
+        self.window_size_preview_lag_label = QLabel("Lag")
+        self.window_size_preview_lag_input = QLineEdit()
+        self.window_size_preview_lag_input.setValidator(QIntValidator(-100000, 100000))
+        self.window_size_preview_lag_input.setText("0")
         self.window_size_preview_chkbox = QCheckBox("Preview")
         self.window_size_preview_chkbox.clicked.connect(self.update_plot_preview)
         self.window_size_preview_btn = QPushButton("Update Size")
@@ -1384,7 +1388,11 @@ class CaltrigWidget(QWidget):
         layout_window_size_preview = QHBoxLayout()
         layout_window_size_preview.addWidget(self.window_size_preview_label)
         layout_window_size_preview.addWidget(self.window_size_preview_input)
+        layout_window_size_preview_lag = QHBoxLayout()
+        layout_window_size_preview_lag.addWidget(self.window_size_preview_lag_label)
+        layout_window_size_preview_lag.addWidget(self.window_size_preview_lag_input)
         layout_window_preview.addLayout(layout_window_size_preview)
+        layout_window_preview.addLayout(layout_window_size_preview_lag)
         layout_window_preview.addWidget(self.window_size_preview_btn)
         layout_window_preview.addWidget(self.window_size_preview_chkbox)
         layout_window_preview.addWidget(self.window_size_preview_event_chkbox)
@@ -2233,6 +2241,8 @@ class CaltrigWidget(QWidget):
             window_size = signal_length
             self.window_size_preview_input.setText(str(signal_length))
 
+        lag = int(self.window_size_preview_lag_input.text())
+
         events = None
         if self.window_size_preview_event_chkbox.isChecked():
             # Get the Event Type
@@ -2245,7 +2255,7 @@ class CaltrigWidget(QWidget):
             while self.w_signals.getItem(i,0) is not None:
                 item = self.w_signals.getItem(i,0)
                 if isinstance(item, PlotItemEnhanced):
-                    item.add_window_preview(window_size, signal_length, events=events)
+                    item.add_window_preview(window_size, signal_length, lag=lag, events=events)
                 i += 1
         else:
             i = 0
@@ -3783,7 +3793,7 @@ class PlotItemEnhanced(PlotItem):
                         self.selected = False
 
 
-    def add_window_preview(self, window_size, signal_length, events=None):
+    def add_window_preview(self, window_size, signal_length, lag=0, events=None):
         """
         Add a window preview to the plot item. This will add vertical red lines every window_size frames.
         If lines already exist, they will be removed first. If it is event based then transparent rectangles
@@ -3791,7 +3801,7 @@ class PlotItemEnhanced(PlotItem):
         """
         self.remove_window_preview()
         
-        if window_size <= 1:
+        if window_size == 0:
             return
         
         self.window_previews = []
@@ -3799,7 +3809,7 @@ class PlotItemEnhanced(PlotItem):
             for event_start in events:
                 # Draw a rectangle from the event start to the event start + window_size
                 rect = QGraphicsRectItem(
-                    event_start,             # x
+                    event_start + lag,             # x
                     -10,        # y (bottom)
                     window_size,          # width
                     50  # height
@@ -3814,7 +3824,7 @@ class PlotItemEnhanced(PlotItem):
             # Use Signal length to determine how many vertical lines to draw
             for i in range(0, signal_length, window_size):
                 # Draw a vertical line at every window_size frames
-                line = InfiniteLine(pos=i, angle=90, pen=(200, 100, 100, 200))
+                line = InfiniteLine(pos=i+lag, angle=90, pen=(200, 100, 100, 200))
                 self.addItem(line)
                 self.window_previews.append(line)
 
