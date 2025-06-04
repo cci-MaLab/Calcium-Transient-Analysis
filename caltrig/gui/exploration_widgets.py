@@ -457,6 +457,11 @@ class CaltrigWidget(QWidget):
         self.window_size_preview_event_dropdown = QComboBox()
         self.window_size_preview_event_dropdown.addItems(["RNF", "ALP", "ILP", "ALP_Timeout"])
         self.window_size_preview_event_dropdown.currentIndexChanged.connect(lambda: self.update_plot_preview(btn_clicked=False))
+        self.window_size_preview_all_cells_chkbox = QCheckBox("All Cells")
+        self.window_size_preview_all_cells_chkbox.setVisible(False)
+        self.window_size_preview_copy_data_btn = QPushButton("Copy Data to Clipboard")
+        self.window_size_preview_copy_data_btn.clicked.connect(self.copy_preview_data_to_clipboard)
+        self.window_size_preview_copy_data_btn.setVisible(False)
 
 
         self.chkbox_plot_options_C = QCheckBox("C Signal")
@@ -2227,6 +2232,23 @@ class CaltrigWidget(QWidget):
                 item.getViewBox().setXRange(x_start, x_end, padding=0)
             i += 1
 
+    def get_preview_parameters(self):
+        '''
+        This function retrieves the parameters for the plot preview.
+        It is called when the user clicks the update button for the plot preview.
+        '''
+        signal_length = self.session.data["C"].shape[1]
+        window_size = int(self.window_size_preview_input.text())
+        if window_size > signal_length:
+            window_size = signal_length
+            self.window_size_preview_input.setText(str(signal_length))
+        lag = int(self.window_size_preview_lag_input.text())
+        event_type = self.window_size_preview_event_dropdown.currentText()
+        show_events = self.window_size_preview_event_chkbox.isChecked()
+        show_all_cells = self.window_size_preview_all_cells_chkbox.isChecked()
+
+        return signal_length, window_size, lag, event_type, show_events, show_all_cells
+
     def update_plot_preview(self, btn_clicked=False):
         '''
         This function updates the plot preview based on the current settings.
@@ -2235,20 +2257,22 @@ class CaltrigWidget(QWidget):
         if btn_clicked:
             self.window_size_preview_chkbox.setChecked(True)
         
-        signal_length = self.session.data["C"].shape[1]
-        window_size = int(self.window_size_preview_input.text())
-        if window_size > signal_length:
-            window_size = signal_length
-            self.window_size_preview_input.setText(str(signal_length))
-
-        lag = int(self.window_size_preview_lag_input.text())
+        signal_length, window_size, lag, event_type, show_events, _ = self.get_preview_parameters()
 
         events = None
-        if self.window_size_preview_event_chkbox.isChecked():
+        if show_events:
+            # Show the chkbox and button for copying data
+            self.window_size_preview_all_cells_chkbox.setVisible(True)
+            self.window_size_preview_copy_data_btn.setVisible(True)
             # Get the Event Type
             event_type = self.window_size_preview_event_dropdown.currentText()
             if event_type in self.session.data:
                 events = np.argwhere(self.session.data[event_type].values == 1)
+
+        else:
+            # Hide the chkbox and button for copying data
+            self.window_size_preview_all_cells_chkbox.setVisible(False)
+            self.window_size_preview_copy_data_btn.setVisible(False)
 
         if self.window_size_preview_chkbox.isChecked():
             i = 0
@@ -2264,6 +2288,62 @@ class CaltrigWidget(QWidget):
                 if isinstance(item, PlotItemEnhanced):
                     item.remove_window_preview()
                 i += 1
+
+    def copy_preview_data_to_clipboard(self):
+        """
+        Extract the data based on preview parameters and copy it to the clipboard.
+        """
+        signal_length, window_size, lag, event_type, show_events, show_all_cells = self.get_preview_parameters()
+        # Get the number of events
+        events = None
+        if event_type in self.session.data:
+            events = np.argwhere(self.session.data[event_type].values == 1)
+            # Drop subsequent events that are within 50 frames of each other
+            if events.size > 0:
+                events = np.unique(events[events[:, 0] > 50], axis=0)
+        
+        if not events:
+            return
+
+        if show_all_cells:
+            cells = self.session.get_good_cells()
+        else:
+            # Get the selected cells from the plot items
+            cells = []
+            i = 0
+            while self.w_signals.getItem(i,0) is not None:
+                item = self.w_signals.getItem(i,0)
+                if isinstance(item, PlotItemEnhanced):
+                    if item.cell_type == "Standard":
+                        cells.append(item.id)
+                i += 1
+        
+        """
+        The following will be the structure of the data we will copy to the clipboard:
+
+        Cell ID, , ,Event1, Event2, ..., EventN 
+        Cell Position, ,Amplitude, ...
+         , , Frequency, ... 
+         , , Total Amplitude, ... 
+
+        The above will be repeated for each cell. 
+        """
+        data = ""
+        for cell in cells:
+            # Get the data for the cell
+            data += f"Cell ID: {cell}\n"
+            data += "Cell Position: " + str(self.session.centroids[cell]) + "\n"
+            data += "Amplitude: " + str(self.session.data["C"].sel(unit_id=cell).values) + "\n"
+            if show_events and event_type in self.session.data:
+                events = self.session.data[event_type].sel(unit_id=cell).values
+                event_indices = np.argwhere(events == 1).flatten()
+                if event_indices.size > 0:
+                    data += "Events: " + ", ".join(map(str, event_indices)) + "\n"
+            data += "\n"
+
+
+
+
 
     def detect_cell_hover(self, event):
         point = self.imv_cell.getImageItem().mapFromScene(event)

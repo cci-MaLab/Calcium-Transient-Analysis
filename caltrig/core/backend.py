@@ -1386,6 +1386,13 @@ class DataInstance:
         verified_unit_ids = all_unit_ids[verified_idxs==1]
 
         return verified_unit_ids
+    
+    def get_good_cells(self):
+        all_unit_ids = self.data['E'].unit_id.values
+        good_idxs = self.data['E'].good_cells.values.astype(int)
+        good_unit_ids = all_unit_ids[good_idxs==1]
+
+        return good_unit_ids
 
 
     
