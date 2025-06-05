@@ -2294,6 +2294,7 @@ class CaltrigWidget(QWidget):
         Extract the data based on preview parameters and copy it to the clipboard.
         """
         signal_length, window_size, lag, event_type, show_events, show_all_cells = self.get_preview_parameters()
+
         # Get the number of events
         events = None
         if event_type in self.session.data:
@@ -2317,29 +2318,9 @@ class CaltrigWidget(QWidget):
                     if item.cell_type == "Standard":
                         cells.append(item.id)
                 i += 1
+
+        # Create
         
-        """
-        The following will be the structure of the data we will copy to the clipboard:
-
-        Cell ID, , ,Event1, Event2, ..., EventN 
-        Cell Position, ,Amplitude, ...
-         , , Frequency, ... 
-         , , Total Amplitude, ... 
-
-        The above will be repeated for each cell. 
-        """
-        data = ""
-        for cell in cells:
-            # Get the data for the cell
-            data += f"Cell ID: {cell}\n"
-            data += "Cell Position: " + str(self.session.centroids[cell]) + "\n"
-            data += "Amplitude: " + str(self.session.data["C"].sel(unit_id=cell).values) + "\n"
-            if show_events and event_type in self.session.data:
-                events = self.session.data[event_type].sel(unit_id=cell).values
-                event_indices = np.argwhere(events == 1).flatten()
-                if event_indices.size > 0:
-                    data += "Events: " + ", ".join(map(str, event_indices)) + "\n"
-            data += "\n"
 
 
 
