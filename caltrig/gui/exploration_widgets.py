@@ -22,6 +22,7 @@ from .pyqtgraph_override import ImageViewOverride
 from .cofiring_2d_widgets import Cofiring2DWidget
 from .sda_widgets import (base_visualization, VisualizationWidget, VisualizationAdvancedWidget)
 from ..core.shuffling import shuffle_cofiring, shuffle_advanced
+from ..core.event_based_utility import extract_event_based_data
 import os
 import matplotlib.pyplot as plt
 import pickle
@@ -1402,6 +1403,10 @@ class CaltrigWidget(QWidget):
         layout_window_preview.addWidget(self.window_size_preview_chkbox)
         layout_window_preview.addWidget(self.window_size_preview_event_chkbox)
         layout_window_preview.addWidget(self.window_size_preview_event_dropdown)
+        layout_window_preview_copy = QHBoxLayout()
+        layout_window_preview_copy.addWidget(self.window_size_preview_all_cells_chkbox)
+        layout_window_preview_copy.addWidget(self.window_size_preview_copy_data_btn)
+        layout_window_preview.addLayout(layout_window_preview_copy)
 
 
         
@@ -2267,7 +2272,10 @@ class CaltrigWidget(QWidget):
             # Get the Event Type
             event_type = self.window_size_preview_event_dropdown.currentText()
             if event_type in self.session.data:
-                events = np.argwhere(self.session.data[event_type].values == 1)
+                if self.session.data[event_type] is None:
+                    events = None
+                else:
+                    events = np.argwhere(self.session.data[event_type].values == 1)
 
         else:
             # Hide the chkbox and button for copying data
@@ -2298,10 +2306,13 @@ class CaltrigWidget(QWidget):
         # Get the number of events
         events = None
         if event_type in self.session.data:
-            events = np.argwhere(self.session.data[event_type].values == 1)
-            # Drop subsequent events that are within 50 frames of each other
-            if events.size > 0:
-                events = np.unique(events[events[:, 0] > 50], axis=0)
+            if self.session.data[event_type] is None:
+                events = []
+            else:
+                events = np.argwhere(self.session.data[event_type].values == 1)
+                # Drop subsequent events that are within 50 frames of each other
+                if events.size > 0:
+                    events = np.unique(events[events[:, 0] > 50], axis=0)
         
         if not events:
             return
@@ -2319,7 +2330,7 @@ class CaltrigWidget(QWidget):
                         cells.append(item.id)
                 i += 1
 
-        # Create
+        extract_event_based_data(self.session, cells, events, event_type)
         
 
 
