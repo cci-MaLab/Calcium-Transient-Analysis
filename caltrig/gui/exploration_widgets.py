@@ -2307,14 +2307,14 @@ class CaltrigWidget(QWidget):
         events = None
         if event_type in self.session.data:
             if self.session.data[event_type] is None:
-                events = []
+                return
             else:
                 events = np.argwhere(self.session.data[event_type].values == 1)
                 # Drop subsequent events that are within 50 frames of each other
                 if events.size > 0:
-                    events = np.unique(events[events[:, 0] > 50], axis=0)
+                    events = np.unique(events[events[:, 0] > 50], axis=0) - lag
         
-        if not events:
+        if not events.any():
             return
 
         if show_all_cells:
@@ -2330,7 +2330,7 @@ class CaltrigWidget(QWidget):
                         cells.append(item.id)
                 i += 1
 
-        extract_event_based_data(self.session, cells, events, event_type)
+        extract_event_based_data(self.session, cells, events, window_size, event_type=event_type)
         
 
 
