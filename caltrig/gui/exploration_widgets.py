@@ -2363,7 +2363,13 @@ class CaltrigWidget(QWidget):
                         cells.append(item.id)
                 i += 1
 
-        extract_event_based_data(self.session, cells, events, window_size, num_subwindows=num_subwindows, event_type=event_type)
+        if "Exploration" in self.name:
+            # Remove Exploration from the string
+            name = self.name.replace("Exploration", "").strip()
+            name += f"\nEvent:\t{event_type}\nWindow Size:\t{window_size}\nLag:\t{lag}\nSubwindows:\t{num_subwindows}"
+
+
+        extract_event_based_data(self.session, cells, events, window_size, num_subwindows=num_subwindows, event_type=event_type, name=name)
         
 
 

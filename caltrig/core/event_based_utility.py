@@ -4,7 +4,7 @@ from ..gui.sda_widgets import _precalculate
 from PyQt5.QtWidgets import QApplication
 
 
-def extract_event_based_data(session, cells, event_indices, window_size, event_type="events", num_subwindows=1):
+def extract_event_based_data(session, cells, event_indices, window_size, event_type="events", num_subwindows=1, name=""):
     """
     Returns a dict mapping each cell_id to its own DataFrame.
     Each DataFrame has rows ["Average Amplitude", "Frequency", "Total Amplitude"]
@@ -85,6 +85,8 @@ def extract_event_based_data(session, cells, event_indices, window_size, event_t
     
     # Convert to clipboard format
     result_str = []
+    if name:
+        result_str.append(f"{name}\n")
     for cell_id, df in result.items():
         result_str.append(f"Cell ID\t{cell_id}")
         result_str.append(f"Cell Position\t{session.centroids[cell_id]}")
