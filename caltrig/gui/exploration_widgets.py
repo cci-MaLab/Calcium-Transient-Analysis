@@ -23,6 +23,7 @@ from .cofiring_2d_widgets import Cofiring2DWidget
 from .sda_widgets import (base_visualization, VisualizationWidget, VisualizationAdvancedWidget)
 from ..core.shuffling import shuffle_cofiring, shuffle_advanced
 from ..core.event_based_utility import extract_event_based_data
+from .pop_up_messages import print_error
 import os
 import matplotlib.pyplot as plt
 import pickle
@@ -445,6 +446,12 @@ class CaltrigWidget(QWidget):
         self.window_size_preview_input = QLineEdit()
         self.window_size_preview_input.setValidator(QIntValidator(-100000, 100000))
         self.window_size_preview_input.setText("1000")
+        self.window_size_preview_subwindow_label = QLabel("No. of Subwindows")
+        self.window_size_preview_subwindow_slider = QSlider(Qt.Horizontal)
+        self.window_size_preview_subwindow_slider.setRange(1, 100)
+        self.window_size_preview_subwindow_slider.setValue(1)
+        self.window_size_preview_subwindow_slider_value = QLabel("1")
+        self.window_size_preview_subwindow_slider.valueChanged.connect(lambda: self.window_size_preview_subwindow_slider_value.setText(str(self.window_size_preview_subwindow_slider.value())))
         self.window_size_preview_lag_label = QLabel("Lag")
         self.window_size_preview_lag_input = QLineEdit()
         self.window_size_preview_lag_input.setValidator(QIntValidator(-100000, 100000))
@@ -764,6 +771,11 @@ class CaltrigWidget(QWidget):
         layout_3D_chkbox.addWidget(self.chkbox_3D_average)
         self.layout_3D_chkbox_parent.hide()
 
+
+        # Event Based Feature Extraction Layout
+        event_based_feature_extraction_layout = QVBoxLayout()
+
+
         # Advanced 3D Visualization Tools
         visualization_3D_advanced_layout = QVBoxLayout()
         visualization_3D_advanced_visualize_tab = QTabWidget()
@@ -1024,6 +1036,10 @@ class CaltrigWidget(QWidget):
         # Advanced 3D Visualization Tools
         visualization_3D_advanced = QWidget()
         visualization_3D_advanced.setLayout(visualization_3D_advanced_layout)
+
+        # Event based Feature Extraction
+        event_based_feature_extraction = QWidget()
+        event_based_feature_extraction.setLayout(event_based_feature_extraction_layout)
 
         # Co-Firing Checkbox layout
         cofiring_chkbox_layout = QHBoxLayout()
@@ -1394,10 +1410,15 @@ class CaltrigWidget(QWidget):
         layout_window_size_preview = QHBoxLayout()
         layout_window_size_preview.addWidget(self.window_size_preview_label)
         layout_window_size_preview.addWidget(self.window_size_preview_input)
+        layout_window_size_preview_subwindow = QHBoxLayout()
+        layout_window_size_preview_subwindow.addWidget(self.window_size_preview_subwindow_label)
+        layout_window_size_preview_subwindow.addWidget(self.window_size_preview_subwindow_slider)
+        layout_window_size_preview_subwindow.addWidget(self.window_size_preview_subwindow_slider_value)
         layout_window_size_preview_lag = QHBoxLayout()
         layout_window_size_preview_lag.addWidget(self.window_size_preview_lag_label)
         layout_window_size_preview_lag.addWidget(self.window_size_preview_lag_input)
         layout_window_preview.addLayout(layout_window_size_preview)
+        layout_window_preview.addLayout(layout_window_size_preview_subwindow)
         layout_window_preview.addLayout(layout_window_size_preview_lag)
         layout_window_preview.addWidget(self.window_size_preview_btn)
         layout_window_preview.addWidget(self.window_size_preview_chkbox)
@@ -2251,8 +2272,14 @@ class CaltrigWidget(QWidget):
         event_type = self.window_size_preview_event_dropdown.currentText()
         show_events = self.window_size_preview_event_chkbox.isChecked()
         show_all_cells = self.window_size_preview_all_cells_chkbox.isChecked()
+        num_subwindows = self.window_size_preview_subwindow_slider.value()
 
-        return signal_length, window_size, lag, event_type, show_events, show_all_cells
+        if num_subwindows > window_size:
+            print_error("Subwindows cannot be larger than the window size.", "Invalid Subwindow Size")
+            return None, None, None, None, None, None, None
+
+
+        return signal_length, window_size, lag, event_type, show_events, show_all_cells, num_subwindows
 
     def update_plot_preview(self, btn_clicked=False):
         '''
@@ -2262,7 +2289,10 @@ class CaltrigWidget(QWidget):
         if btn_clicked:
             self.window_size_preview_chkbox.setChecked(True)
         
-        signal_length, window_size, lag, event_type, show_events, _ = self.get_preview_parameters()
+        signal_length, window_size, lag, event_type, show_events, _, num_subwindows = self.get_preview_parameters()
+
+        if signal_length is None:
+            return
 
         events = None
         if show_events:
@@ -2287,7 +2317,7 @@ class CaltrigWidget(QWidget):
             while self.w_signals.getItem(i,0) is not None:
                 item = self.w_signals.getItem(i,0)
                 if isinstance(item, PlotItemEnhanced):
-                    item.add_window_preview(window_size, signal_length, lag=lag, events=events)
+                    item.add_window_preview(window_size, signal_length, num_subwindows, lag=lag, events=events)
                 i += 1
         else:
             i = 0
@@ -2301,7 +2331,10 @@ class CaltrigWidget(QWidget):
         """
         Extract the data based on preview parameters and copy it to the clipboard.
         """
-        signal_length, window_size, lag, event_type, show_events, show_all_cells = self.get_preview_parameters()
+        signal_length, window_size, lag, event_type, show_events, show_all_cells, num_subwindows = self.get_preview_parameters()
+
+        if signal_length is None:
+            return
 
         # Get the number of events
         events = None
@@ -2330,7 +2363,7 @@ class CaltrigWidget(QWidget):
                         cells.append(item.id)
                 i += 1
 
-        extract_event_based_data(self.session, cells, events, window_size, event_type=event_type)
+        extract_event_based_data(self.session, cells, events, window_size, num_subwindows=num_subwindows, event_type=event_type)
         
 
 
@@ -3865,7 +3898,7 @@ class PlotItemEnhanced(PlotItem):
                         self.selected = False
 
 
-    def add_window_preview(self, window_size, signal_length, lag=0, events=None):
+    def add_window_preview(self, window_size, signal_length, num_subwindows, lag=0, events=None):
         """
         Add a window preview to the plot item. This will add vertical red lines every window_size frames.
         If lines already exist, they will be removed first. If it is event based then transparent rectangles
@@ -3876,9 +3909,18 @@ class PlotItemEnhanced(PlotItem):
         if window_size == 0:
             return
         
+        subwindow_size = window_size // num_subwindows
+        if subwindow_size == 0:
+            subwindow_size = 1
+
         self.window_previews = []
         if events is not None:
             for event_start in events:
+                for subwindow in range(1, num_subwindows):
+                    # Draw a vertical line at every subwindow_size frames
+                    line = InfiniteLine(pos=(event_start + lag + (subwindow) * subwindow_size)[0], angle=90, pen=(100, 100, 200, 200))
+                    self.addItem(line)
+                    self.window_previews.append(line)
                 # Draw a rectangle from the event start to the event start + window_size
                 rect = QGraphicsRectItem(
                     event_start + lag,             # x
