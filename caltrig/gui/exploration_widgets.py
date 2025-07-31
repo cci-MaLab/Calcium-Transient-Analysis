@@ -1040,6 +1040,7 @@ class CaltrigWidget(QWidget):
         # Event based Feature Extraction
         event_based_feature_extraction = QWidget()
         event_based_feature_extraction.setLayout(event_based_feature_extraction_layout)
+        
 
         # Co-Firing Checkbox layout
         cofiring_chkbox_layout = QHBoxLayout()
@@ -1075,6 +1076,7 @@ class CaltrigWidget(QWidget):
         w_rejected_cells = QWidget()
         w_rejected_cells.setLayout(layout_rejected_cells)
 
+        # Missed
         layout_missed_cells = QVBoxLayout()
         layout_missed_cells.addWidget(w_missed_cell_label)
         layout_missed_cells.addWidget(self.list_missed_cell)
@@ -1084,7 +1086,67 @@ class CaltrigWidget(QWidget):
         layout_missed_cells.addWidget(btn_missed_reset_mask)
         layout_missed_cells.addWidget(self.btn_missed_remove)
         w_missed_cells = QWidget()
-        w_missed_cells.setLayout(layout_missed_cells)    
+        w_missed_cells.setLayout(layout_missed_cells)
+
+
+        # Event type selection
+        event_type_label = QLabel("Event Type:")
+        self.event_based_event_dropdown = QComboBox()
+        self.event_based_event_dropdown.addItems(["RNF", "ALP", "ILP", "ALP_Timeout"])
+        event_type_layout = QHBoxLayout()
+        event_type_layout.addWidget(event_type_label)
+        event_type_layout.addWidget(self.event_based_event_dropdown)
+
+        # Window size input
+        event_window_size_label = QLabel("Window Size:")
+        self.event_based_window_size_input = QLineEdit()
+        self.event_based_window_size_input.setValidator(QIntValidator(1, 10000))
+        self.event_based_window_size_input.setText("1000")
+        event_window_size_layout = QHBoxLayout()
+        event_window_size_layout.addWidget(event_window_size_label)
+        event_window_size_layout.addWidget(self.event_based_window_size_input)
+
+        # Lag input
+        event_lag_label = QLabel("Lag:")
+        self.event_based_lag_input = QLineEdit()
+        self.event_based_lag_input.setValidator(QIntValidator(-10000, 10000))
+        self.event_based_lag_input.setText("0")
+        event_lag_layout = QHBoxLayout()
+        event_lag_layout.addWidget(event_lag_label)
+        event_lag_layout.addWidget(self.event_based_lag_input)
+
+        # Number of subwindows with slider
+        event_subwindows_label = QLabel("No. of Subwindows:")
+        self.event_based_subwindows_slider = QSlider(Qt.Horizontal)
+        self.event_based_subwindows_slider.setRange(1, 100)
+        self.event_based_subwindows_slider.setValue(1)
+        self.event_based_subwindows_slider_value = QLabel("1")
+        self.event_based_subwindows_slider.valueChanged.connect(lambda: self.event_based_subwindows_slider_value.setText(str(self.event_based_subwindows_slider.value())))
+        event_subwindows_layout = QHBoxLayout()
+        event_subwindows_layout.addWidget(event_subwindows_label)
+        event_subwindows_layout.addWidget(self.event_based_subwindows_slider)
+        event_subwindows_layout.addWidget(self.event_based_subwindows_slider_value)
+
+        # Cell selection for event-based analysis
+        event_cells_label = QLabel("Select Cells for Analysis:")
+        self.event_based_cell_list = QListWidget()
+        self.event_based_cell_list.setMaximumHeight(300)
+        self.event_based_cell_list.setSelectionMode(QAbstractItemView.MultiSelection)
+
+        # Copy data button
+        self.event_based_copy_btn = QPushButton("Start Shuffling Transients")
+        #self.event_based_copy_btn.clicked.connect(self.copy_event_based_data_to_clipboard)
+
+        # Add all layouts to main layout
+        event_based_feature_extraction_layout.addLayout(event_type_layout)
+        event_based_feature_extraction_layout.addLayout(event_window_size_layout)
+        event_based_feature_extraction_layout.addLayout(event_lag_layout)
+        event_based_feature_extraction_layout.addLayout(event_subwindows_layout)
+        event_based_feature_extraction_layout.addWidget(event_cells_label)
+        event_based_feature_extraction_layout.addWidget(self.event_based_cell_list)
+        event_based_feature_extraction_layout.addWidget(self.event_based_copy_btn)
+        event_based_feature_extraction_layout.addStretch()
+
 
         self.tabs_video.addTab(w_cells, "Approved Cells")
         self.tabs_video.addTab(w_rejected_cells, "Rejected Cells")
@@ -1118,6 +1180,7 @@ class CaltrigWidget(QWidget):
         self.tabs_video_tools.addTab(self.tabs_video, "Cell Video")
         self.tabs_video_tools.addTab(tabs_visualization_parent, "3D Visualization")
         self.tabs_video_tools.addTab(visualization_3D_advanced, "Advanced Visualization")
+        self.tabs_video_tools.addTab(event_based_feature_extraction, "Event-Based Shuffling")
         
 
         # General plot utility
