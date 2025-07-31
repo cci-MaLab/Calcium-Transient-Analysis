@@ -23,6 +23,7 @@ from .cofiring_2d_widgets import Cofiring2DWidget
 from .sda_widgets import (base_visualization, VisualizationWidget, VisualizationAdvancedWidget)
 from ..core.shuffling import shuffle_cofiring, shuffle_advanced
 from ..core.event_based_utility import extract_event_based_data
+from ..core.event_based_shuffling import event_based_shuffle_analysis
 from .pop_up_messages import print_error
 import os
 import matplotlib.pyplot as plt
@@ -66,6 +67,7 @@ class CaltrigWidget(QWidget):
         self.recalculate_canny_edges = True # Optimization to not call canny on every frame
         self.visualized_shuffled = None
         self.visualized_advanced_shuffled = {}
+        self.event_based_shuffling_window = None
         self.setWindowIcon(QIcon(main_window_ref.icon_path))
 
         # Initialize executor to load next chunks in the background
@@ -1158,8 +1160,8 @@ class CaltrigWidget(QWidget):
         event_shuffles_layout.addWidget(self.event_based_shuffles_input)
 
         # Copy data button
-        self.event_based_copy_btn = QPushButton("Start Shuffling Transients")
-        self.event_based_copy_btn.clicked.connect(self.copy_event_based_data_to_clipboard)
+        self.event_based_copy_btn = QPushButton("Start Event-Based Shuffling")
+        self.event_based_copy_btn.clicked.connect(self.event_based_shuffling)
 
         # Add all layouts to main layout
         event_based_feature_extraction_layout.addLayout(event_type_layout)
@@ -3673,6 +3675,13 @@ class CaltrigWidget(QWidget):
         self.visualization_3D.close()
         self.visualization_3D_advanced.close()
         
+        # Close event-based shuffling window if it exists
+        if hasattr(self, 'event_based_shuffling_window') and self.event_based_shuffling_window:
+            try:
+                self.event_based_shuffling_window.close()
+            except:
+                pass
+        
         self.main_window_ref.remove_window(self.name)
         event.accept()
 
@@ -3929,7 +3938,61 @@ class CaltrigWidget(QWidget):
             self.visualization_3D_advanced_shuffle_slider.setValue(1)
             self.label_3D_advanced_shuffle_current_frame.setVisible(True)
 
-
+    def event_based_shuffling(self):
+        """
+        Initialize event-based shuffling based on the values provided in the Event-Based Shuffling section
+        """
+        # Get selected cells
+        selected_cells = []
+        for i in range(self.event_based_cell_list.count()):
+            item = self.event_based_cell_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                selected_cells.append(int(item.text()))
+        
+        if not selected_cells:
+            print("No cells selected for event-based shuffling")
+            return
+        
+        # Get parameters
+        event_type = self.event_based_event_dropdown.currentText()
+        window_size = int(self.event_based_window_size_input.text())
+        lag = int(self.event_based_lag_input.text())
+        num_subwindows = self.event_based_subwindows_slider.value()
+        num_shuffles = int(self.event_based_shuffles_input.text())
+        
+        print(f"Starting event-based shuffling with {len(selected_cells)} cells...")
+        
+        # Call the event-based shuffling function from the separate module
+        visualization_window = event_based_shuffle_analysis(
+            session=self.session,
+            selected_cells=selected_cells,
+            event_type=event_type,
+            window_size=window_size,
+            lag=lag,
+            num_subwindows=num_subwindows,
+            num_shuffles=num_shuffles
+        )
+        
+        # Store and show the visualization window
+        if visualization_window:
+            # Close any existing event-based shuffling window
+            if hasattr(self, 'event_based_shuffling_window') and self.event_based_shuffling_window:
+                try:
+                    self.event_based_shuffling_window.close()
+                except:
+                    pass
+            
+            # Store the new window and show it
+            self.event_based_shuffling_window = visualization_window
+            self.event_based_shuffling_window.window_closed.connect(self.on_event_based_shuffling_window_closed)
+            self.event_based_shuffling_window.show_window()
+            print("Event-based shuffling visualization window opened")
+        else:
+            print("Failed to create event-based shuffling visualization")
+            
+    def on_event_based_shuffling_window_closed(self):
+        """Handle event-based shuffling window being closed."""
+        self.event_based_shuffling_window = None
 
 class PlotItemEnhanced(PlotItem):
     signalChangedSelection = QtCore.Signal(object)
