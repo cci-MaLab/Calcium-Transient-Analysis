@@ -1088,6 +1088,16 @@ class CaltrigWidget(QWidget):
         w_missed_cells = QWidget()
         w_missed_cells.setLayout(layout_missed_cells)
 
+        # Add dropdown for cell filtering
+        label_event_based_which_cells = QLabel("Which Cells to Analyze")
+        self.cmb_event_based_which_cells = QComboBox()
+        self.cmb_event_based_which_cells.addItems(["All Cells", "Verified Cells"])
+        self.cmb_event_based_which_cells.addItems([f"Group {group}" for group in unique_groups])
+        self.cmb_event_based_which_cells.currentIndexChanged.connect(self.refresh_event_based_cell_list)
+        event_based_which_cells_layout = QHBoxLayout()
+        event_based_which_cells_layout.addWidget(label_event_based_which_cells)
+        event_based_which_cells_layout.addWidget(self.cmb_event_based_which_cells)
+
 
         # Event type selection
         event_type_label = QLabel("Event Type:")
@@ -1133,17 +1143,34 @@ class CaltrigWidget(QWidget):
         self.event_based_cell_list.setMaximumHeight(300)
         self.event_based_cell_list.setSelectionMode(QAbstractItemView.MultiSelection)
 
+        # Add toggle button for event-based cell list (matching other sections)
+        btn_toggle_check_event_based = QPushButton("Check/Uncheck Cells")
+        btn_toggle_check_event_based.setFixedSize(160, 20)
+        btn_toggle_check_event_based.clicked.connect(lambda: self.toggle_check_all(self.event_based_cell_list))
+
+        # Number of shuffles input
+        event_shuffles_label = QLabel("Number of Shuffles:")
+        self.event_based_shuffles_input = QLineEdit()
+        self.event_based_shuffles_input.setValidator(QIntValidator(1, 10000))
+        self.event_based_shuffles_input.setText("100")
+        event_shuffles_layout = QHBoxLayout()
+        event_shuffles_layout.addWidget(event_shuffles_label)
+        event_shuffles_layout.addWidget(self.event_based_shuffles_input)
+
         # Copy data button
         self.event_based_copy_btn = QPushButton("Start Shuffling Transients")
-        #self.event_based_copy_btn.clicked.connect(self.copy_event_based_data_to_clipboard)
+        self.event_based_copy_btn.clicked.connect(self.copy_event_based_data_to_clipboard)
 
         # Add all layouts to main layout
         event_based_feature_extraction_layout.addLayout(event_type_layout)
         event_based_feature_extraction_layout.addLayout(event_window_size_layout)
         event_based_feature_extraction_layout.addLayout(event_lag_layout)
         event_based_feature_extraction_layout.addLayout(event_subwindows_layout)
+        event_based_feature_extraction_layout.addLayout(event_based_which_cells_layout)
         event_based_feature_extraction_layout.addWidget(event_cells_label)
         event_based_feature_extraction_layout.addWidget(self.event_based_cell_list)
+        event_based_feature_extraction_layout.addWidget(btn_toggle_check_event_based)
+        event_based_feature_extraction_layout.addLayout(event_shuffles_layout)
         event_based_feature_extraction_layout.addWidget(self.event_based_copy_btn)
         event_based_feature_extraction_layout.addStretch()
 
@@ -1615,6 +1642,7 @@ class CaltrigWidget(QWidget):
 
         # Populate cell list
         self.refresh_cell_list()
+        self.refresh_event_based_cell_list()
 
     def highlight_roi_selection(self, type="ellipse"):
         # Get mouse position
@@ -3407,12 +3435,36 @@ class CaltrigWidget(QWidget):
         else:
             return self.session.get_cell_ids(selected_cells)
         
+    def get_event_based_cells(self):
+        selected_cells = self.cmb_event_based_which_cells.currentText()
+        if selected_cells == "All Cells":
+            return self.session.data["E"].unit_id.values
+        elif selected_cells == "Verified Cells":
+            return self.session.get_verified_cells()
+        else:
+            return self.session.get_cell_ids(selected_cells)
+
     def create_checked_item(self, text, checked=True):
         item = QListWidgetItem(text)
         item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
         if checked:
             item.setCheckState(Qt.CheckState.Checked)
         return item
+
+    def refresh_event_based_cell_list(self):
+        self.event_based_cell_list.clear()
+        event_based_cells = self.get_event_based_cells()
+        good_bad_cells = self.session.data['E']['good_cells'].values
+        
+        for i, cell_id in enumerate(self.session.data['E']['unit_id'].values):
+            if cell_id in event_based_cells:
+                cell_name = f"{cell_id}"
+                item = self.create_checked_item(cell_name)
+                self.event_based_cell_list.addItem(item)
+                
+                # Set background to green if the cell is both good AND verified
+                if good_bad_cells[i] and self.session.data['E']['verified'].loc[{'unit_id': cell_id}].values.item():
+                    self.event_based_cell_list.item(self.event_based_cell_list.count()-1).setBackground(Qt.green)
 
     def refresh_cell_list_advanced(self):
         self.list_advanced_A_cell.clear()
@@ -3513,9 +3565,15 @@ class CaltrigWidget(QWidget):
         self.cmb_3D_advanced_which_cells.currentIndexChanged.disconnect()
         self.reset_which_cells_local(unique_groups, self.cmb_3D_advanced_which_cells)
         self.cmb_3D_advanced_which_cells.currentIndexChanged.connect(self.refresh_cell_list_advanced)
+        
+        # Add event-based cell list refresh (matching the pattern)
+        self.cmb_event_based_which_cells.currentIndexChanged.disconnect()
+        self.reset_which_cells_local(unique_groups, self.cmb_event_based_which_cells)
+        self.cmb_event_based_which_cells.currentIndexChanged.connect(self.refresh_event_based_cell_list)
 
         self.refresh_cell_list()
         self.refresh_cell_list_advanced()
+        self.refresh_event_based_cell_list()
 
     def reset_which_cells_local(self, unique_groups, list):
         current_selection = list.currentText()
