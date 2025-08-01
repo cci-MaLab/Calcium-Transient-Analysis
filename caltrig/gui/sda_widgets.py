@@ -517,7 +517,7 @@ class VisualizationWidget(QtInteractor):
         self.current_frame = 0
         self.kwargs_func = {}
         self.selected_cells = []
-        self.precalculated_values = self.update_precalculated_values()
+        self.update_precalculated_values()
         # We need to serialize the data so we can speed up the process of submit a process to the executor
         self._update_serialize_data()
         
