@@ -45,9 +45,9 @@ def extract_event_based_data(session, cells, event_indices, window_size, event_t
                 # Original logic - no subwindowing
                 transient_values = []
                 for j, start in enumerate(start_values):
-                    if start <= idx < start + window_size:
+                    if idx <= start < idx + window_size:
                         transient_values.append(dff_values[j])
-                    elif idx <= start + window_size:
+                    elif idx + window_size <= start:
                         break
 
                 ave_amp = np.mean(transient_values) if transient_values else 0.0

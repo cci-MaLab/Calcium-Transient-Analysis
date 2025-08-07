@@ -1159,6 +1159,14 @@ class CaltrigWidget(QWidget):
         event_shuffles_layout.addWidget(event_shuffles_label)
         event_shuffles_layout.addWidget(self.event_based_shuffles_input)
 
+        # Amplitude anchored checkbox
+        self.event_based_amplitude_anchored = QCheckBox("Amplitude Anchored")
+        self.event_based_amplitude_anchored.setChecked(True)
+        self.event_based_amplitude_anchored.setToolTip(
+            "If checked, DFF amplitudes stay paired with shuffled timing.\n"
+            "If unchecked, DFF amplitudes are shuffled independently from timing."
+        )
+
         # Copy data button
         self.event_based_copy_btn = QPushButton("Start Event-Based Shuffling")
         self.event_based_copy_btn.clicked.connect(self.event_based_shuffling)
@@ -1173,6 +1181,7 @@ class CaltrigWidget(QWidget):
         event_based_feature_extraction_layout.addWidget(self.event_based_cell_list)
         event_based_feature_extraction_layout.addWidget(btn_toggle_check_event_based)
         event_based_feature_extraction_layout.addLayout(event_shuffles_layout)
+        event_based_feature_extraction_layout.addWidget(self.event_based_amplitude_anchored)
         event_based_feature_extraction_layout.addWidget(self.event_based_copy_btn)
         event_based_feature_extraction_layout.addStretch()
 
@@ -3959,6 +3968,7 @@ class CaltrigWidget(QWidget):
         lag = int(self.event_based_lag_input.text())
         num_subwindows = self.event_based_subwindows_slider.value()
         num_shuffles = int(self.event_based_shuffles_input.text())
+        amplitude_anchored = self.event_based_amplitude_anchored.isChecked()
         
         print(f"Starting event-based shuffling with {len(selected_cells)} cells...")
         
@@ -3970,7 +3980,8 @@ class CaltrigWidget(QWidget):
             window_size=window_size,
             lag=lag,
             num_subwindows=num_subwindows,
-            num_shuffles=num_shuffles
+            num_shuffles=num_shuffles,
+            amplitude_anchored=amplitude_anchored
         )
         
         # Store and show the visualization window

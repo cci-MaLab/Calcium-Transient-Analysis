@@ -22,7 +22,8 @@ def event_based_shuffle_analysis(
     window_size: int,
     lag: int,
     num_subwindows: int,
-    num_shuffles: int
+    num_shuffles: int,
+    amplitude_anchored: bool = True
 ) -> Optional['VisualizeEventBasedShuffling']:
     """
     Perform event-based shuffling analysis on calcium transient data.
@@ -46,6 +47,9 @@ def event_based_shuffle_analysis(
         Number of subwindows to divide the analysis window into
     num_shuffles : int
         Number of shuffle iterations to perform
+    amplitude_anchored : bool, optional
+        If True, DFF amplitudes stay paired with shuffled timing (default).
+        If False, DFF amplitudes are shuffled independently from timing.
         
     Returns:
     --------
@@ -129,14 +133,28 @@ def event_based_shuffle_analysis(
                 precalculated_values = _precalculate(session)
                 
                 # Store original values and replace with shuffled ones
+                original_transient_starts = {}
+                original_dff_values = {}
+                
                 for cell_id in selected_cells:
                     if cell_id in precalculated_values['transient_info']:
                         original_transient_starts[cell_id] = precalculated_values['transient_info'][cell_id]['frame_start'].copy()
+                        original_dff_values[cell_id] = precalculated_values['transient_info'][cell_id]['DFF_values'].copy()
+                        
                         if cell_id in shuffled_frame_start:
                             # Make sure we don't have any index issues
                             shuffled_starts = shuffled_frame_start[cell_id]
                             if len(shuffled_starts) > 0:
                                 precalculated_values['transient_info'][cell_id]['frame_start'] = np.array(shuffled_starts)
+                            
+                            # Handle amplitude anchoring
+                            if not amplitude_anchored:
+                                # Shuffle DFF amplitudes independently from timing
+                                original_dff = original_dff_values[cell_id]
+                                if len(original_dff) > 0:
+                                    # Randomly permute the DFF values
+                                    shuffled_dff_indices = np.random.permutation(len(original_dff))
+                                    precalculated_values['transient_info'][cell_id]['DFF_values'] = original_dff[shuffled_dff_indices]
                             
             except Exception as e:
                 print(f"Error in shuffling setup for iteration {shuffle_idx + 1}: {e}")
@@ -160,12 +178,16 @@ def event_based_shuffle_analysis(
                 for cell_id in selected_cells:
                     if cell_id in original_transient_starts:
                         precalculated_values['transient_info'][cell_id]['frame_start'] = original_transient_starts[cell_id]
+                    if cell_id in original_dff_values:
+                        precalculated_values['transient_info'][cell_id]['DFF_values'] = original_dff_values[cell_id]
                 continue
             
             # Restore original values
             for cell_id in selected_cells:
                 if cell_id in original_transient_starts:
                     precalculated_values['transient_info'][cell_id]['frame_start'] = original_transient_starts[cell_id]
+                if cell_id in original_dff_values:
+                    precalculated_values['transient_info'][cell_id]['DFF_values'] = original_dff_values[cell_id]
             
             shuffled_results.append(shuffled_data)
             
@@ -429,6 +451,9 @@ class VisualizeEventBasedShuffling(QWidget):
     def populate_cell_dropdown(self):
         """Populate the cell selection dropdown."""
         self.cell_dropdown.clear()
+        # Add "All Cells" option first
+        self.cell_dropdown.addItem("All Cells")
+        # Add individual cells
         for cell_id in self.parameters['selected_cells']:
             self.cell_dropdown.addItem(f"Cell {cell_id}")
             
@@ -436,23 +461,59 @@ class VisualizeEventBasedShuffling(QWidget):
         """Populate the event selection dropdown."""
         self.event_dropdown.clear()
         num_events = len(self.parameters['event_indices'])
-        for i in range(min(num_events, 10)):  # Show first 10 events
-            event_idx = self.parameters['event_indices'][i]
-            self.event_dropdown.addItem(f"Event {i+1} (Frame {event_idx})")
+        num_subwindows = self.parameters['num_subwindows']
+        
+        if num_subwindows <= 1:
+            # No subwindows - show events as before
+            for i in range(min(num_events, 10)):  # Show first 10 events
+                event_idx = self.parameters['event_indices'][i]
+                self.event_dropdown.addItem(f"Event {i+1} (Frame {event_idx})")
+        else:
+            # With subwindows - show each subwindow separately
+            for i in range(min(num_events, 10)):  # Show first 10 events
+                event_idx = self.parameters['event_indices'][i]
+                for subwindow in range(num_subwindows):
+                    self.event_dropdown.addItem(f"Event {i+1} - Subwindow {subwindow+1} (Frame {event_idx})")
             
     def get_current_cell_id(self):
         """Get the currently selected cell ID."""
         current_text = self.cell_dropdown.currentText()
-        if current_text:
+        if current_text == "All Cells":
+            return "all"
+        elif current_text:
             return int(current_text.split()[1])  # Extract cell ID from "Cell X"
         return None
         
     def get_current_event_index(self):
         """Get the currently selected event index."""
         current_index = self.event_dropdown.currentIndex()
-        if current_index >= 0 and current_index < len(self.parameters['event_indices']):
-            return current_index
+        num_subwindows = self.parameters['num_subwindows']
+        num_events = len(self.parameters['event_indices'])
+        
+        if current_index < 0:
+            return None
+            
+        if num_subwindows <= 1:
+            # No subwindows - direct event index
+            if current_index < num_events:
+                return current_index
+        else:
+            # With subwindows - need to calculate actual event index
+            max_items = min(num_events, 10) * num_subwindows
+            if current_index < max_items:
+                return current_index // num_subwindows
+                
         return None
+        
+    def get_current_subwindow_index(self):
+        """Get the currently selected subwindow index (0-based)."""
+        current_index = self.event_dropdown.currentIndex()
+        num_subwindows = self.parameters['num_subwindows']
+        
+        if current_index < 0 or num_subwindows <= 1:
+            return None
+            
+        return current_index % num_subwindows
         
     def get_current_metric(self):
         """Get the currently selected metric."""
@@ -474,11 +535,35 @@ class VisualizeEventBasedShuffling(QWidget):
         # Clear previous plot
         self.ax.clear()
         
+        if cell_id == "all":
+            # Handle "All Cells" case - collate data across all selected cells
+            self.plot_all_cells(event_idx, selected_metric)
+        else:
+            # Handle individual cell case
+            self.plot_individual_cell(cell_id, event_idx, selected_metric)
+        
+        # Refresh the plot
+        self.figure.tight_layout()
+        self.canvas.draw()
+        
+    def plot_individual_cell(self, cell_id, event_idx, selected_metric):
+        """Plot data for an individual cell."""
+        # Get the column name based on subwindows
+        num_subwindows = self.parameters['num_subwindows']
+        subwindow_idx = self.get_current_subwindow_index()
+        
+        if num_subwindows <= 1:
+            event_col_name = f"Event {event_idx + 1}"
+        else:
+            if subwindow_idx is not None:
+                event_col_name = f"Event {event_idx + 1} - Subwindow {subwindow_idx + 1}"
+            else:
+                return  # Invalid subwindow selection
+        
         # Get original value for this cell, event, and metric
         original_value = None
         if cell_id in self.original_data:
             cell_data = self.original_data[cell_id]  # This is a pandas DataFrame
-            event_col_name = f"Event {event_idx + 1}"
             if event_col_name in cell_data.columns and selected_metric in cell_data.index:
                 original_value = cell_data.loc[selected_metric, event_col_name]
                 
@@ -487,7 +572,6 @@ class VisualizeEventBasedShuffling(QWidget):
         for shuffle_result in self.shuffled_data:
             if cell_id in shuffle_result:
                 cell_data = shuffle_result[cell_id]  # This is also a pandas DataFrame
-                event_col_name = f"Event {event_idx + 1}"
                 if event_col_name in cell_data.columns and selected_metric in cell_data.index:
                     shuffle_val = cell_data.loc[selected_metric, event_col_name]
                     if not np.isnan(shuffle_val):
@@ -504,22 +588,95 @@ class VisualizeEventBasedShuffling(QWidget):
                            label=f'Original ({original_value:.3f})')
             
         # Set labels and title
-        self.ax.set_title(f"{selected_metric}\nCell {cell_id}, Event {event_idx + 1}")
+        title_text = f"{selected_metric}\nCell {cell_id}, {event_col_name}"
+        self.ax.set_title(title_text)
         self.ax.set_xlabel(f"{selected_metric} Value")
         self.ax.set_ylabel("Frequency")
         self.ax.legend()
         self.ax.grid(True, alpha=0.3)
             
         # Update statistics display
-        self.update_statistics_display(cell_id, event_idx, selected_metric)
+        self.update_statistics_display(cell_id, event_idx, selected_metric, subwindow_idx)
         
-        # Refresh the plot
-        self.figure.tight_layout()
-        self.canvas.draw()
+    def plot_all_cells(self, event_idx, selected_metric):
+        """Plot collated data across all selected cells."""
+        # Get the column name based on subwindows
+        num_subwindows = self.parameters['num_subwindows']
+        subwindow_idx = self.get_current_subwindow_index()
         
-    def update_statistics_display(self, cell_id, event_idx, selected_metric):
+        if num_subwindows <= 1:
+            event_col_name = f"Event {event_idx + 1}"
+            title_suffix = f"Event {event_idx + 1}"
+        else:
+            if subwindow_idx is not None:
+                event_col_name = f"Event {event_idx + 1} - Subwindow {subwindow_idx + 1}"
+                title_suffix = f"Event {event_idx + 1} - Subwindow {subwindow_idx + 1}"
+            else:
+                return  # Invalid subwindow selection
+        
+        # Collect original values across all cells
+        original_values = []
+        for cell_id in self.parameters['selected_cells']:
+            if cell_id in self.original_data:
+                cell_data = self.original_data[cell_id]
+                if event_col_name in cell_data.columns and selected_metric in cell_data.index:
+                    orig_val = cell_data.loc[selected_metric, event_col_name]
+                    if not np.isnan(orig_val):
+                        original_values.append(orig_val)
+        
+        # Collect shuffled values across all cells
+        all_shuffled_values = []
+        for shuffle_result in self.shuffled_data:
+            shuffle_values_this_iteration = []
+            for cell_id in self.parameters['selected_cells']:
+                if cell_id in shuffle_result:
+                    cell_data = shuffle_result[cell_id]
+                    if event_col_name in cell_data.columns and selected_metric in cell_data.index:
+                        shuffle_val = cell_data.loc[selected_metric, event_col_name]
+                        if not np.isnan(shuffle_val):
+                            shuffle_values_this_iteration.append(shuffle_val)
+            
+            # Use sum for Total Amplitude, mean for others
+            if shuffle_values_this_iteration:
+                if selected_metric == "Total Amplitude":
+                    all_shuffled_values.append(np.sum(shuffle_values_this_iteration))
+                else:
+                    all_shuffled_values.append(np.mean(shuffle_values_this_iteration))
+                    
+        # Plot shuffled data histogram
+        if all_shuffled_values:
+            self.ax.hist(all_shuffled_values, bins=20, alpha=0.7, color='red', edgecolor='black', 
+                        label=f'Shuffled (n={len(all_shuffled_values)})')
+            
+        # Plot original mean/sum as a dashed vertical line
+        if original_values:
+            if selected_metric == "Total Amplitude":
+                original_aggregate = np.sum(original_values)
+                line_label = f'Original Sum ({original_aggregate:.3f})'
+            else:
+                original_aggregate = np.mean(original_values)
+                line_label = f'Original Mean ({original_aggregate:.3f})'
+            
+            self.ax.axvline(x=original_aggregate, color='blue', linestyle='--', linewidth=2, 
+                           label=line_label)
+            
+        # Set labels and title
+        aggregation_type = "Sum" if selected_metric == "Total Amplitude" else "Mean"
+        self.ax.set_title(f"{selected_metric}\nAll Cells (n={len(self.parameters['selected_cells'])}), {title_suffix}")
+        self.ax.set_xlabel(f"{selected_metric} {aggregation_type}")
+        self.ax.set_ylabel("Frequency")
+        self.ax.legend()
+        self.ax.grid(True, alpha=0.3)
+            
+        # Update statistics display for all cells
+        self.update_statistics_display_all_cells(event_idx, selected_metric, original_values, all_shuffled_values, subwindow_idx)
+        
+    def update_statistics_display(self, cell_id, event_idx, selected_metric, subwindow_idx=None):
         """Update the statistics label with current selection stats."""
-        stats_text = f"Cell {cell_id}, Event {event_idx + 1}, {selected_metric}: "
+        if subwindow_idx is not None:
+            stats_text = f"Cell {cell_id}, Event {event_idx + 1} - Subwindow {subwindow_idx + 1}, {selected_metric}: "
+        else:
+            stats_text = f"Cell {cell_id}, Event {event_idx + 1}, {selected_metric}: "
         
         # Look for statistics for this cell and metric
         if cell_id in self.statistics and selected_metric in self.statistics[cell_id]:
@@ -542,6 +699,39 @@ class VisualizeEventBasedShuffling(QWidget):
                 stats_text += f"Shuffled Mean: {mean_shuffled:.3f}"
             else:
                 stats_text += f"Shuffled Mean: {mean_shuffled}"
+        else:
+            stats_text += "Statistics not available"
+            
+        self.stats_label.setText(stats_text)
+        
+    def update_statistics_display_all_cells(self, event_idx, selected_metric, original_values, shuffled_values, subwindow_idx=None):
+        """Update the statistics label for the 'All Cells' case."""
+        if subwindow_idx is not None:
+            stats_text = f"All Cells, Event {event_idx + 1} - Subwindow {subwindow_idx + 1}, {selected_metric}: "
+        else:
+            stats_text = f"All Cells, Event {event_idx + 1}, {selected_metric}: "
+        
+        if original_values and shuffled_values:
+            # Use sum for Total Amplitude, mean for others
+            if selected_metric == "Total Amplitude":
+                original_aggregate = np.sum(original_values)
+                aggregation_type = "Sum"
+            else:
+                original_aggregate = np.mean(original_values)
+                aggregation_type = "Mean"
+                
+            shuffled_mean = np.mean(shuffled_values)
+            shuffled_std = np.std(shuffled_values)
+            
+            # Calculate z-score
+            if shuffled_std > 0:
+                z_score = (original_aggregate - shuffled_mean) / shuffled_std
+                stats_text += f"Z-score: {z_score:.3f}, "
+            else:
+                stats_text += "Z-score: N/A, "
+                
+            stats_text += f"Original {aggregation_type}: {original_aggregate:.3f}, "
+            stats_text += f"Shuffled Mean: {shuffled_mean:.3f}"
         else:
             stats_text += "Statistics not available"
             
