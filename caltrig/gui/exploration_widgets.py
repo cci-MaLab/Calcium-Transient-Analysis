@@ -1166,6 +1166,24 @@ class CaltrigWidget(QWidget):
             "If checked, DFF amplitudes stay paired with shuffled timing.\n"
             "If unchecked, DFF amplitudes are shuffled independently from timing."
         )
+        
+        # Shuffle type selection
+        shuffle_type_layout = QHBoxLayout()
+        shuffle_type_layout.addWidget(QLabel("Shuffle Type:"))
+        
+        self.event_based_shuffle_temporal = QCheckBox("Temporal")
+        self.event_based_shuffle_temporal.setChecked(True)
+        self.event_based_shuffle_temporal.setToolTip("Shuffle timing while preserving spatial relationships")
+        self.event_based_shuffle_temporal.clicked.connect(self.on_event_shuffle_type_changed)
+        
+        self.event_based_shuffle_spatial = QCheckBox("Spatial")
+        self.event_based_shuffle_spatial.setChecked(False)
+        self.event_based_shuffle_spatial.setToolTip("Shuffle spatial relationships while preserving timing")
+        self.event_based_shuffle_spatial.clicked.connect(self.on_event_shuffle_type_changed)
+        
+        shuffle_type_layout.addWidget(self.event_based_shuffle_temporal)
+        shuffle_type_layout.addWidget(self.event_based_shuffle_spatial)
+        shuffle_type_layout.addStretch()
 
         # Copy data button
         self.event_based_copy_btn = QPushButton("Start Event-Based Shuffling")
@@ -1182,6 +1200,7 @@ class CaltrigWidget(QWidget):
         event_based_feature_extraction_layout.addWidget(btn_toggle_check_event_based)
         event_based_feature_extraction_layout.addLayout(event_shuffles_layout)
         event_based_feature_extraction_layout.addWidget(self.event_based_amplitude_anchored)
+        event_based_feature_extraction_layout.addLayout(shuffle_type_layout)
         event_based_feature_extraction_layout.addWidget(self.event_based_copy_btn)
         event_based_feature_extraction_layout.addStretch()
 
@@ -3970,7 +3989,15 @@ class CaltrigWidget(QWidget):
         num_shuffles = int(self.event_based_shuffles_input.text())
         amplitude_anchored = self.event_based_amplitude_anchored.isChecked()
         
-        print(f"Starting event-based shuffling with {len(selected_cells)} cells...")
+        # Determine shuffle type
+        shuffle_type = "temporal"
+        if self.event_based_shuffle_spatial.isChecked():
+            shuffle_type = "spatial"
+        elif not self.event_based_shuffle_temporal.isChecked():
+            print("Error: No shuffle type selected")
+            return
+        
+        print(f"Starting event-based shuffling ({shuffle_type}) with {len(selected_cells)} cells...")
         
         # Call the event-based shuffling function from the separate module
         visualization_window = event_based_shuffle_analysis(
@@ -3981,7 +4008,8 @@ class CaltrigWidget(QWidget):
             lag=lag,
             num_subwindows=num_subwindows,
             num_shuffles=num_shuffles,
-            amplitude_anchored=amplitude_anchored
+            amplitude_anchored=amplitude_anchored,
+            shuffle_type=shuffle_type
         )
         
         # Store and show the visualization window
@@ -4004,6 +4032,25 @@ class CaltrigWidget(QWidget):
     def on_event_based_shuffling_window_closed(self):
         """Handle event-based shuffling window being closed."""
         self.event_based_shuffling_window = None
+        
+    def on_event_shuffle_type_changed(self):
+        """Handle mutual exclusion of shuffle type checkboxes."""
+        sender = self.sender()
+        
+        if sender == self.event_based_shuffle_temporal and sender.isChecked():
+            self.event_based_shuffle_spatial.setChecked(False)
+            # Enable amplitude anchored for temporal shuffling
+            self.event_based_amplitude_anchored.setEnabled(True)
+        elif sender == self.event_based_shuffle_spatial and sender.isChecked():
+            self.event_based_shuffle_temporal.setChecked(False)
+            # Disable amplitude anchored for spatial shuffling (not applicable)
+            self.event_based_amplitude_anchored.setEnabled(False)
+        
+        # Ensure at least one is always checked
+        if not self.event_based_shuffle_temporal.isChecked() and not self.event_based_shuffle_spatial.isChecked():
+            # Default back to temporal if both are unchecked
+            self.event_based_shuffle_temporal.setChecked(True)
+            self.event_based_amplitude_anchored.setEnabled(True)
 
 class PlotItemEnhanced(PlotItem):
     signalChangedSelection = QtCore.Signal(object)
