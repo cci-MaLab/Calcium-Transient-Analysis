@@ -30,7 +30,7 @@ from ..gui.sda_widgets import _precalculate
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas, NavigationToolbar2QT as NavigationToolbar
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QLabel, QMenuBar, QAction, QStyle, QApplication, QTextEdit, QPushButton, QDialog
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QLabel, QMenuBar, QAction, QStyle, QApplication, QTextEdit, QPushButton, QDialog, QLineEdit, QDoubleSpinBox
 from PyQt5.QtCore import pyqtSignal, Qt
 from scipy.spatial import cKDTree
 from collections import defaultdict
@@ -349,7 +349,8 @@ def event_based_shuffle_analysis(
     statistics = calculate_event_shuffling_statistics(
         original_data, shuffled_results, 
         shuffle_type=shuffle_type, 
-        cell_positions=cell_positions if shuffle_type == "spatial" else None
+        cell_positions=cell_positions if shuffle_type == "spatial" else None,
+        selected_cells=selected_cells
     )
     
     # Create appropriate visualization window based on shuffle type
@@ -483,7 +484,8 @@ def extract_event_based_data_with_precalculated(session, cells, event_indices, w
 
 
 def calculate_event_shuffling_statistics(original_data: Dict, shuffled_data_list: List[Dict], 
-                                       shuffle_type: str = "temporal", cell_positions: Dict = None) -> Dict[str, Any]:
+                                       shuffle_type: str = "temporal", cell_positions: Dict = None, 
+                                       selected_cells: List[int] = None) -> Dict[str, Any]:
     """
     Calculate statistical measures comparing original and shuffled event-based data.
     Uses the same approach as existing shuffling functions: z-scores based on mean and std of shuffled distribution.
@@ -498,6 +500,8 @@ def calculate_event_shuffling_statistics(original_data: Dict, shuffled_data_list
         Type of shuffling performed ("temporal" or "spatial")
     cell_positions : Dict, optional
         Cell positions for spatial analysis (only needed for spatial shuffling)
+    selected_cells : List[int], optional
+        List of selected cell IDs to analyze (if None, uses all cells in original_data)
         
     Returns:
     --------
@@ -557,7 +561,10 @@ def calculate_event_shuffling_statistics(original_data: Dict, shuffled_data_list
             return statistics
         
         # Only cells with known positions
-        selected_cells_all = list(original_data.keys())
+        if selected_cells is not None:
+            selected_cells_all = selected_cells
+        else:
+            selected_cells_all = list(original_data.keys())
         kept_cells = [c for c in selected_cells_all if c in cell_positions]
         if len(kept_cells) < 3:
             statistics["spatial_metrics"] = {}
@@ -1126,6 +1133,15 @@ class VisualizeSpatialEventShuffling(QWidget):
         # Track colorbars to remove them when updating plots
         self.colorbars = []
         
+        # Initialize parameter values BEFORE UI setup
+        self.current_pvalue = 0.05  # Default p < 0.05
+        self.current_method = "Z-score"  # Default method
+        self.z_threshold = 1.5
+        self.quantile_low = 0.1
+        self.quantile_high = 0.9
+        self.range_low = 0.0
+        self.range_high = 1.0
+        
         # Get statistics from parameters or calculate them
         if 'statistics' in parameters:
             self.statistics = parameters['statistics']
@@ -1134,7 +1150,8 @@ class VisualizeSpatialEventShuffling(QWidget):
             self.statistics = calculate_event_shuffling_statistics(
                 original_data, shuffled_data, 
                 shuffle_type="spatial", 
-                cell_positions=parameters['cell_positions']
+                cell_positions=parameters['cell_positions'],
+                selected_cells=parameters['selected_cells']
             )
         
         # Prepare spatial data for visualization
@@ -1197,28 +1214,63 @@ class VisualizeSpatialEventShuffling(QWidget):
         main_layout = QVBoxLayout()
         
         # Control panel at the top
-        control_panel = QHBoxLayout()
+        control_panel = QVBoxLayout()
+        
+        # First row: Event and Metric selection
+        selection_row = QHBoxLayout()
         
         # Event selection dropdown
-        control_panel.addWidget(QLabel("Select Event:"))
+        selection_row.addWidget(QLabel("Select Event:"))
         self.event_dropdown = QComboBox()
         self.populate_event_dropdown()
         self.event_dropdown.currentTextChanged.connect(self.on_selection_changed)
-        control_panel.addWidget(self.event_dropdown)
+        selection_row.addWidget(self.event_dropdown)
         
         # Metric selection dropdown
-        control_panel.addWidget(QLabel("Select Metric:"))
+        selection_row.addWidget(QLabel("Select Metric:"))
         self.metric_dropdown = QComboBox()
         self.metric_dropdown.addItems(["Average Amplitude", "Frequency", "Total Amplitude"])
         self.metric_dropdown.currentTextChanged.connect(self.on_selection_changed)
-        control_panel.addWidget(self.metric_dropdown)
+        selection_row.addWidget(self.metric_dropdown)
+        
+        selection_row.addStretch()
+        control_panel.addLayout(selection_row)
+        
+        # Second row: Analysis parameters
+        params_row = QHBoxLayout()
+        
+        # P-value selection for NNR significance
+        params_row.addWidget(QLabel("NNR Significance:"))
+        self.pvalue_dropdown = QComboBox()
+        self.pvalue_dropdown.addItems(["p < 0.05", "p < 0.01", "p < 0.10"])
+        self.pvalue_dropdown.currentTextChanged.connect(self.on_parameters_changed)
+        params_row.addWidget(self.pvalue_dropdown)
+        
+        # Cell selection method
+        params_row.addWidget(QLabel("Cell Selection:"))
+        self.selection_method_dropdown = QComboBox()
+        self.selection_method_dropdown.addItems(["Z-score", "Quantile Range", "Raw Range"])
+        self.selection_method_dropdown.currentTextChanged.connect(self.on_method_changed)
+        params_row.addWidget(self.selection_method_dropdown)
+        
+        params_row.addStretch()
+        control_panel.addLayout(params_row)
+        
+        # Third row: Method-specific parameters (dynamic)
+        self.method_params_layout = QHBoxLayout()
+        self.setup_method_parameters()
+        control_panel.addLayout(self.method_params_layout)
+        
+        # Fourth row: Action buttons
+        button_row = QHBoxLayout()
         
         # Show full statistics button
         self.full_stats_button = QPushButton("Show Full Statistics")
         self.full_stats_button.clicked.connect(self.show_full_statistics)
-        control_panel.addWidget(self.full_stats_button)
+        button_row.addWidget(self.full_stats_button)
         
-        control_panel.addStretch()
+        button_row.addStretch()
+        control_panel.addLayout(button_row)
         main_layout.addLayout(control_panel)
         
         # Create horizontal layout for plots and statistics
@@ -1249,7 +1301,7 @@ class VisualizeSpatialEventShuffling(QWidget):
         
         self.stats_text = QTextEdit()
         self.stats_text.setReadOnly(True)
-        self.stats_text.setStyleSheet("font-family: 'Courier New', monospace; font-size: 9px;")
+        self.stats_text.setStyleSheet("font-family: 'Courier New', monospace; font-size: 12px;")
         # Remove height restriction to use full vertical space
         stats_layout.addWidget(self.stats_text)
         
@@ -1257,6 +1309,121 @@ class VisualizeSpatialEventShuffling(QWidget):
         
         main_layout.addLayout(content_layout)
         self.setLayout(main_layout)
+        
+    def setup_method_parameters(self):
+        """Set up the method-specific parameter controls."""
+        # Clear existing widgets and layout items properly
+        while self.method_params_layout.count():
+            child = self.method_params_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+            elif child.spacerItem():
+                # Remove spacer items too
+                pass
+        
+        # Add parameters based on current method
+        method = self.selection_method_dropdown.currentText() if hasattr(self, 'selection_method_dropdown') else "Z-score"
+        
+        if method == "Z-score":
+            self.method_params_layout.addWidget(QLabel("Threshold:"))
+            self.z_spinbox = QDoubleSpinBox()
+            self.z_spinbox.setRange(0.1, 5.0)
+            self.z_spinbox.setSingleStep(0.1)
+            self.z_spinbox.setValue(self.z_threshold)
+            self.z_spinbox.valueChanged.connect(self.on_z_threshold_changed)
+            self.method_params_layout.addWidget(self.z_spinbox)
+            
+        elif method == "Quantile Range":
+            self.method_params_layout.addWidget(QLabel("Exclude outside:"))
+            self.quantile_low_spinbox = QDoubleSpinBox()
+            self.quantile_low_spinbox.setRange(0.0, 0.5)
+            self.quantile_low_spinbox.setSingleStep(0.01)
+            self.quantile_low_spinbox.setValue(self.quantile_low)
+            self.quantile_low_spinbox.valueChanged.connect(self.on_quantile_changed)
+            self.method_params_layout.addWidget(self.quantile_low_spinbox)
+            
+            self.method_params_layout.addWidget(QLabel("-"))
+            self.quantile_high_spinbox = QDoubleSpinBox()
+            self.quantile_high_spinbox.setRange(0.5, 1.0)
+            self.quantile_high_spinbox.setSingleStep(0.01)
+            self.quantile_high_spinbox.setValue(self.quantile_high)
+            self.quantile_high_spinbox.valueChanged.connect(self.on_quantile_changed)
+            self.method_params_layout.addWidget(self.quantile_high_spinbox)
+            
+        elif method == "Raw Range":
+            self.method_params_layout.addWidget(QLabel("Exclude outside:"))
+            self.range_low_spinbox = QDoubleSpinBox()
+            self.range_low_spinbox.setRange(-999.0, 999.0)
+            self.range_low_spinbox.setSingleStep(0.1)
+            self.range_low_spinbox.setValue(self.range_low)
+            self.range_low_spinbox.valueChanged.connect(self.on_range_changed)
+            self.method_params_layout.addWidget(self.range_low_spinbox)
+            
+            self.method_params_layout.addWidget(QLabel("-"))
+            self.range_high_spinbox = QDoubleSpinBox()
+            self.range_high_spinbox.setRange(-999.0, 999.0)
+            self.range_high_spinbox.setSingleStep(0.1)
+            self.range_high_spinbox.setValue(self.range_high)
+            self.range_high_spinbox.valueChanged.connect(self.on_range_changed)
+            self.method_params_layout.addWidget(self.range_high_spinbox)
+        
+        # Always add stretch at the end to maintain consistent layout
+        self.method_params_layout.addStretch()
+        
+    def on_method_changed(self):
+        """Handle changes to cell selection method."""
+        self.current_method = self.selection_method_dropdown.currentText()
+        self.setup_method_parameters()
+        self.on_selection_changed()
+        
+    def on_parameters_changed(self):
+        """Handle changes to p-value selection."""
+        pvalue_text = self.pvalue_dropdown.currentText()
+        if "0.05" in pvalue_text:
+            self.current_pvalue = 0.05
+        elif "0.01" in pvalue_text:
+            self.current_pvalue = 0.01
+        elif "0.10" in pvalue_text:
+            self.current_pvalue = 0.10
+        self.update_statistics_display()  # Retrigger description generation
+        
+    def on_z_threshold_changed(self, value):
+        """Handle changes to z-score threshold."""
+        self.z_threshold = value
+        self.on_selection_changed()  # Update both plot and statistics
+        
+    def on_quantile_changed(self):
+        """Handle changes to quantile range."""
+        if hasattr(self, 'quantile_low_spinbox') and hasattr(self, 'quantile_high_spinbox'):
+            self.quantile_low = self.quantile_low_spinbox.value()
+            self.quantile_high = self.quantile_high_spinbox.value()
+            self.on_selection_changed()  # Update both plot and statistics
+            
+    def on_range_changed(self):
+        """Handle changes to raw value range."""
+        if hasattr(self, 'range_low_spinbox') and hasattr(self, 'range_high_spinbox'):
+            self.range_low = self.range_low_spinbox.value()
+            self.range_high = self.range_high_spinbox.value()
+            self.on_selection_changed()  # Update both plot and statistics
+            
+    def get_high_activity_indices(self, values_array):
+        """Get indices of high-activity cells based on current selection method."""
+        if self.current_method == "Z-score":
+            return select_high_indices(values_array, mode="zscore", z_thresh=self.z_threshold, robust=True, min_high=3)
+        
+        elif self.current_method == "Quantile Range":
+            # Mark cells outside the quantile range
+            low_threshold = np.nanpercentile(values_array, self.quantile_low * 100)
+            high_threshold = np.nanpercentile(values_array, self.quantile_high * 100)
+            outside_indices = np.where((values_array < low_threshold) | (values_array > high_threshold))[0]
+            return outside_indices
+        
+        elif self.current_method == "Raw Range":
+            # Mark cells outside the raw value range
+            outside_indices = np.where((values_array < self.range_low) | (values_array > self.range_high))[0]
+            return outside_indices
+        
+        return np.array([], dtype=int)
         
     def populate_event_dropdown(self):
         """Populate the event selection dropdown."""
@@ -1349,6 +1516,35 @@ class VisualizeSpatialEventShuffling(QWidget):
         # Create scatter plot with color-coded values
         scatter = ax.scatter(x_positions, y_positions, c=values, s=50, cmap='viridis', alpha=0.7)
         
+        # Add red X markers for high-activity cells based on current method
+        event_col = self.get_current_event()
+        metric = self.get_current_metric()
+        
+        if event_col and metric:
+            # Get high-activity cells using current selection method
+            values_array = np.array(values)
+            if len(values_array) > 0:
+                high_indices = self.get_high_activity_indices(values_array)
+                
+                if len(high_indices) > 0:
+                    # Get positions of high-activity cells
+                    high_x = [x_positions[i] for i in high_indices]
+                    high_y = [y_positions[i] for i in high_indices]
+                    
+                    # Create label based on method
+                    if self.current_method == "Z-score":
+                        label = f'High Activity (z≥{self.z_threshold}, n={len(high_indices)})'
+                    elif self.current_method == "Quantile Range":
+                        label = f'Outside Range ({self.quantile_low:.2f}-{self.quantile_high:.2f}, n={len(high_indices)})'
+                    else:  # Raw Range
+                        label = f'Outside Range ({self.range_low:.1f}-{self.range_high:.1f}, n={len(high_indices)})'
+                    
+                    # Add red X markers
+                    ax.scatter(high_x, high_y, marker='x', c='red', s=100, linewidths=3, label=label)
+                    
+                    # Add legend
+                    ax.legend(loc='upper right', fontsize=8)
+        
         # Add colorbar and track it for removal later
         cbar = plt.colorbar(scatter, ax=ax)
         cbar.set_label(self.get_current_metric())
@@ -1392,8 +1588,16 @@ class VisualizeSpatialEventShuffling(QWidget):
         text_lines.append("=" * 40)
         text_lines.append("")
         text_lines.append("METHODOLOGY:")
-        text_lines.append("• High-activity cells: z-score ≥ 1.5")
-        text_lines.append("• NNR = NN_distance(high) / NN_distance(all)")
+        
+        # Dynamic methodology description based on current method
+        if self.current_method == "Z-score":
+            text_lines.append(f"• High-activity cells: z-score ≥ {self.z_threshold} (marked with red X)")
+        elif self.current_method == "Quantile Range":
+            text_lines.append(f"• Marked cells: outside {self.quantile_low:.1%}-{self.quantile_high:.1%} range (red X)")
+        else:  # Raw Range
+            text_lines.append(f"• Marked cells: outside {self.range_low:.1f}-{self.range_high:.1f} range (red X)")
+            
+        text_lines.append("• NNR = NN_distance(marked) / NN_distance(all)")
         text_lines.append("• Lower NNR = More clustered")
         text_lines.append("")
         text_lines.append("RESULTS:")
@@ -1401,16 +1605,18 @@ class VisualizeSpatialEventShuffling(QWidget):
         text_lines.append(f"Shuffled Mean:      {data['shuffled_mean']:.4f}")
         text_lines.append(f"Shuffled Std:       {data['shuffled_std']:.4f}")
         text_lines.append(f"Z-Score:           {data['z_score']:.4f}")
-        text_lines.append(f"High Activity Cells: {data['n_high_cells']}")
+        text_lines.append(f"High Activity Cells: {data['n_high_cells']} (red X markers)")
         text_lines.append(f"NN Distance (All):  {data['nn_all_cells']:.4f}")
         text_lines.append("")
         
-        # Interpretation
+        # Interpretation using current p-value threshold
         z_score = data['z_score']
-        if abs(z_score) < 1.96:
+        z_threshold = self.get_z_threshold_for_pvalue(self.current_pvalue)
+        
+        if abs(z_score) < z_threshold:
             interpretation = "Not significantly different from random"
             significance = ""
-        elif z_score < -1.96:
+        elif z_score < -z_threshold:
             interpretation = "MORE CLUSTERED than random"
             significance = " (SIGNIFICANT)"
         else:
@@ -1419,12 +1625,21 @@ class VisualizeSpatialEventShuffling(QWidget):
         
         text_lines.append("INTERPRETATION:")
         text_lines.append(f"{interpretation}{significance}")
+        text_lines.append(f"Significance level: p < {self.current_pvalue}")
         
-        if abs(z_score) >= 1.96:
-            p_level = "p < 0.05" if abs(z_score) < 2.58 else "p < 0.01"
-            text_lines.append(f"Statistical significance: {p_level}")
+        if abs(z_score) >= z_threshold:
+            text_lines.append(f"Z-score threshold: ±{z_threshold:.2f}")
         
         self.stats_text.setText("\n".join(text_lines))
+        
+    def get_z_threshold_for_pvalue(self, pvalue):
+        """Convert p-value to z-score threshold for two-tailed test."""
+        if pvalue == 0.01:
+            return 2.58  # 99% confidence
+        elif pvalue == 0.10:
+            return 1.65  # 90% confidence
+        else:  # pvalue == 0.05
+            return 1.96  # 95% confidence
         
     def show_full_statistics(self):
         """Show full statistics in a separate popup dialog window."""
