@@ -594,6 +594,13 @@ class VisualizationWidget(QtInteractor):
         frame_3d_data = self.visualization_data.get_3d_data(frame)
         frame_scalars = frame_3d_data["frame"].ravel(order='F')
         points_coords = frame_3d_data["points_coords"]
+        
+        # Check if shapes match before updating to prevent broadcasting errors
+        if self.grid.points.shape[0] != frame_scalars.shape[0]:
+            # Shapes don't match - recreate the grid instead of updating
+            self.reset_grid()
+            return
+        
         self.grid.points[:,2] = frame_scalars
         self.grid["scalars"] = frame_scalars
         self.points_3d.points = points_coords
