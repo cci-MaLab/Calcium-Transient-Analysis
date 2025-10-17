@@ -821,9 +821,9 @@ class VisualizationWidget(QtInteractor):
                     color = colormap(normalized_value)
                     color = (color[0], color[1], color[2])
                     distance = np.sqrt((x2-x1)**2 + (y2-y1)**2)
-                    tip_length = (5 + 10 * normalized_value) / distance
-                    tip_radius = (2 + 4 * normalized_value) / distance
-                    shaft_radius = (1 + 2 * normalized_value) / distance
+                    tip_length = 10 / distance      # Fixed tip length
+                    tip_radius = 4 / distance       # Fixed tip radius  
+                    shaft_radius = 2 / distance     # Fixed shaft radius (width)
                     mesh = pv.Arrow(start=(x1, y1, z_offset),
                                     direction=(x2-x1, y2-y1, z_offset),
                                     tip_length=tip_length,
