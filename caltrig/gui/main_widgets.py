@@ -14,12 +14,13 @@ class ConfigFileDialog(QDialog):
     """
     Dialog to generate a new config file.
     """
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, save_ini_path=None):
         super().__init__(parent)
         self.setWindowTitle("Generate Config File")
         self.setMinimumWidth(600)
 
         self.current_folder = None
+        self.save_ini_path = save_ini_path or os.getcwd()  # Use provided path or default to current directory
 
         layout = QVBoxLayout()
         
@@ -71,6 +72,15 @@ class ConfigFileDialog(QDialog):
         form_layout.addWidget(self.behavior_input, 6, 1)
         form_layout.addWidget(self.behavior_button, 6, 0)
         
+        # Save Path for INI file
+        self.save_path_input = QLineEdit()
+        self.save_path_input.setText(self.save_ini_path)  # Show default path
+        self.save_path_input.setReadOnly(True)  # Make it read-only so users must use the button
+        self.save_path_button = QPushButton("Choose Save Location")
+        self.save_path_button.clicked.connect(self.browse_save_path)
+        form_layout.addWidget(self.save_path_input, 7, 1)
+        form_layout.addWidget(self.save_path_button, 7, 0)
+        
         layout.addLayout(form_layout)
         
         # Add OK and Cancel buttons
@@ -100,6 +110,12 @@ class ConfigFileDialog(QDialog):
             self.behavior_input.setText(file)
             # Remove the file path from the current folder to avoid confusion
             self.current_folder = os.path.dirname(self.current_folder)
+    
+    def browse_save_path(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select Save Location for INI File", self.save_ini_path)
+        if folder:
+            self.save_ini_path = folder
+            self.save_path_input.setText(folder)
             
     def get_config_data(self):
         """Returns the configuration data as a dictionary"""
@@ -122,7 +138,7 @@ class ConfigFileDialog(QDialog):
                 self.show_error_message(f"{key.replace('_', ' ').capitalize()} cannot be empty.")
                 return
         
-        # Create the confid file in the same directory as where the script is run
+        # Create the config file in the selected save directory
         path_name = f"{config_data['mouseid']}_{config_data['day']}_{config_data['session']}"
         group = config_data["group"]
         if group:
@@ -130,7 +146,7 @@ class ConfigFileDialog(QDialog):
         else:
             path_name = f"{path_name}.ini"
 
-        config_file_path = os.path.join(os.getcwd(), path_name)
+        config_file_path = os.path.join(self.save_ini_path, path_name)
         # Open the file in write mode
         with open(config_file_path, "w") as config_file:
             config_file.write("[Session_Info]\n")
@@ -143,7 +159,7 @@ class ConfigFileDialog(QDialog):
                 config_file.write(f"{key} = {value}\n")
     
         # Show success message
-        self.show_success_message(f"Config file generated: {path_name}")
+        self.show_success_message(f"Config file generated: {config_file_path}")
         
         self.accept()
     

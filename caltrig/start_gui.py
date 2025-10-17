@@ -46,6 +46,9 @@ class MainWindow(QMainWindow):
         self.instances = {}
         self.path_list = {}
         self.instances_list = []
+        
+        # INI file save path - persists across dialog instances
+        self.save_ini_path = os.getcwd()
 
         # Event defaults:
         self.event_defaults = {"ALP": {"window": 20, "delay": 0},
@@ -187,9 +190,10 @@ class MainWindow(QMainWindow):
         """
         Opens a dialog to generate an INI file for the current selection.
         """
-        config_dialog = ConfigFileDialog()
+        config_dialog = ConfigFileDialog(save_ini_path=self.save_ini_path)
         if config_dialog.exec():
-            pass
+            # Update the main window's save path if it was changed in the dialog
+            self.save_ini_path = config_dialog.save_ini_path
 
     def start_caltrig(self, current_selection=None):
         """
