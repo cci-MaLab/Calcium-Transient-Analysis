@@ -1898,15 +1898,19 @@ class CaltrigWidget(QWidget):
             if item.checkState() == Qt.CheckState.Checked:
                 cofiring_nums.add(int(item.text().split(" ")[1]))
 
-        kwargs = {"nums_to_visualize": cells_for_cofiring, "visualize": visualize_cofiring,
-                  "cofiring_nums": cofiring_nums, "shareA": shareA, "shareB": shareB, 
-                  "direction": direction}
+        # kwargs for extract_cofiring_data (without window_size since it's passed as positional arg)
+        extract_kwargs = {"nums_to_visualize": cells_for_cofiring, "visualize": visualize_cofiring,
+                         "cofiring_nums": cofiring_nums, "shareA": shareA, "shareB": shareB, 
+                         "direction": direction}
         
-        cofiring_data = self.visualization_3D.extract_cofiring_data(window_size, **kwargs)
+        cofiring_data = self.visualization_3D.extract_cofiring_data(window_size, **extract_kwargs)
 
-        kwargs["cofiring_data"] = cofiring_data
+        # kwargs for Cofiring2DWidget (includes window_size and cofiring_data)
+        widget_kwargs = {"nums_to_visualize": cells_for_cofiring, "cofiring_nums": cofiring_nums, 
+                        "shareA": shareA, "shareB": shareB, "direction": direction, 
+                        "window_size": window_size, "cofiring_data": cofiring_data}
         
-        cofiring2d_window = Cofiring2DWidget(self.session, self.name, parent=self, **kwargs)
+        cofiring2d_window = Cofiring2DWidget(self.session, self.name, parent=self, **widget_kwargs)
 
         if cofiring2d_window.name not in self.windows:
             self.windows[cofiring2d_window.name ] = cofiring2d_window        

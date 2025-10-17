@@ -8,16 +8,22 @@ from matplotlib import cm
 class Cofiring2DWidget(QWidget):
     def __init__(self, session: DataInstance, name: str, parent=None, nums_to_visualize: str = 'Verified',
                  cofiring_nums: list = None, shareA: bool = False, shareB: bool = False,
-                 direction: str = 'bidirectional', cofiring_data: dict = {}, **kwargs):
+                 direction: str = 'bidirectional', cofiring_data: dict = {}, window_size: int = None, **kwargs):
         super(Cofiring2DWidget, self).__init__()
         self.parent = parent
         self.session = session
-        name += f" {nums_to_visualize}"
-        name += " ShareA" if shareA else ""
-        name += " ShareB" if shareB else ""
-        name += f" {direction}"
         
-        self.name = name
+        # Build descriptive title with cofiring parameters
+        title_parts = [name]
+        if window_size:
+            title_parts.append(f"Window={window_size}")
+        if shareA:
+            title_parts.append("ShareA")
+        if shareB:
+            title_parts.append("ShareB")
+        title_parts.append(f"Dir={direction.capitalize()}")
+        
+        self.name = " | ".join(title_parts)
         self.setWindowTitle(self.name)
         layout_view_2d = QHBoxLayout()
         self.view_2d = pg.GraphicsLayoutWidget()
@@ -113,7 +119,7 @@ class Cofiring2DWidget(QWidget):
 
     def add_arrow(self, plot, cell_id1, cell_id2):
         """
-        This doesn't work too well, we'll instead plot lines between the centroids
+        Plot lines between centroids with color coding but uniform width and no arrow heads
         """
         if (cell_id1, cell_id2) not in self.cofiring_data["cells"]:
             return
@@ -134,18 +140,12 @@ class Cofiring2DWidget(QWidget):
         color = colormap(normalized_value)
         # Convert to 255
         color = [int(c * 255) for c in color]
-        width = 10 * normalized_value
-        # Add the line
-        plot.plot([a[0], b[0]], [a[1], b[1]], pen=pg.mkPen(color, width=width))
-
-        # Add just the arrow head 3/4 of the way pointing towards b
-        direction = b - a
-        arrow_pos = a + 0.75 * direction
-        angle = 180 + np.degrees(np.arctan2(direction[1], direction[0]))
-        headLen = 1 + (7 * normalized_value)
-        arrow = pg.ArrowItem(pos=arrow_pos, angle=angle, headLen=headLen,
-                              tipAngle=30, baseAngle=20, brush=color, pxMode=False)
-        plot.addItem(arrow)
+        
+        # Fixed width for all lines instead of variable width
+        fixed_width = 3
+        
+        # Add the line with fixed width but color-coded based on cofiring strength
+        plot.plot([a[0], b[0]], [a[1], b[1]], pen=pg.mkPen(color, width=fixed_width))
         
 
     def closeEvent(self, event):
