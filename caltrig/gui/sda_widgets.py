@@ -560,7 +560,7 @@ class VisualizationWidget(QtInteractor):
         self.add_mesh(self.grid, lighting='flat', clim=self.scalar_range, scalar_bar_args=None, pickable=False)
         self.points_3d = pv.PolyData(points_coords)
         self.points_3d["colors"] = self.visualization_data.get_selected_points(self.selected_cells)
-        self.add_mesh(self.points_3d, scalars="colors", render_points_as_spheres=False, point_size=10, cmap=['red', 'green'], scalar_bar_args=None)
+        self.add_mesh(self.points_3d, scalars="colors", render_points_as_spheres=True, point_size=10, cmap=['red', 'green'], scalar_bar_args=None)
         self.enable_point_picking(callback=self.receive_click, pickable_window=self.points_3d, show_point=False, show_message="Right Click or press 'P' to select point/cell", left_click=True)
         self._picking_text.GetTextProperty().SetColor(1,1,1)
         self.change_colormap(self.cmap)
