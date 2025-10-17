@@ -861,8 +861,16 @@ class VisualizationWidget(QtInteractor):
         self.render()
 
     def closeEvent(self, event):
-        self.clear()
-        pv.close_all()
+        try:
+            self.clear()
+            pv.close_all()
+        except (AttributeError, RuntimeError) as e:
+            # Handle PyVista version compatibility issues
+            print(f"Warning: PyVista cleanup error (safe to ignore): {e}")
+            try:
+                pv.close_all()
+            except:
+                pass
         super().closeEvent(event)
         
 
@@ -1108,8 +1116,16 @@ class VisualizationAdvancedWidget(QtInteractor):
             
 
     def closeEvent(self, event):
-        self.clear()
-        pv.close_all()
+        try:
+            self.clear()
+            pv.close_all()
+        except (AttributeError, RuntimeError) as e:
+            # Handle PyVista version compatibility issues
+            print(f"Warning: PyVista cleanup error (safe to ignore): {e}")
+            try:
+                pv.close_all()
+            except:
+                pass
         super().closeEvent(event)
 
 def check_cofiring(A_starts: List[int], B_starts: List[int], window_size: int, shareA:bool=True, shareB:bool=True, direction:str="bidirectional", omit_first=False, **kwargs):
