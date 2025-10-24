@@ -24,7 +24,7 @@ from .sda_widgets import (base_visualization, VisualizationWidget, Visualization
 from ..core.shuffling import shuffle_cofiring, shuffle_advanced
 from ..core.event_based_utility import extract_event_based_data
 from ..core.event_based_shuffling import event_based_shuffle_analysis
-from .pop_up_messages import print_error
+from .pop_up_messages import print_error, SaveSessionSettingsDialog, LoadSessionSettingsDialog
 import os
 import matplotlib.pyplot as plt
 import pickle
@@ -146,6 +146,15 @@ class CaltrigWidget(QWidget):
         btn_max_projection_processed.setStatusTip("Save Max Projection")
         btn_max_projection_processed.triggered.connect(self.save_max_projection)
 
+        # New: Save current session settings (parameters) dialog launcher
+        btn_save_session_settings = QAction(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton),
+            "Save Current Session Settings",
+            self,
+        )
+        btn_save_session_settings.setStatusTip("Save current visualization and analysis parameters to a JSON file")
+        btn_save_session_settings.triggered.connect(self.save_session_settings)
+
         self.chkbox_cell_video = QAction("Cell Video", self)
         self.chkbox_cell_video.setCheckable(True)
         self.chkbox_cell_video.setChecked(True)
@@ -165,6 +174,16 @@ class CaltrigWidget(QWidget):
 
         util_menu = menu.addMenu("&Utilities")
         util_menu.addAction(btn_max_projection_processed)
+        util_menu.addAction(btn_save_session_settings)
+        # New: Load session settings
+        btn_load_session_settings = QAction(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton),
+            "Load Session Settings",
+            self,
+        )
+        btn_load_session_settings.setStatusTip("Load visualization and analysis parameters from a JSON file")
+        btn_load_session_settings.triggered.connect(self.load_session_settings)
+        util_menu.addAction(btn_load_session_settings)
 
         video_menu = menu.addMenu("&Select Videos/Visualizations")
         video_menu.addAction(self.chkbox_cell_video)
@@ -581,6 +600,82 @@ class CaltrigWidget(QWidget):
             "ALP_Timeout": (60, 200, 250)
         }
 
+        # Shuffling Tools
+        label_shuffle_which_cells = QLabel("Select Cells to Shuffle")
+        self.cmb_shuffle_which_cells = QComboBox()
+        self.cmb_shuffle_which_cells.addItems(["All Cells", "Verified Cells"])
+        self.cmb_shuffle_which_cells.addItems([f"Group {group}" for group in unique_groups])
+        self.cmb_shuffle_which_cells.currentIndexChanged.connect(self.refresh_cell_list)
+        layout_list_shuffle_cells = QHBoxLayout()
+        layout_list_shuffle_target_cell = QVBoxLayout()
+        layout_list_shuffle_comparison_cell = QVBoxLayout()
+        label_list_shuffle_target_cell = QLabel("A Cells")
+        self.list_shuffle_target_cell = QListWidget()
+        self.list_shuffle_target_cell.setMaximumHeight(600)
+        self.list_shuffle_target_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        btn_toggle_check_target = QPushButton("Check/Uncheck A Cells")
+        btn_toggle_check_target.setFixedSize(160, 20)
+        btn_toggle_check_target.clicked.connect(lambda: self.toggle_check_all(self.list_shuffle_target_cell))
+        layout_list_shuffle_target_cell.addWidget(label_list_shuffle_target_cell)
+        layout_list_shuffle_target_cell.addWidget(self.list_shuffle_target_cell)
+        layout_list_shuffle_target_cell.addWidget(btn_toggle_check_target)
+        label_list_shuffle_comparison_cell = QLabel("B Cells")
+        self.list_shuffle_comparison_cell = QListWidget()
+        self.list_shuffle_comparison_cell.setMaximumHeight(600)
+        self.list_shuffle_comparison_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        btn_toggle_check_comparison = QPushButton("Check/Uncheck B Cells")
+        btn_toggle_check_comparison.setFixedSize(160, 20)
+        btn_toggle_check_comparison.clicked.connect(lambda: self.toggle_check_all(self.list_shuffle_comparison_cell))
+        layout_list_shuffle_comparison_cell.addWidget(label_list_shuffle_comparison_cell)
+        layout_list_shuffle_comparison_cell.addWidget(self.list_shuffle_comparison_cell)
+        layout_list_shuffle_comparison_cell.addWidget(btn_toggle_check_comparison)
+        layout_list_shuffle_cells.addLayout(layout_list_shuffle_target_cell)
+        layout_list_shuffle_cells.addLayout(layout_list_shuffle_comparison_cell)        
+        layout_shuffle_chkbox_options = QHBoxLayout()
+        self.chkbox_shuffle_verified_only = QCheckBox("Verified Cells Only")
+        self.chkbox_shuffle_spatial = QCheckBox("Spatial")
+        self.chkbox_shuffle_temporal = QCheckBox("Temporal")
+        layout_shuffle_chkbox_options.addWidget(self.chkbox_shuffle_verified_only)
+        layout_shuffle_chkbox_options.addWidget(self.chkbox_shuffle_spatial)
+        layout_shuffle_chkbox_options.addWidget(self.chkbox_shuffle_temporal)
+        # Shuffling Temporal
+        self.frame_shuffling_temporal = QFrame()
+        self.frame_shuffling_temporal.setFrameShape(QFrame.StyledPanel)
+        self.frame_shuffling_temporal.setFrameShadow(QFrame.Raised)
+        self.frame_shuffling_temporal.setLineWidth(3)
+        layout_shuffling_cofiring_options = QVBoxLayout(self.frame_shuffling_temporal)
+        layout_shuffling_cofiring_win = QHBoxLayout()
+        label_shuffling_cofiring_win = QLabel("Cofiring Window Size")
+        self.shuffling_cofiring_window_size = QLineEdit()
+        self.shuffling_cofiring_window_size.setValidator(QIntValidator(1, 1000))
+        self.shuffling_cofiring_window_size.setText("30")
+        layout_shuffling_cofiring_win.addWidget(label_shuffling_cofiring_win)
+        layout_shuffling_cofiring_win.addWidget(self.shuffling_cofiring_window_size)
+        layout_shuffling_temporal_direction = QHBoxLayout()
+        self.shuffling_temporal_shareA_chkbox = QCheckBox("Share A")
+        self.shuffling_temporal_shareA_chkbox.setChecked(True)
+        self.shuffling_temporal_shareB_chkbox = QCheckBox("Share B")
+        self.shuffling_temporal_shareB_chkbox.setChecked(True)
+        self.shuffling_cofiring_direction_dropdown = QComboBox()
+        self.shuffling_cofiring_direction_dropdown.addItems(["Bidirectional", "Forward", "Backward"])
+        layout_shuffling_temporal_direction.addWidget(self.shuffling_temporal_shareA_chkbox)
+        layout_shuffling_temporal_direction.addWidget(self.shuffling_temporal_shareB_chkbox)
+        layout_shuffling_temporal_direction.addWidget(self.shuffling_cofiring_direction_dropdown)
+        layout_shuffling_cofiring_options.addLayout(layout_shuffling_cofiring_win)
+        layout_shuffling_cofiring_options.addLayout(layout_shuffling_temporal_direction)
+
+        btn_shuffle = QPushButton("Shuffle")
+        btn_shuffle.clicked.connect(self.start_shuffling)
+
+        # No. of Shuffles
+        layout_shuffle_num_shuffles = QHBoxLayout()
+        label_shuffle_num_shuffles = QLabel("No. of Shuffles:")
+        self.shuffle_num_shuffles = QLineEdit()
+        self.shuffle_num_shuffles.setValidator(QIntValidator(10, 9999))
+        self.shuffle_num_shuffles.setText("100")
+        layout_shuffle_num_shuffles.addWidget(label_shuffle_num_shuffles)
+        layout_shuffle_num_shuffles.addWidget(self.shuffle_num_shuffles)
+        
         # Tools for video
         self.pixmapi_play = QStyle.StandardPixmap.SP_MediaPlay
         self.pixmapi_pause = QStyle.StandardPixmap.SP_MediaPause
@@ -984,84 +1079,6 @@ class CaltrigWidget(QWidget):
         cofiring_layout.addWidget(self.cofiring_direction_dropdown)
         cofiring_layout.addWidget(tabs_cofiring_options)
         cofiring_layout.addWidget(btn_cofiring_2d_show)
-        
-        # Shuffling Validation Section
-        shuffling_frame = QFrame()
-        shuffling_frame.setFrameShape(QFrame.StyledPanel)
-        shuffling_frame.setFrameShadow(QFrame.Raised)
-        shuffling_frame.setLineWidth(2)
-        shuffling_layout = QVBoxLayout(shuffling_frame)
-        
-        shuffling_title = QLabel("Shuffling")
-        shuffling_title.setStyleSheet("font-weight: bold; font-size: 12px;")
-        shuffling_layout.addWidget(shuffling_title)
-        
-        # Cell Selection for Shuffling (moved from shuffling tab)
-        label_shuffle_which_cells = QLabel("Select Cells to Shuffle")
-        self.cmb_shuffle_which_cells = QComboBox()
-        self.cmb_shuffle_which_cells.addItems(["All Cells", "Verified Cells"])
-        self.cmb_shuffle_which_cells.addItems([f"Group {group}" for group in unique_groups])
-        self.cmb_shuffle_which_cells.currentIndexChanged.connect(self.refresh_cell_list)
-        
-        # A/B Cell Lists (moved from shuffling tab)
-        layout_list_shuffle_cells = QHBoxLayout()
-        layout_list_shuffle_target_cell = QVBoxLayout()
-        layout_list_shuffle_comparison_cell = QVBoxLayout()
-        label_list_shuffle_target_cell = QLabel("A Cells")
-        self.list_shuffle_target_cell = QListWidget()
-        self.list_shuffle_target_cell.setMaximumHeight(400)  # Reduced height for better fit
-        self.list_shuffle_target_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        btn_toggle_check_target = QPushButton("Check/Uncheck A Cells")
-        btn_toggle_check_target.setFixedSize(160, 20)
-        btn_toggle_check_target.clicked.connect(lambda: self.toggle_check_all(self.list_shuffle_target_cell))
-        layout_list_shuffle_target_cell.addWidget(label_list_shuffle_target_cell)
-        layout_list_shuffle_target_cell.addWidget(self.list_shuffle_target_cell)
-        layout_list_shuffle_target_cell.addWidget(btn_toggle_check_target)
-        
-        label_list_shuffle_comparison_cell = QLabel("B Cells")
-        self.list_shuffle_comparison_cell = QListWidget()
-        self.list_shuffle_comparison_cell.setMaximumHeight(400)  # Reduced height for better fit
-        self.list_shuffle_comparison_cell.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        btn_toggle_check_comparison = QPushButton("Check/Uncheck B Cells")
-        btn_toggle_check_comparison.setFixedSize(160, 20)
-        btn_toggle_check_comparison.clicked.connect(lambda: self.toggle_check_all(self.list_shuffle_comparison_cell))
-        layout_list_shuffle_comparison_cell.addWidget(label_list_shuffle_comparison_cell)
-        layout_list_shuffle_comparison_cell.addWidget(self.list_shuffle_comparison_cell)
-        layout_list_shuffle_comparison_cell.addWidget(btn_toggle_check_comparison)
-        layout_list_shuffle_cells.addLayout(layout_list_shuffle_target_cell)
-        layout_list_shuffle_cells.addLayout(layout_list_shuffle_comparison_cell)
-        
-        # Shuffle Options (moved from shuffling tab)
-        layout_shuffle_chkbox_options = QHBoxLayout()
-        self.chkbox_shuffle_verified_only = QCheckBox("Verified Cells Only")
-        self.chkbox_shuffle_spatial = QCheckBox("Spatial")
-        self.chkbox_shuffle_temporal = QCheckBox("Temporal")
-        layout_shuffle_chkbox_options.addWidget(self.chkbox_shuffle_verified_only)
-        layout_shuffle_chkbox_options.addWidget(self.chkbox_shuffle_spatial)
-        layout_shuffle_chkbox_options.addWidget(self.chkbox_shuffle_temporal)
-        
-        # Number of Shuffles (moved from shuffling tab)
-        layout_shuffle_num_shuffles = QHBoxLayout()
-        label_shuffle_num_shuffles = QLabel("No. of Shuffles:")
-        self.shuffle_num_shuffles = QLineEdit()
-        self.shuffle_num_shuffles.setValidator(QIntValidator(10, 9999))
-        self.shuffle_num_shuffles.setText("100")
-        layout_shuffle_num_shuffles.addWidget(label_shuffle_num_shuffles)
-        layout_shuffle_num_shuffles.addWidget(self.shuffle_num_shuffles)
-        
-        # Shuffle Button (moved from shuffling tab)
-        btn_shuffle = QPushButton("Shuffle")
-        btn_shuffle.clicked.connect(self.start_shuffling)
-        
-        # Add all shuffling components to layout
-        shuffling_layout.addWidget(label_shuffle_which_cells)
-        shuffling_layout.addWidget(self.cmb_shuffle_which_cells)
-        shuffling_layout.addLayout(layout_list_shuffle_cells)
-        shuffling_layout.addLayout(layout_shuffle_chkbox_options)
-        shuffling_layout.addLayout(layout_shuffle_num_shuffles)
-        shuffling_layout.addWidget(btn_shuffle)
-        
-        cofiring_layout.addWidget(shuffling_frame)
         cofiring_layout.addStretch()
         cofiring_tools = QWidget()
         cofiring_tools.setLayout(cofiring_layout)
@@ -1219,8 +1236,22 @@ class CaltrigWidget(QWidget):
         tabs_visualization_parent = QWidget()
         tabs_visualization_parent.setLayout(tabs_visualization_layout)
 
+        tabs_shuffling_layout = QVBoxLayout()
+        tabs_shuffling_layout.addWidget(label_shuffle_which_cells)
+        tabs_shuffling_layout.addWidget(self.cmb_shuffle_which_cells)
+        tabs_shuffling_layout.addLayout(layout_list_shuffle_cells)
+        tabs_shuffling_layout.addLayout(layout_shuffle_chkbox_options)
+        tabs_shuffling_layout.addWidget(self.frame_shuffling_temporal)
+        tabs_shuffling_layout.addLayout(layout_shuffle_num_shuffles)
+        tabs_shuffling_layout.addWidget(btn_shuffle)
+
+        tabs_shuffling = QWidget()
+        tabs_shuffling.setLayout(tabs_shuffling_layout)
+        
+
         self.tabs_visualization.addTab(visualization_3D_tools, "Signal Settings")
         self.tabs_visualization.addTab(cofiring_tools, "Co-Firing")
+        self.tabs_visualization.addTab(tabs_shuffling, "Shuffling")
 
         self.tabs_video_tools.addTab(self.tabs_video, "Cell Video")
         self.tabs_video_tools.addTab(tabs_visualization_parent, "3D Visualization")
@@ -1898,19 +1929,15 @@ class CaltrigWidget(QWidget):
             if item.checkState() == Qt.CheckState.Checked:
                 cofiring_nums.add(int(item.text().split(" ")[1]))
 
-        # kwargs for extract_cofiring_data (without window_size since it's passed as positional arg)
-        extract_kwargs = {"nums_to_visualize": cells_for_cofiring, "visualize": visualize_cofiring,
-                         "cofiring_nums": cofiring_nums, "shareA": shareA, "shareB": shareB, 
-                         "direction": direction}
+        kwargs = {"nums_to_visualize": cells_for_cofiring, "visualize": visualize_cofiring,
+                  "cofiring_nums": cofiring_nums, "shareA": shareA, "shareB": shareB, 
+                  "direction": direction}
         
-        cofiring_data = self.visualization_3D.extract_cofiring_data(window_size, **extract_kwargs)
+        cofiring_data = self.visualization_3D.extract_cofiring_data(window_size, **kwargs)
 
-        # kwargs for Cofiring2DWidget (includes window_size and cofiring_data)
-        widget_kwargs = {"nums_to_visualize": cells_for_cofiring, "cofiring_nums": cofiring_nums, 
-                        "shareA": shareA, "shareB": shareB, "direction": direction, 
-                        "window_size": window_size, "cofiring_data": cofiring_data}
+        kwargs["cofiring_data"] = cofiring_data
         
-        cofiring2d_window = Cofiring2DWidget(self.session, self.name, parent=self, **widget_kwargs)
+        cofiring2d_window = Cofiring2DWidget(self.session, self.name, parent=self, **kwargs)
 
         if cofiring2d_window.name not in self.windows:
             self.windows[cofiring2d_window.name ] = cofiring2d_window        
@@ -2845,7 +2872,17 @@ class CaltrigWidget(QWidget):
                 path += ext
 
             fig.savefig(path)
-            
+
+    def save_session_settings(self):
+        """Open dialog (centralized in pop_up_messages) to save current session parameters."""
+        dlg = SaveSessionSettingsDialog(self)
+        dlg.exec_()
+
+    def load_session_settings(self):
+        """Open dialog to load session parameters and apply them to the UI."""
+        dlg = LoadSessionSettingsDialog(self)
+        dlg.exec_()
+
 
     def generate_gen_stats(self):
         self.gen_stats_window = GeneralStatsWidget(self.session)
@@ -3884,10 +3921,10 @@ class CaltrigWidget(QWidget):
             params["spatial"] = False
 
         params["cofiring"] = {}
-        params["cofiring"]["window_size"] = int(self.cofiring_window_size.text())
-        params["cofiring"]["share_a"] = self.cofiring_shareA_chkbox.isChecked()
-        params["cofiring"]["share_b"] = self.cofiring_shareB_chkbox.isChecked()
-        params["cofiring"]["direction"] = self.cofiring_direction_dropdown.currentText()
+        params["cofiring"]["window_size"] = int(self.shuffling_cofiring_window_size.text())
+        params["cofiring"]["share_a"] = self.shuffling_temporal_shareA_chkbox.isChecked()
+        params["cofiring"]["share_b"] = self.shuffling_temporal_shareB_chkbox.isChecked()
+        params["cofiring"]["direction"] = self.shuffling_cofiring_direction_dropdown.currentText()
         
         num_of_shuffles = int(self.shuffle_num_shuffles.text()) if self.shuffle_num_shuffles.text() else 100
 
