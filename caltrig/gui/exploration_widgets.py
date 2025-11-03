@@ -530,7 +530,7 @@ class CaltrigWidget(QWidget):
         self.chkbox_plot_global_dff.setStyleSheet("background-color: yellow; border: 1px solid black; width: 15px; height: 15px;")
         self.btn_global_reset_view = QPushButton("Reset View")
         # Which group of cells to visualize
-        label_global_which_cells = QLabel("Which Cells to Visualize")
+        label_global_which_cells = QLabel("Which Cells to Analyze")
         self.cmb_global_which_cells = QComboBox()
         self.cmb_global_which_cells.addItems(["All Cells", "Verified Cells"])
         unique_groups = self.session.get_group_ids()
@@ -745,7 +745,7 @@ class CaltrigWidget(QWidget):
         # 3D Visualization Tools
         visualization_3D_layout = QVBoxLayout()
         
-        label_3D_which_cells = QLabel("Which Cells to Visualize")
+        label_3D_which_cells = QLabel("Which Cells to Analyze")
         self.cmb_3D_which_cells = QComboBox()
         self.cmb_3D_which_cells.addItems(["All Cells", "Verified Cells"])
         self.cmb_3D_which_cells.addItems([f"Group {group}" for group in unique_groups])
@@ -779,7 +779,7 @@ class CaltrigWidget(QWidget):
         visualization_3D_advanced_tool = QWidget()
 
         
-        label_3D_advanced_which_cells = QLabel("Which Cells to Visualize")
+        label_3D_advanced_which_cells = QLabel("Which Cells to Analyze")
         self.cmb_3D_advanced_which_cells = QComboBox()
         self.cmb_3D_advanced_which_cells.addItems(["All Cells", "Verified Cells"])
         self.cmb_3D_advanced_which_cells.addItems([f"Group {group}" for group in unique_groups])
@@ -876,12 +876,10 @@ class CaltrigWidget(QWidget):
         btn_visualize_3D_advanced.clicked.connect(self.visualize_3D_advanced)
         visualization_3D_advanced_tool_layout.addWidget(btn_visualize_3D_advanced)
 
-        # Advanced 3D Visualization Shuffling
-        visualization_3D_advanced_shuffling_layout = QVBoxLayout()
-        visualization_3D_advanced_shuffling = QWidget()
-
-        label_advanced_shuffling_info = QLabel("The settings set in FPR Visualization will be used for shuffling.")
-        visualization_3D_advanced_shuffling_layout.addWidget(label_advanced_shuffling_info)
+        # Add shuffling controls to FPR Visualization tab
+        visualization_3D_advanced_tool_layout.addWidget(QLabel("Shuffling Options:"))
+        label_advanced_shuffling_info = QLabel("The settings set above will be used for shuffling.")
+        visualization_3D_advanced_tool_layout.addWidget(label_advanced_shuffling_info)
         visualization_3D_advanced_shuffling_num_layout = QHBoxLayout()
         label_advanced_shuffling_num = QLabel("Number of Shuffles:")
         self.input_advanced_shuffling_num = QLineEdit()
@@ -889,28 +887,25 @@ class CaltrigWidget(QWidget):
         self.input_advanced_shuffling_num.setText("100")
         visualization_3D_advanced_shuffling_num_layout.addWidget(label_advanced_shuffling_num)
         visualization_3D_advanced_shuffling_num_layout.addWidget(self.input_advanced_shuffling_num)
-        visualization_3D_advanced_shuffling_layout.addLayout(visualization_3D_advanced_shuffling_num_layout)
+        visualization_3D_advanced_tool_layout.addLayout(visualization_3D_advanced_shuffling_num_layout)
         visualization_3D_advanced_shuffle_type_layout = QHBoxLayout()
         self.visualization_3D_advanced_shuffle_spatial = QCheckBox("Spatial")
         self.visualization_3D_advanced_shuffle_temporal = QCheckBox("Temporal")
         visualization_3D_advanced_shuffle_type_layout.addWidget(self.visualization_3D_advanced_shuffle_spatial)
         visualization_3D_advanced_shuffle_type_layout.addWidget(self.visualization_3D_advanced_shuffle_temporal)
-        visualization_3D_advanced_shuffling_layout.addLayout(visualization_3D_advanced_shuffle_type_layout)
+        visualization_3D_advanced_tool_layout.addLayout(visualization_3D_advanced_shuffle_type_layout)
         btn_advanced_shuffling = QPushButton("Shuffle")
         btn_advanced_shuffling.clicked.connect(self.start_advanced_shuffling)
-        visualization_3D_advanced_shuffling_layout.addWidget(btn_advanced_shuffling)
+        visualization_3D_advanced_tool_layout.addWidget(btn_advanced_shuffling)
         self.label_3D_advanced_shuffle_current_frame = QLabel("Current Window: 1")
         self.label_3D_advanced_shuffle_current_frame.setVisible(False)
-        visualization_3D_advanced_shuffling_layout.addWidget(self.label_3D_advanced_shuffle_current_frame)
+        visualization_3D_advanced_tool_layout.addWidget(self.label_3D_advanced_shuffle_current_frame)
         self.visualization_3D_advanced_shuffle_slider = QSlider(Qt.Orientation.Horizontal)
         self.visualization_3D_advanced_shuffle_slider.setRange(1, 10)
         self.visualization_3D_advanced_shuffle_slider.sliderReleased.connect(self.slider_update_shuffle)
         self.visualization_3D_advanced_shuffle_slider.valueChanged.connect(self.update_current_shuffle_window)
         self.visualization_3D_advanced_shuffle_slider.setVisible(False)
-        visualization_3D_advanced_shuffling_layout.addWidget(self.visualization_3D_advanced_shuffle_slider)
-        visualization_3D_advanced_shuffling_layout.addStretch()
-        visualization_3D_advanced_shuffling.setLayout(visualization_3D_advanced_shuffling_layout)
-        visualization_3D_advanced_visualize_tab.addTab(visualization_3D_advanced_shuffling, "FPR Shuffling")
+        visualization_3D_advanced_tool_layout.addWidget(self.visualization_3D_advanced_shuffle_slider)
 
 
         # Cofiring Tools

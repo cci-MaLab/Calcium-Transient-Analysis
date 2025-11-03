@@ -177,7 +177,6 @@ class SaveSessionSettingsDialog(QDialog):
             },
             "Advanced Visualization": {
                 "FPR visualization": {},
-                "FPR Shuffling": {},
             },
             "Event based Shuffling": {},
         }
@@ -257,23 +256,22 @@ class SaveSessionSettingsDialog(QDialog):
             adv_scaling = safe_slider_value("slider_3D_advanced_scaling")
             adv_cells_group = safe_current_text("cmb_3D_advanced_which_cells")
 
+            # FPR Shuffling settings (nested under FPR visualization like Co-Firing)
+            adv_shuf_spatial = safe_checked("visualization_3D_advanced_shuffle_spatial")
+            adv_shuf_temporal = safe_checked("visualization_3D_advanced_shuffle_temporal")
+            adv_shuf_num = safe_int("input_advanced_shuffling_num")
+            
             settings["Advanced Visualization"]["FPR visualization"] = {
                 "window_size": adv_window_size,
                 "readout": adv_readout,
                 "fpr": adv_fpr,
                 "scaling": adv_scaling,
-            }
-
-            # FPR Shuffling settings
-            adv_shuf_spatial = safe_checked("visualization_3D_advanced_shuffle_spatial")
-            adv_shuf_temporal = safe_checked("visualization_3D_advanced_shuffle_temporal")
-            adv_shuf_num = safe_int("input_advanced_shuffling_num")
-            # Anchor is always True in code; include for completeness
-            settings["Advanced Visualization"]["FPR Shuffling"] = {
-                "spatial": adv_shuf_spatial,
-                "temporal": adv_shuf_temporal,
-                "num_shuffles": adv_shuf_num,
-                "anchor": True,
+                "shuffling": {
+                    "spatial": adv_shuf_spatial,
+                    "temporal": adv_shuf_temporal,
+                    "num_shuffles": adv_shuf_num,
+                    "anchor": True,
+                }
             }
         except Exception:
             pass
@@ -473,20 +471,20 @@ class LoadSessionSettingsDialog(QDialog):
                 set_check("chkbox_shuffle_temporal", shuf.get("temporal"))
                 set_line("shuffle_num_shuffles", shuf.get("num_shuffles"))
 
-        # Advanced Visualization -> FPR visualization
+        # Advanced Visualization -> FPR visualization (merged with shuffling)
         fprv = (data or {}).get("Advanced Visualization", {}).get("FPR visualization", {})
         if fprv:
             set_line("input_3D_advanced_window_size", fprv.get("window_size"))
             set_combo("dropdown_3D_advanced_readout", fprv.get("readout"))
             set_combo("dropdown_3D_advanced_fpr", fprv.get("fpr"))
             set_slider("slider_3D_advanced_scaling", fprv.get("scaling"), 1, 1000)
-
-        # Advanced Visualization -> FPR Shuffling
-        fprs = (data or {}).get("Advanced Visualization", {}).get("FPR Shuffling", {})
-        if fprs:
-            set_check("visualization_3D_advanced_shuffle_spatial", fprs.get("spatial"))
-            set_check("visualization_3D_advanced_shuffle_temporal", fprs.get("temporal"))
-            set_line("input_advanced_shuffling_num", fprs.get("num_shuffles"))
+            
+            # Shuffling parameters (nested)
+            shuf = fprv.get("shuffling", {})
+            if shuf:
+                set_check("visualization_3D_advanced_shuffle_spatial", shuf.get("spatial"))
+                set_check("visualization_3D_advanced_shuffle_temporal", shuf.get("temporal"))
+                set_line("input_advanced_shuffling_num", shuf.get("num_shuffles"))
 
         # Event based Shuffling
         ebs = (data or {}).get("Event based Shuffling", {})
