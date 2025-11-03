@@ -173,8 +173,7 @@ class SaveSessionSettingsDialog(QDialog):
         settings = {
             "3D Visualization": {
                 "Signal Settings": {},
-                "Co-firing": {},
-                "Shuffling": {},
+                "Co-Firing": {},
             },
             "Advanced Visualization": {
                 "FPR visualization": {},
@@ -219,39 +218,32 @@ class SaveSessionSettingsDialog(QDialog):
                 "cumulative": cumulative,
             }
 
-            # Co-firing (visual overlay)
+            # Co-Firing (merged: visualization overlay + shuffling parameters)
+            # Window size, shareA, shareB, direction are shared
             cof_enabled = safe_checked("cofiring_chkbox")
             cof_window = safe_int("cofiring_window_size")
             cof_shareA = safe_checked("cofiring_shareA_chkbox")
             cof_shareB = safe_checked("cofiring_shareB_chkbox")
             cof_direction = (safe_current_text("cofiring_direction_dropdown") or "").lower() or None
-            settings["3D Visualization"]["Co-firing"] = {
+            
+            # Shuffling-specific parameters
+            shuf_verified_only = safe_checked("chkbox_shuffle_verified_only")
+            shuf_spatial = safe_checked("chkbox_shuffle_spatial")
+            shuf_temporal = safe_checked("chkbox_shuffle_temporal")
+            shuf_num = safe_int("shuffle_num_shuffles")
+            
+            settings["3D Visualization"]["Co-Firing"] = {
                 "enabled": cof_enabled,
                 "window_size": cof_window,
                 "shareA": cof_shareA,
                 "shareB": cof_shareB,
                 "direction": cof_direction,
-            }
-
-            # Shuffling (cofiring shuffles in 3D section)
-            shuf_group = safe_current_text("cmb_shuffle_which_cells")
-            shuf_verified_only = safe_checked("chkbox_shuffle_verified_only")
-            shuf_spatial = safe_checked("chkbox_shuffle_spatial")
-            shuf_temporal = safe_checked("chkbox_shuffle_temporal")
-            shuf_cof_win = safe_int("shuffling_cofiring_window_size")
-            shuf_shareA = safe_checked("shuffling_temporal_shareA_chkbox")
-            shuf_shareB = safe_checked("shuffling_temporal_shareB_chkbox")
-            shuf_direction = (safe_current_text("shuffling_cofiring_direction_dropdown") or "").lower() or None
-            shuf_num = safe_int("shuffle_num_shuffles")
-            settings["3D Visualization"]["Shuffling"] = {
-                "verified_only": shuf_verified_only,
-                "spatial": shuf_spatial,
-                "temporal": shuf_temporal,
-                "cofiring_window_size": shuf_cof_win,
-                "shareA": shuf_shareA,
-                "shareB": shuf_shareB,
-                "direction": shuf_direction,
-                "num_shuffles": shuf_num,
+                "shuffling": {
+                    "verified_only": shuf_verified_only,
+                    "spatial": shuf_spatial,
+                    "temporal": shuf_temporal,
+                    "num_shuffles": shuf_num,
+                }
             }
         except Exception:
             # Leave empty if controls not available
@@ -462,28 +454,24 @@ class LoadSessionSettingsDialog(QDialog):
             set_check("chkbox_3D_average", sig.get("average"))
             set_check("chkbox_3D_cumulative", sig.get("cumulative"))
 
-        # 3D Visualization -> Co-firing
-        cof = (data or {}).get("3D Visualization", {}).get("Co-firing", {})
+        # 3D Visualization -> Co-Firing (merged section)
+        cof = (data or {}).get("3D Visualization", {}).get("Co-Firing", {})
         if cof:
+            # Co-firing visualization parameters
             set_check("cofiring_chkbox", cof.get("enabled"))
             set_line("cofiring_window_size", cof.get("window_size"))
             set_check("cofiring_shareA_chkbox", cof.get("shareA"))
             set_check("cofiring_shareB_chkbox", cof.get("shareB"))
             dir_map = {"bidirectional": "Bidirectional", "forward": "Forward", "backward": "Backward"}
             set_combo("cofiring_direction_dropdown", cof.get("direction"), mapping=dir_map)
-
-        # 3D Visualization -> Shuffling
-        shuf = (data or {}).get("3D Visualization", {}).get("Shuffling", {})
-        if shuf:
-            set_check("chkbox_shuffle_verified_only", shuf.get("verified_only"))
-            set_check("chkbox_shuffle_spatial", shuf.get("spatial"))
-            set_check("chkbox_shuffle_temporal", shuf.get("temporal"))
-            set_line("shuffling_cofiring_window_size", shuf.get("cofiring_window_size"))
-            set_check("shuffling_temporal_shareA_chkbox", shuf.get("shareA"))
-            set_check("shuffling_temporal_shareB_chkbox", shuf.get("shareB"))
-            dir_map2 = {"bidirectional": "Bidirectional", "forward": "Forward", "backward": "Backward"}
-            set_combo("shuffling_cofiring_direction_dropdown", shuf.get("direction"), mapping=dir_map2)
-            set_line("shuffle_num_shuffles", shuf.get("num_shuffles"))
+            
+            # Shuffling parameters (nested)
+            shuf = cof.get("shuffling", {})
+            if shuf:
+                set_check("chkbox_shuffle_verified_only", shuf.get("verified_only"))
+                set_check("chkbox_shuffle_spatial", shuf.get("spatial"))
+                set_check("chkbox_shuffle_temporal", shuf.get("temporal"))
+                set_line("shuffle_num_shuffles", shuf.get("num_shuffles"))
 
         # Advanced Visualization -> FPR visualization
         fprv = (data or {}).get("Advanced Visualization", {}).get("FPR visualization", {})
