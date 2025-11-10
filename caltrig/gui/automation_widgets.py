@@ -125,54 +125,30 @@ class AutomationDialog(QDialog):
         
         # Instructions
         info_label = QLabel(
-            "Select JSON parameter files for each analysis type.\n"
-            "Each file should contain the parameters for that specific analysis."
+            "Select a JSON file containing all analysis parameters.\n"
+            "The file should include parameters for Co-Firing, Advanced Visualization, and Event-Based Shuffling."
         )
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
         
-        # Co-firing parameters
-        cofiring_layout = QHBoxLayout()
-        cofiring_layout.addWidget(QLabel("Co-Firing Shuffling:"))
-        self.cofiring_param_input = QLineEdit()
-        self.cofiring_param_input.setReadOnly(True)
-        self.cofiring_param_input.setPlaceholderText("No file selected")
-        cofiring_layout.addWidget(self.cofiring_param_input, stretch=1)
-        btn_cofiring = QPushButton("Browse...")
-        btn_cofiring.clicked.connect(lambda: self.select_parameter_file('cofiring'))
-        cofiring_layout.addWidget(btn_cofiring)
-        layout.addLayout(cofiring_layout)
-        
-        # Advanced visualization parameters
-        advanced_layout = QHBoxLayout()
-        advanced_layout.addWidget(QLabel("Advanced Visualization:"))
-        self.advanced_param_input = QLineEdit()
-        self.advanced_param_input.setReadOnly(True)
-        self.advanced_param_input.setPlaceholderText("No file selected")
-        advanced_layout.addWidget(self.advanced_param_input, stretch=1)
-        btn_advanced = QPushButton("Browse...")
-        btn_advanced.clicked.connect(lambda: self.select_parameter_file('advanced'))
-        advanced_layout.addWidget(btn_advanced)
-        layout.addLayout(advanced_layout)
-        
-        # Event-based shuffling parameters
-        event_layout = QHBoxLayout()
-        event_layout.addWidget(QLabel("Event-Based Shuffling:"))
-        self.event_param_input = QLineEdit()
-        self.event_param_input.setReadOnly(True)
-        self.event_param_input.setPlaceholderText("No file selected")
-        event_layout.addWidget(self.event_param_input, stretch=1)
-        btn_event = QPushButton("Browse...")
-        btn_event.clicked.connect(lambda: self.select_parameter_file('event_based'))
-        event_layout.addWidget(btn_event)
-        layout.addLayout(event_layout)
+        # Single parameter file selection
+        param_layout = QHBoxLayout()
+        param_layout.addWidget(QLabel("Parameters File:"))
+        self.param_input = QLineEdit()
+        self.param_input.setReadOnly(True)
+        self.param_input.setPlaceholderText("No file selected")
+        param_layout.addWidget(self.param_input, stretch=1)
+        btn_param = QPushButton("Browse...")
+        btn_param.clicked.connect(self.select_parameter_file)
+        param_layout.addWidget(btn_param)
+        layout.addLayout(param_layout)
         
         layout.addStretch()
         
-        # Parameter summary
-        self.param_summary_label = QLabel("Parameter files selected: 0/3")
-        self.param_summary_label.setStyleSheet("font-style: italic; margin-top: 5px;")
-        layout.addWidget(self.param_summary_label)
+        # Parameter status
+        self.param_status_label = QLabel("Parameter file: Not selected")
+        self.param_status_label.setStyleSheet("font-style: italic; margin-top: 5px;")
+        layout.addWidget(self.param_status_label)
         
         group.setLayout(layout)
         return group
@@ -222,11 +198,11 @@ class AutomationDialog(QDialog):
         count = len(self.selected_sessions)
         self.session_count_label.setText(f"Sessions selected: {count}")
     
-    def select_parameter_file(self, param_type):
-        """Select a parameter JSON file"""
+    def select_parameter_file(self):
+        """Select the parameter JSON file"""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            f"Select {param_type.replace('_', ' ').title()} Parameter File",
+            "Select Analysis Parameters File",
             "",
             "JSON Files (*.json);;All Files (*)"
         )
@@ -238,20 +214,16 @@ class AutomationDialog(QDialog):
                     json.load(f)
                 
                 # Store the file path
-                self.parameter_files[param_type] = file_path
+                self.parameter_file = file_path
                 
-                # Update the corresponding input field
-                if param_type == 'cofiring':
-                    self.cofiring_param_input.setText(os.path.basename(file_path))
-                    self.cofiring_param_input.setToolTip(file_path)
-                elif param_type == 'advanced':
-                    self.advanced_param_input.setText(os.path.basename(file_path))
-                    self.advanced_param_input.setToolTip(file_path)
-                elif param_type == 'event_based':
-                    self.event_param_input.setText(os.path.basename(file_path))
-                    self.event_param_input.setToolTip(file_path)
+                # Update the input field
+                self.param_input.setText(os.path.basename(file_path))
+                self.param_input.setToolTip(file_path)
                 
-                self.update_param_summary()
+                # Update status label
+                self.param_status_label.setText("Parameter file: Selected ✓")
+                self.param_status_label.setStyleSheet("font-style: italic; margin-top: 5px; color: green;")
+                
                 self.check_ready_to_run()
                 
             except json.JSONDecodeError:
@@ -267,15 +239,10 @@ class AutomationDialog(QDialog):
                     f"Error reading file:\n{str(e)}"
                 )
     
-    def update_param_summary(self):
-        """Update the parameter summary label"""
-        count = sum(1 for v in self.parameter_files.values() if v is not None)
-        self.param_summary_label.setText(f"Parameter files selected: {count}/3")
-    
     def check_ready_to_run(self):
         """Check if ready to run automation and enable/disable run button"""
         has_sessions = len(self.selected_sessions) > 0
-        has_params = any(v is not None for v in self.parameter_files.values())
+        has_params = self.parameter_file is not None
         
         self.btn_run.setEnabled(has_sessions and has_params)
     
@@ -286,8 +253,8 @@ class AutomationDialog(QDialog):
             QMessageBox.warning(self, "No Sessions", "Please select at least one session file.")
             return
         
-        if not any(v is not None for v in self.parameter_files.values()):
-            QMessageBox.warning(self, "No Parameters", "Please select at least one parameter file.")
+        if not self.parameter_file:
+            QMessageBox.warning(self, "No Parameters", "Please select a parameter file.")
             return
         
         # Show confirmation
@@ -297,9 +264,7 @@ class AutomationDialog(QDialog):
         msg.setText("Automation configuration complete!")
         msg.setInformativeText(
             f"Sessions: {len(self.selected_sessions)}\n"
-            f"Co-Firing: {'✓' if self.parameter_files['cofiring'] else '✗'}\n"
-            f"Advanced: {'✓' if self.parameter_files['advanced'] else '✗'}\n"
-            f"Event-Based: {'✓' if self.parameter_files['event_based'] else '✗'}\n\n"
+            f"Parameter file: {os.path.basename(self.parameter_file)}\n\n"
             "Ready to implement automation logic."
         )
         msg.exec_()
@@ -312,7 +277,5 @@ class AutomationDialog(QDialog):
         """Get the current automation configuration"""
         return {
             'sessions': self.selected_sessions,
-            'parameters': {
-                k: v for k, v in self.parameter_files.items() if v is not None
-            }
+            'parameter_file': self.parameter_file
         }
