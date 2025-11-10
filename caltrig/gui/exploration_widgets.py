@@ -45,6 +45,11 @@ class CaltrigWidget(QWidget):
         self.name = name
         self.main_window_ref = main_window_ref
         self.timestamps = timestamps
+        
+        # Dictionary to store ROI parameters for each group
+        # Format: {group_id: {"type": "ellipse", "pos": [x, y], "size": [w, h], "angle": degrees}}
+        self.group_roi_params = {}
+        
         self.gen_stats_window = None
         self.metrics_window = None
         self.local_stats_windows = {}
@@ -1738,6 +1743,65 @@ class CaltrigWidget(QWidget):
         action_standard = QAction("Highlight Selection", self)
         action_standard.triggered.connect(lambda: add_group_roi(roi, verified=False))
         menu.addAction(action_standard)
+        
+        # Add action to create a group from this ROI
+        action_create_group = QAction("Create Group from ROI", self)
+        action_create_group.triggered.connect(lambda: self.create_group_from_roi(roi))
+        menu.addAction(action_create_group)
+
+    def create_group_from_roi(self, roi):
+        """Create a group from an ROI and save its parameters"""
+        # Ask the user for the group id
+        group_id, ok = QInputDialog.getText(self, "Group ID", "Enter the group ID")
+        group_id = str(group_id)
+        
+        if not ok or not group_id:
+            return
+        
+        # Extract ROI parameters
+        pos = roi.pos()
+        size = roi.size()
+        angle = roi.angle()
+        roi_type = roi.__class__.__name__
+        
+        # Determine type string
+        if roi_type == "EllipseROI":
+            type_str = "ellipse"
+        elif roi_type == "RectROI":
+            type_str = "rectangle"
+        else:
+            type_str = "unknown"
+        
+        # Save ROI parameters
+        self.group_roi_params[group_id] = {
+            "type": type_str,
+            "pos": [pos.x(), pos.y()],
+            "size": [size.x(), size.y()],
+            "angle": angle
+        }
+        
+        # Find cells within ROI
+        ids = set()
+        for centroid in self.session.centroids_to_cell_ids.keys():
+            cell_id = self.session.centroids_to_cell_ids[centroid]
+            if roi_type == "EllipseROI":
+                if self.within_ellipse(centroid, pos, size, angle):
+                    ids.add(cell_id)
+            elif roi_type == "RectROI":
+                if self.within_rectangle(centroid, pos, size, angle):
+                    ids.add(cell_id)
+        
+        # Add cells to group
+        if ids:
+            self.session.add_cell_id_group(list(ids), group_id)
+            unique_groups = self.session.get_group_ids()
+            self.reset_which_cells(unique_groups)
+            
+            # Remove the ROI from view
+            self.imv_cell.removeItem(roi)
+        else:
+            QMessageBox.warning(self, "No Cells Found", 
+                              f"No cells found within the ROI for group '{group_id}'")
 
 
 

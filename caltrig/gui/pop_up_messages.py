@@ -61,9 +61,11 @@ class SaveSessionSettingsDialog(QDialog):
 
         desc_label = QLabel(
             "This will save all current visualization and analysis parameters including:\n"
+            "• General settings (which cells to analyze)\n"
             "• 3D Visualization settings\n"
             "• Advanced 3D Visualization settings\n"
-            "• Event-based Shuffling settings\n\n"
+            "• Event-based Shuffling settings\n"
+            "• Cell groups (ROI parameters - session-independent)\n\n"
             "Choose a location to save. Saving will happen immediately and this window will close."
         )
         desc_label.setWordWrap(True)
@@ -126,6 +128,7 @@ class SaveSessionSettingsDialog(QDialog):
         - 3D Visualization (args passed to base_visualization via change_func)
         - Advanced Visualization (args passed to VisualizationAdvancedWidget.set_data)
         - Event based Shuffling (args passed to event_based_shuffle_analysis)
+        - Groups (ROI parameters for session-independent group restoration)
         """
         owner = self.parent()
 
@@ -171,6 +174,9 @@ class SaveSessionSettingsDialog(QDialog):
                 return default
 
         settings = {
+            "General": {
+                "which_cells": None,
+            },
             "3D Visualization": {
                 "Signal Settings": {},
                 "Co-Firing": {},
@@ -181,12 +187,22 @@ class SaveSessionSettingsDialog(QDialog):
             "Event based Shuffling": {},
         }
 
+        # 0) General settings shared across all tabs
+        try:
+            # All four dropdowns are synchronized, so we can use any of them
+            which_cells = safe_current_text("cmb_global_which_cells") or \
+                         safe_current_text("cmb_3D_which_cells") or \
+                         safe_current_text("cmb_3D_advanced_which_cells") or \
+                         safe_current_text("cmb_event_based_which_cells")
+            settings["General"]["which_cells"] = which_cells
+        except Exception:
+            pass
+
         # 1) 3D Visualization (values passed to base_visualization via change_func)
         try:
             vis_func = safe_current_text("dropdown_3D_functions")
             data_type_ui = safe_current_text("dropdown_3D_data_types")
             scaling = safe_slider_value("slider_3D_scaling")
-            cells_to_visualize = safe_current_text("cmb_3D_which_cells")
             smoothing_size = safe_int("input_smoothing_size")
             smoothing_type = (safe_current_text("dropdown_smoothing_type") or "").lower() or None
             window_size = safe_int("input_3D_window_size", 1)
@@ -208,7 +224,6 @@ class SaveSessionSettingsDialog(QDialog):
                 "function": vis_func,
                 "data_type": resolved_data_type,
                 "scaling": scaling,
-                "cells_group": cells_to_visualize,
                 "smoothing_size": smoothing_size,
                 "smoothing_type": smoothing_type,
                 "window_size": window_size_resolved,
@@ -254,7 +269,6 @@ class SaveSessionSettingsDialog(QDialog):
             adv_readout = safe_current_text("dropdown_3D_advanced_readout")
             adv_fpr = safe_current_text("dropdown_3D_advanced_fpr")
             adv_scaling = safe_slider_value("slider_3D_advanced_scaling")
-            adv_cells_group = safe_current_text("cmb_3D_advanced_which_cells")
 
             # FPR Shuffling settings (nested under FPR visualization like Co-Firing)
             adv_shuf_spatial = safe_checked("visualization_3D_advanced_shuffle_spatial")
@@ -293,9 +307,6 @@ class SaveSessionSettingsDialog(QDialog):
             else:
                 e_shuffle_type = "temporal" if shuffle_temporal else None
 
-            # Instead of saving explicit cell IDs (session-specific), save group selection
-            which_cells = safe_current_text("cmb_event_based_which_cells")
-
             settings["Event based Shuffling"] = {
                 "event_type": e_event_type,
                 "window_size": e_window_size,
@@ -304,8 +315,22 @@ class SaveSessionSettingsDialog(QDialog):
                 "num_shuffles": e_num_shuffles,
                 "amplitude_anchored": e_amplitude_anchored,
                 "shuffle_type": e_shuffle_type,
-                "which_cells": which_cells,
             }
+        except Exception:
+            pass
+
+        # 4) Groups (if any exist, save the ROI parameters)
+        try:
+            if hasattr(owner, 'session') and owner.session is not None:
+                cell_ids_to_groups = getattr(owner.session, 'cell_ids_to_groups', {})
+                group_roi_params = getattr(owner, 'group_roi_params', {})
+                
+                if cell_ids_to_groups and group_roi_params:
+                    # Save ROI parameters for each group
+                    settings["Groups"] = {}
+                    for group_id in owner.session.get_group_ids():
+                        if group_id in group_roi_params:
+                            settings["Groups"][str(group_id)] = group_roi_params[group_id]
         except Exception:
             pass
 
@@ -416,6 +441,17 @@ class LoadSessionSettingsDialog(QDialog):
                 val = mapping[val]
             self._set_combo_text(w, str(val))
 
+        # General settings (shared across all tabs)
+        general = (data or {}).get("General", {})
+        if general:
+            which_cells = general.get("which_cells")
+            if which_cells:
+                # Set all four synchronized dropdowns
+                set_combo("cmb_global_which_cells", which_cells)
+                set_combo("cmb_3D_which_cells", which_cells)
+                set_combo("cmb_3D_advanced_which_cells", which_cells)
+                set_combo("cmb_event_based_which_cells", which_cells)
+
         # 3D Visualization -> Signal Settings
         sig = (data or {}).get("3D Visualization", {}).get("Signal Settings", {})
         if sig:
@@ -437,8 +473,7 @@ class LoadSessionSettingsDialog(QDialog):
             elif base_dtype in ("C", "DFF"):
                 set_combo("dropdown_3D_data_types", base_dtype)
 
-            # group and numerics
-            set_combo("cmb_3D_which_cells", sig.get("cells_group"))
+            # numerics (cells_group removed - now in General)
             set_slider("slider_3D_scaling", sig.get("scaling"), 1, 1000)
             # smoothing
             set_line("input_smoothing_size", sig.get("smoothing_size"))
@@ -504,12 +539,64 @@ class LoadSessionSettingsDialog(QDialog):
             elif stype == "temporal":
                 set_check("event_based_shuffle_spatial", False)
                 set_check("event_based_shuffle_temporal", True)
-            # which cells group
-            set_combo("cmb_event_based_which_cells", ebs.get("which_cells"))
             # Ensure mutual exclusion logic runs (enables/disables amplitude anchored)
             try:
                 owner.on_event_shuffle_type_changed()
             except Exception:
+                pass
+
+        # Groups - restore from ROI parameters if present
+        groups_data = (data or {}).get("Groups", {})
+        if groups_data and hasattr(owner, 'session') and owner.session is not None:
+            try:
+                # Clear existing groups
+                owner.session.cell_ids_to_groups = {}
+                if hasattr(owner, 'group_roi_params'):
+                    owner.group_roi_params = {}
+                
+                # Restore each group from ROI parameters
+                for group_id, roi_params in groups_data.items():
+                    if not isinstance(roi_params, dict) or 'type' not in roi_params:
+                        continue
+                    
+                    # Save ROI parameters
+                    if hasattr(owner, 'group_roi_params'):
+                        owner.group_roi_params[group_id] = roi_params
+                    
+                    # Extract parameters
+                    roi_type = roi_params.get('type')
+                    pos = roi_params.get('pos', [0, 0])
+                    size = roi_params.get('size', [100, 100])
+                    angle = roi_params.get('angle', 0)
+                    
+                    # Convert pos and size to proper format
+                    from PyQt5.QtCore import QPointF
+                    pos_point = QPointF(pos[0], pos[1])
+                    size_point = QPointF(size[0], size[1])
+                    
+                    # Find cells within this ROI
+                    ids = set()
+                    for centroid in owner.session.centroids_to_cell_ids.keys():
+                        cell_id = owner.session.centroids_to_cell_ids[centroid]
+                        if roi_type == "ellipse":
+                            if owner.within_ellipse(centroid, pos_point, size_point, angle):
+                                ids.add(cell_id)
+                        elif roi_type == "rectangle":
+                            if owner.within_rectangle(centroid, pos_point, size_point, angle):
+                                ids.add(cell_id)
+                    
+                    # Add cells to group
+                    if ids:
+                        owner.session.add_cell_id_group(list(ids), group_id)
+                
+                # Refresh the dropdown options to include restored groups
+                try:
+                    unique_groups = owner.session.get_group_ids()
+                    owner.reset_which_cells(unique_groups)
+                except Exception:
+                    pass
+            except Exception as e:
+                print(f"Error loading groups: {e}")
                 pass
 
     def _on_browse(self):
