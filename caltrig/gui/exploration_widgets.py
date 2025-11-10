@@ -25,6 +25,7 @@ from ..core.shuffling import shuffle_cofiring, shuffle_advanced
 from ..core.event_based_utility import extract_event_based_data
 from ..core.event_based_shuffling import event_based_shuffle_analysis
 from .pop_up_messages import print_error, SaveSessionSettingsDialog, LoadSessionSettingsDialog
+from .automation_widgets import AutomationDialog
 import os
 import matplotlib.pyplot as plt
 import pickle
@@ -189,6 +190,19 @@ class CaltrigWidget(QWidget):
         btn_load_session_settings.setStatusTip("Load visualization and analysis parameters from a JSON file")
         btn_load_session_settings.triggered.connect(self.load_session_settings)
         util_menu.addAction(btn_load_session_settings)
+        
+        # Separator
+        util_menu.addSeparator()
+        
+        # New: Automate Output
+        btn_automate_output = QAction(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon),
+            "Automate Output",
+            self,
+        )
+        btn_automate_output.setStatusTip("Automate analysis output across multiple sessions with different parameters")
+        btn_automate_output.triggered.connect(self.open_automation_dialog)
+        util_menu.addAction(btn_automate_output)
 
         video_menu = menu.addMenu("&Select Videos/Visualizations")
         video_menu.addAction(self.chkbox_cell_video)
@@ -2931,6 +2945,10 @@ class CaltrigWidget(QWidget):
         dlg = LoadSessionSettingsDialog(self)
         dlg.exec_()
 
+    def open_automation_dialog(self):
+        """Open dialog for automating analyses across multiple sessions."""
+        dlg = AutomationDialog(self)
+        dlg.exec_()
 
     def generate_gen_stats(self):
         self.gen_stats_window = GeneralStatsWidget(self.session)
