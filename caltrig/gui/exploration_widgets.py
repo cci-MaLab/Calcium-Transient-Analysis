@@ -535,7 +535,7 @@ class CaltrigWidget(QWidget):
         self.cmb_global_which_cells.addItems(["All Cells", "Verified Cells"])
         unique_groups = self.session.get_group_ids()
         self.cmb_global_which_cells.addItems([f"Group {group}" for group in unique_groups])
-        self.cmb_global_which_cells.currentIndexChanged.connect(lambda: self.visualize_global_signals(reset_view=False))
+        self.cmb_global_which_cells.currentIndexChanged.connect(self.sync_which_cells_dropdowns)
         # Input for window size
         global_window_size_label = QLabel("Window Size")
         self.global_window_size_input = QLineEdit()
@@ -749,6 +749,7 @@ class CaltrigWidget(QWidget):
         self.cmb_3D_which_cells = QComboBox()
         self.cmb_3D_which_cells.addItems(["All Cells", "Verified Cells"])
         self.cmb_3D_which_cells.addItems([f"Group {group}" for group in unique_groups])
+        self.cmb_3D_which_cells.currentIndexChanged.connect(self.sync_which_cells_dropdowns)
         label_3D_functions = QLabel("3D Visualization Functions")
         self.dropdown_3D_functions = QComboBox()
         self.dropdown_3D_functions.addItems(["Raw Visualization", "Transient Visualization"])
@@ -768,6 +769,12 @@ class CaltrigWidget(QWidget):
         self.layout_3D_chkbox_parent.hide()
 
 
+        # Event Based Feature Extraction - Create dropdown first
+        self.cmb_event_based_which_cells = QComboBox()
+        self.cmb_event_based_which_cells.addItems(["All Cells", "Verified Cells"])
+        self.cmb_event_based_which_cells.addItems([f"Group {group}" for group in unique_groups])
+        self.cmb_event_based_which_cells.currentIndexChanged.connect(self.sync_which_cells_dropdowns)
+
         # Event Based Feature Extraction Layout
         event_based_feature_extraction_layout = QVBoxLayout()
 
@@ -783,7 +790,7 @@ class CaltrigWidget(QWidget):
         self.cmb_3D_advanced_which_cells = QComboBox()
         self.cmb_3D_advanced_which_cells.addItems(["All Cells", "Verified Cells"])
         self.cmb_3D_advanced_which_cells.addItems([f"Group {group}" for group in unique_groups])
-        self.cmb_3D_advanced_which_cells.currentIndexChanged.connect(self.refresh_cell_list_advanced)
+        self.cmb_3D_advanced_which_cells.currentIndexChanged.connect(self.sync_which_cells_dropdowns)
         visualization_3D_advanced_layout.addWidget(label_3D_advanced_which_cells)
         visualization_3D_advanced_layout.addWidget(self.cmb_3D_advanced_which_cells)
         visualization_3D_advanced_layout.addWidget(visualization_3D_advanced_visualize_tab)
@@ -1089,16 +1096,18 @@ class CaltrigWidget(QWidget):
         w_missed_cells = QWidget()
         w_missed_cells.setLayout(layout_missed_cells)
 
-        # Add dropdown for cell filtering
+        # Event-Based Shuffling Tab Structure (matching 3D Visualization pattern)
+        event_based_feature_extraction_layout = QVBoxLayout()
+        
+        # Which Cells to Analyze at the top (like other tabs)
         label_event_based_which_cells = QLabel("Which Cells to Analyze")
-        self.cmb_event_based_which_cells = QComboBox()
-        self.cmb_event_based_which_cells.addItems(["All Cells", "Verified Cells"])
-        self.cmb_event_based_which_cells.addItems([f"Group {group}" for group in unique_groups])
-        self.cmb_event_based_which_cells.currentIndexChanged.connect(self.refresh_event_based_cell_list)
-        event_based_which_cells_layout = QHBoxLayout()
-        event_based_which_cells_layout.addWidget(label_event_based_which_cells)
-        event_based_which_cells_layout.addWidget(self.cmb_event_based_which_cells)
-
+        event_based_feature_extraction_layout.addWidget(label_event_based_which_cells)
+        event_based_feature_extraction_layout.addWidget(self.cmb_event_based_which_cells)
+        
+        # Create tab widget for event-based content
+        self.tabs_event_based = QTabWidget()
+        event_based_tools_layout = QVBoxLayout()
+        event_based_tools = QWidget()
 
         # Event type selection
         event_type_label = QLabel("Event Type:")
@@ -1188,20 +1197,29 @@ class CaltrigWidget(QWidget):
         self.event_based_copy_btn = QPushButton("Start Event-Based Shuffling")
         self.event_based_copy_btn.clicked.connect(self.event_based_shuffling)
 
-        # Add all layouts to main layout
-        event_based_feature_extraction_layout.addLayout(event_type_layout)
-        event_based_feature_extraction_layout.addLayout(event_window_size_layout)
-        event_based_feature_extraction_layout.addLayout(event_lag_layout)
-        event_based_feature_extraction_layout.addLayout(event_subwindows_layout)
-        event_based_feature_extraction_layout.addLayout(event_based_which_cells_layout)
-        event_based_feature_extraction_layout.addWidget(event_cells_label)
-        event_based_feature_extraction_layout.addWidget(self.event_based_cell_list)
-        event_based_feature_extraction_layout.addWidget(btn_toggle_check_event_based)
-        event_based_feature_extraction_layout.addLayout(event_shuffles_layout)
-        event_based_feature_extraction_layout.addWidget(self.event_based_amplitude_anchored)
-        event_based_feature_extraction_layout.addLayout(shuffle_type_layout)
-        event_based_feature_extraction_layout.addWidget(self.event_based_copy_btn)
-        event_based_feature_extraction_layout.addStretch()
+        # Add all controls to the event-based tools layout
+        event_based_tools_layout.addLayout(event_type_layout)
+        event_based_tools_layout.addLayout(event_window_size_layout)
+        event_based_tools_layout.addLayout(event_lag_layout)
+        event_based_tools_layout.addLayout(event_subwindows_layout)
+        event_based_tools_layout.addWidget(event_cells_label)
+        event_based_tools_layout.addWidget(self.event_based_cell_list)
+        event_based_tools_layout.addWidget(btn_toggle_check_event_based)
+        event_based_tools_layout.addLayout(event_shuffles_layout)
+        event_based_tools_layout.addWidget(self.event_based_amplitude_anchored)
+        event_based_tools_layout.addLayout(shuffle_type_layout)
+        event_based_tools_layout.addWidget(self.event_based_copy_btn)
+        event_based_tools_layout.addStretch()
+        
+        event_based_tools.setLayout(event_based_tools_layout)
+        self.tabs_event_based.addTab(event_based_tools, "Event-Based Shuffling")
+        
+        # Add the tab widget to the main layout
+        event_based_feature_extraction_layout.addWidget(self.tabs_event_based)
+        
+        # Create the event-based widget
+        event_based_feature_extraction = QWidget()
+        event_based_feature_extraction.setLayout(event_based_feature_extraction_layout)
 
 
         self.tabs_video.addTab(w_cells, "Approved Cells")
@@ -3476,6 +3494,39 @@ class CaltrigWidget(QWidget):
             item.setCheckState(Qt.CheckState.Checked)
         return item
 
+    def sync_which_cells_dropdowns(self):
+        """Synchronize all 'Which Cells to Analyze' dropdowns to show the same selection"""
+        # Get the sender (the dropdown that triggered this)
+        sender = self.sender()
+        if sender is None:
+            return
+        
+        selected_index = sender.currentIndex()
+        
+        # Block signals to prevent infinite recursion
+        self.cmb_global_which_cells.blockSignals(True)
+        self.cmb_3D_which_cells.blockSignals(True)
+        self.cmb_3D_advanced_which_cells.blockSignals(True)
+        self.cmb_event_based_which_cells.blockSignals(True)
+        
+        # Update all dropdowns to the same index
+        self.cmb_global_which_cells.setCurrentIndex(selected_index)
+        self.cmb_3D_which_cells.setCurrentIndex(selected_index)
+        self.cmb_3D_advanced_which_cells.setCurrentIndex(selected_index)
+        self.cmb_event_based_which_cells.setCurrentIndex(selected_index)
+        
+        # Unblock signals
+        self.cmb_global_which_cells.blockSignals(False)
+        self.cmb_3D_which_cells.blockSignals(False)
+        self.cmb_3D_advanced_which_cells.blockSignals(False)
+        self.cmb_event_based_which_cells.blockSignals(False)
+        
+        # Refresh all cell lists
+        self.refresh_cell_list_advanced()
+        self.refresh_event_based_cell_list()
+        # Also update the global visualization
+        self.visualize_global_signals(reset_view=False)
+
     def refresh_event_based_cell_list(self):
         self.event_based_cell_list.clear()
         event_based_cells = self.get_event_based_cells()
@@ -3495,15 +3546,19 @@ class CaltrigWidget(QWidget):
         self.list_advanced_A_cell.clear()
         self.list_advanced_B_cell.clear()
         advanced_cells = self.get_advanced_cells()
-        good_bad_cells = self.session.data['E']['good_cells'].values
-        for i, cell_id in enumerate(self.session.data['E']['unit_id'].values):
-            if cell_id in advanced_cells:
-                cell_name = f"{cell_id}"
-                self.list_advanced_A_cell.addItem(self.create_checked_item(cell_name))
-                self.list_advanced_B_cell.addItem(self.create_checked_item(cell_name))
-                if good_bad_cells[i]:
-                    self.list_advanced_A_cell.item(self.list_advanced_A_cell.count()-1).setBackground(Qt.green)
-                    self.list_advanced_B_cell.item(self.list_advanced_B_cell.count()-1).setBackground(Qt.green)
+        
+        # Get verified cells to check if each cell is verified
+        verified_cells = set(self.session.get_verified_cells())
+        
+        for cell_id in advanced_cells:
+            cell_name = f"{cell_id}"
+            self.list_advanced_A_cell.addItem(self.create_checked_item(cell_name))
+            self.list_advanced_B_cell.addItem(self.create_checked_item(cell_name))
+            
+            # Only color green if the cell is verified
+            if cell_id in verified_cells:
+                self.list_advanced_A_cell.item(self.list_advanced_A_cell.count()-1).setBackground(Qt.green)
+                self.list_advanced_B_cell.item(self.list_advanced_B_cell.count()-1).setBackground(Qt.green)
 
     def refresh_cell_list(self):
         self.list_cell.clear()
