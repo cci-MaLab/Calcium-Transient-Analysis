@@ -398,6 +398,20 @@ class VisualizeShuffledCofiring(QWidget):
         Copy the data from the table to the clipboard.
         '''
         table.to_clipboard(index=index)
+    
+    def save_to_csv(self, filepath, use_alt=False):
+        '''
+        Save the co-firing data to a CSV file.
+        
+        Parameters
+        ----------
+        filepath : str
+            Path to save the CSV file
+        use_alt : bool
+            If True, save the cell-to-cell matrix (df_alt), otherwise save standard format (df_standard)
+        '''
+        table = self.df_alt if use_alt else self.df_standard
+        table.to_csv(filepath, index=use_alt)
         
         
 

@@ -1,10 +1,11 @@
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
                              QListWidget, QFileDialog, QLineEdit, QGroupBox, QMessageBox,
-                             QListWidgetItem, QAbstractItemView)
-from PyQt5.QtCore import Qt
+                             QListWidgetItem, QAbstractItemView, QProgressDialog, QProgressBar)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon
 import json
 import os
+from ..core.automation import run_batch_automation
 
 
 class AutomationDialog(QDialog):
@@ -26,6 +27,7 @@ class AutomationDialog(QDialog):
         # Store selected files
         self.selected_sessions = []
         self.parameter_file = None  # Single JSON file containing all parameters
+        self.output_path = None  # Output directory (None = use local session directories)
         
         self.init_ui()
     
@@ -59,6 +61,10 @@ class AutomationDialog(QDialog):
         content_layout.addWidget(parameter_group, stretch=1)
         
         main_layout.addLayout(content_layout)
+        
+        # Output path selection
+        output_group = self.create_output_path_group()
+        main_layout.addWidget(output_group)
         
         # Bottom buttons
         button_layout = QHBoxLayout()
@@ -120,16 +126,8 @@ class AutomationDialog(QDialog):
     
     def create_parameter_selection_group(self):
         """Create the parameter file selection group"""
-        group = QGroupBox("Analysis Parameter Files (JSON)")
+        group = QGroupBox("Analysis Parameters")
         layout = QVBoxLayout()
-        
-        # Instructions
-        info_label = QLabel(
-            "Select a JSON file containing all analysis parameters.\n"
-            "The file should include parameters for Co-Firing, Advanced Visualization, and Event-Based Shuffling."
-        )
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
         
         # Single parameter file selection
         param_layout = QHBoxLayout()
@@ -145,13 +143,51 @@ class AutomationDialog(QDialog):
         
         layout.addStretch()
         
-        # Parameter status
-        self.param_status_label = QLabel("Parameter file: Not selected")
-        self.param_status_label.setStyleSheet("font-style: italic; margin-top: 5px;")
-        layout.addWidget(self.param_status_label)
+        group.setLayout(layout)
+        return group
+    
+    def create_output_path_group(self):
+        """Create the output path selection group"""
+        group = QGroupBox("Output Directory")
+        layout = QVBoxLayout()
+        
+        # Path input and browse button
+        path_layout = QHBoxLayout()
+        
+        self.output_path_input = QLineEdit()
+        self.output_path_input.setPlaceholderText("Default: Current directory")
+        self.output_path_input.setReadOnly(True)
+        path_layout.addWidget(self.output_path_input, stretch=1)
+        
+        btn_browse_output = QPushButton("Browse...")
+        btn_browse_output.clicked.connect(self.select_output_path)
+        path_layout.addWidget(btn_browse_output)
+        
+        btn_clear_output = QPushButton("Clear")
+        btn_clear_output.clicked.connect(self.clear_output_path)
+        path_layout.addWidget(btn_clear_output)
+        
+        layout.addLayout(path_layout)
         
         group.setLayout(layout)
         return group
+    
+    def select_output_path(self):
+        """Select output directory"""
+        path = QFileDialog.getExistingDirectory(
+            self,
+            "Select Output Directory",
+            ""
+        )
+        
+        if path:
+            self.output_path = path
+            self.output_path_input.setText(path)
+    
+    def clear_output_path(self):
+        """Clear output path (use default)"""
+        self.output_path = None
+        self.output_path_input.clear()
     
     def add_sessions(self):
         """Add session configuration files"""
@@ -220,10 +256,6 @@ class AutomationDialog(QDialog):
                 self.param_input.setText(os.path.basename(file_path))
                 self.param_input.setToolTip(file_path)
                 
-                # Update status label
-                self.param_status_label.setText("Parameter file: Selected ✓")
-                self.param_status_label.setStyleSheet("font-style: italic; margin-top: 5px; color: green;")
-                
                 self.check_ready_to_run()
                 
             except json.JSONDecodeError:
@@ -247,7 +279,7 @@ class AutomationDialog(QDialog):
         self.btn_run.setEnabled(has_sessions and has_params)
     
     def run_automation(self):
-        """Run the automation (to be implemented)"""
+        """Run the automation"""
         # Validate selections
         if not self.selected_sessions:
             QMessageBox.warning(self, "No Sessions", "Please select at least one session file.")
@@ -257,25 +289,73 @@ class AutomationDialog(QDialog):
             QMessageBox.warning(self, "No Parameters", "Please select a parameter file.")
             return
         
-        # Show confirmation
-        msg = QMessageBox()
-        msg.setIcon(QMessageBox.Information)
-        msg.setWindowTitle("Automation Ready")
-        msg.setText("Automation configuration complete!")
-        msg.setInformativeText(
-            f"Sessions: {len(self.selected_sessions)}\n"
-            f"Parameter file: {os.path.basename(self.parameter_file)}\n\n"
-            "Ready to implement automation logic."
-        )
-        msg.exec_()
+        # Create progress dialog
+        progress = QProgressDialog("Starting automation...", "Cancel", 0, 100, self)
+        progress.setWindowTitle("Automation Progress")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setMinimumWidth(400)
         
-        # TODO: Implement actual automation logic
-        # This will be implemented later
+        # Track progress with labels
+        session_label = QLabel("Session: Initializing...")
+        analysis_label = QLabel("Analysis: Waiting...")
+        
+        def update_session(current, total, session_name):
+            session_label.setText(f"Session: {session_name} ({current}/{total})")
+            progress.setLabelText(f"Session: {session_name} ({current}/{total})\n{analysis_label.text()}")
+            progress.setValue(int((current / total) * 100))
+        
+        def update_analysis(analysis_type):
+            analysis_label.setText(f"Analysis: {analysis_type}")
+            progress.setLabelText(f"{session_label.text()}\n{analysis_label.text()}")
+        
+        def analysis_complete():
+            pass  # Could update if needed
+        
+        try:
+            results = run_batch_automation(
+                self.selected_sessions, 
+                self.parameter_file, 
+                self.output_path,
+                progress_callback_session=update_session,
+                progress_callback_analysis=update_analysis,
+                progress_callback_analysis_done=analysis_complete
+            )
+            
+            progress.close()
+            
+            # Show results
+            success_count = len(results['successful'])
+            failed_count = len(results['failed'])
+            
+            if failed_count > 0:
+                error_details = '\n'.join([f"{r['path']}: {r['error']}" for r in results['failed']])
+                QMessageBox.warning(
+                    self,
+                    "Automation Complete with Errors",
+                    f"Processed: {success_count} successful, {failed_count} failed\n\n{error_details}"
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "Automation Complete",
+                    f"Successfully processed {success_count} session(s)"
+                )
+                
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Automation Error",
+                f"Failed to run automation:\n{str(e)}"
+            )
+            import traceback
+            traceback.print_exc()
         pass
     
     def get_automation_config(self):
         """Get the current automation configuration"""
         return {
             'sessions': self.selected_sessions,
-            'parameter_file': self.parameter_file
+            'parameter_file': self.parameter_file,
+            'output_path': self.output_path
         }
