@@ -12,3 +12,4 @@ tqdm
 pyvistaqt
 colorcet
 rechunker
+xlsxwriter

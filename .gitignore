@@ -12,6 +12,7 @@ backup/*
 src/*
 *.svg
 config/*
+*.xlsx
 
 # Include the following files
 !docs/

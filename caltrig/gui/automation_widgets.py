@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
                              QListWidget, QFileDialog, QLineEdit, QGroupBox, QMessageBox,
-                             QListWidgetItem, QAbstractItemView, QProgressDialog, QProgressBar)
+                             QListWidgetItem, QAbstractItemView, QProgressDialog, QProgressBar, QCheckBox)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon
 import json
@@ -140,6 +140,20 @@ class AutomationDialog(QDialog):
         btn_param.clicked.connect(self.select_parameter_file)
         param_layout.addWidget(btn_param)
         layout.addLayout(param_layout)
+        
+        # Output type selection checkboxes
+        layout.addWidget(QLabel("Output Types:"))
+        self.chk_cofiring = QCheckBox("Co-firing")
+        self.chk_cofiring.setChecked(True)
+        layout.addWidget(self.chk_cofiring)
+        
+        self.chk_advanced = QCheckBox("Advanced")
+        self.chk_advanced.setChecked(True)
+        layout.addWidget(self.chk_advanced)
+        
+        self.chk_event_based = QCheckBox("Event-based")
+        self.chk_event_based.setChecked(True)
+        layout.addWidget(self.chk_event_based)
         
         layout.addStretch()
         
@@ -312,11 +326,19 @@ class AutomationDialog(QDialog):
         def analysis_complete():
             pass  # Could update if needed
         
+        # Get which outputs are enabled
+        enabled_outputs = {
+            'cofiring': self.chk_cofiring.isChecked(),
+            'advanced': self.chk_advanced.isChecked(),
+            'event_based': self.chk_event_based.isChecked()
+        }
+        
         try:
             results = run_batch_automation(
                 self.selected_sessions, 
                 self.parameter_file, 
                 self.output_path,
+                enabled_outputs=enabled_outputs,
                 progress_callback_session=update_session,
                 progress_callback_analysis=update_analysis,
                 progress_callback_analysis_done=analysis_complete

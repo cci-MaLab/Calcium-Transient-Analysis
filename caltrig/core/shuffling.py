@@ -401,17 +401,18 @@ class VisualizeShuffledCofiring(QWidget):
     
     def save_to_csv(self, filepath, use_alt=False):
         '''
-        Save the co-firing data to a CSV file.
+        Save the co-firing data to an Excel file.
         
         Parameters
         ----------
         filepath : str
-            Path to save the CSV file
+            Path to save the Excel file
         use_alt : bool
             If True, save the cell-to-cell matrix (df_alt), otherwise save standard format (df_standard)
         '''
         table = self.df_alt if use_alt else self.df_standard
-        table.to_csv(filepath, index=use_alt)
+        # Save as Excel file for proper formatting
+        table.to_excel(filepath, index=use_alt)
         
         
 
@@ -912,9 +913,82 @@ class VisualizeShuffledAdvanced(QWidget):
         clipboard = QApplication.clipboard()
         clipboard.setText(copy_string)
 
-
-            
-            
+    def save_to_excel(self, filepath):
+        '''
+        Save the advanced shuffling data to an Excel file.
+        Creates separate sheets for each target cell.
+        '''
+        with pd.ExcelWriter(filepath, engine='xlsxwriter') as writer:
+            # Process each target cell separately
+            for cell_id in self.target_cells:
+                # Create sheet name (Excel limits to 31 chars)
+                sheet_name = f"Cell {cell_id}"[:31]
+                
+                # Build metadata rows
+                comparison_cells = [str(cell) for cell in self.all_cells if cell != cell_id]
+                shuffling_type = ""
+                if self.temporal:
+                    shuffling_type += "Temporal"
+                if self.spatial:
+                    shuffling_type += (" + " if shuffling_type else "") + "Spatial"
+                
+                # Get window data
+                windows = sorted(self.fpr_spatial.keys())
+                
+                # Skip if no windows or no data for this cell
+                if not windows or cell_id not in self.fpr_spatial.get(windows[0], {}):
+                    continue
+                
+                # Create a DataFrame for this cell's data
+                # Build column headers: Distance, FPR for each window
+                columns = []
+                for win in windows:
+                    columns.extend([f"Window {win} - Distance", f"Window {win} - FPR"])
+                
+                # Gather data rows
+                max_rows = 0
+                window_data = {}
+                for win in windows:
+                    if cell_id in self.fpr_spatial[win] and cell_id in self.fpr_temporal[win]:
+                        dists = self.fpr_spatial[win][cell_id]
+                        fprs = self.fpr_temporal[win][cell_id]
+                        pairs = list(zip(dists, fprs))
+                        window_data[win] = pairs
+                        if len(pairs) > max_rows:
+                            max_rows = len(pairs)
+                    else:
+                        window_data[win] = []
+                
+                # Build data array
+                data = []
+                for i in range(max_rows):
+                    row = []
+                    for win in windows:
+                        pairs = window_data[win]
+                        if i < len(pairs):
+                            dist, fpr = pairs[i]
+                            row.extend([dist, fpr])
+                        else:
+                            row.extend([None, None])
+                    data.append(row)
+                
+                # Only create DataFrame if we have columns and data
+                if columns and (data or max_rows == 0):
+                    # Create DataFrame (allow empty if max_rows is 0)
+                    df = pd.DataFrame(data if data else [], columns=columns)
+                    
+                    # Write to Excel with metadata at top
+                    startrow = 0
+                    
+                    # Write metadata
+                    metadata_df = pd.DataFrame({
+                        'Property': ['Cell A', 'Cell Bs', '# of Cell Bs', 'Shuffling Type'],
+                        'Value': [cell_id, ' '.join(comparison_cells), len(comparison_cells), shuffling_type]
+                    })
+                    metadata_df.to_excel(writer, sheet_name=sheet_name, startrow=startrow, index=False)
+                    
+                    # Write main data below metadata (with gap row)
+                    df.to_excel(writer, sheet_name=sheet_name, startrow=startrow + len(metadata_df) + 2, index=False)
 
     def closeEvent(self, event):
         self.closed.emit()

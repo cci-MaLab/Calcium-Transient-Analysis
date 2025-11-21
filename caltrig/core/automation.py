@@ -6,7 +6,6 @@ import json
 import os
 from .backend import DataInstance
 from .shuffling import shuffle_cofiring, shuffle_advanced
-from .event_based_shuffling import event_based_shuffle_analysis
 
 
 def load_parameters(parameter_file: str) -> dict:
@@ -76,6 +75,7 @@ def load_parameters(parameter_file: str) -> dict:
 
 
 def run_batch_automation(session_paths: list, parameter_file: str, output_path: str = None,
+                        enabled_outputs: dict = None,
                         progress_callback_session=None, progress_callback_analysis=None, 
                         progress_callback_analysis_done=None):
     """
@@ -89,6 +89,9 @@ def run_batch_automation(session_paths: list, parameter_file: str, output_path: 
         Path to JSON file containing analysis parameters
     output_path : str, optional
         Directory to save output files. If None, use current working directory
+    enabled_outputs : dict, optional
+        Dictionary specifying which outputs to generate: {'cofiring': bool, 'advanced': bool, 'event_based': bool}
+        If None, all outputs are enabled
     progress_callback_session : callable, optional
         Callback function(current, total, session_name) to update session progress
     progress_callback_analysis : callable, optional
@@ -107,6 +110,14 @@ def run_batch_automation(session_paths: list, parameter_file: str, output_path: 
     # Use current directory if no output path specified
     if output_path is None:
         output_path = os.getcwd()
+    
+    # Default to all outputs enabled if not specified
+    if enabled_outputs is None:
+        enabled_outputs = {
+            'cofiring': True,
+            'advanced': True,
+            'event_based': True
+        }
     
     results = {
         'successful': [],
@@ -133,27 +144,48 @@ def run_batch_automation(session_paths: list, parameter_file: str, output_path: 
             which_cells = params['general']['which_cells']
             unit_ids = session.get_cell_ids(which_cells)
             
-            # Run co-firing analysis if parameters are present
-            if params['cofiring']['num_shuffles'] is not None:
-                cofiring_csv_path = os.path.join(session_output_path, "cofiring_results.csv")
+            # Convert to list for shuffling functions
+            target_cells = list(unit_ids)
+            comparison_cells = list(unit_ids)
+            
+            # Apply verified_only filter if specified
+            if params['cofiring'].get('verified_only', False):
+                target_cells = session.prune_non_verified(target_cells)
+                comparison_cells = session.prune_non_verified(comparison_cells)
+            
+            # Run co-firing analysis if enabled and parameters are present
+            if enabled_outputs['cofiring'] and params['cofiring']['num_shuffles'] is not None:
+                cofiring_csv_path = os.path.join(session_output_path, "cofiring_results.xlsx")
+                cofiring_matrix_path = os.path.join(session_output_path, "cofiring_results_matrix.xlsx")
                 
                 # Skip if output file already exists
                 if not os.path.exists(cofiring_csv_path):
                     if progress_callback_analysis:
                         progress_callback_analysis("Co-firing")
                     
+                    # Build parameters for shuffle_cofiring
+                    cofiring_params = {
+                        'temporal': params['cofiring']['temporal'],
+                        'spatial': params['cofiring']['spatial'],
+                        'cofiring': {
+                            'window_size': params['cofiring']['window_size'],
+                            'share_a': False,  # Default values
+                            'share_b': False,
+                            'direction': 'Both'
+                        }
+                    }
+                    
                     cofiring_result = shuffle_cofiring(
                         session=session,
-                        unit_ids=unit_ids,
-                        distance_threshold=params['cofiring']['distance_threshold'],
-                        verified_only=params['cofiring']['verified_only'],
-                        spatial=params['cofiring']['spatial'],
-                        temporal=params['cofiring']['temporal'],
-                        N=params['cofiring']['num_shuffles']
+                        target_cells=target_cells,
+                        comparison_cells=comparison_cells,
+                        n=params['cofiring']['num_shuffles'],
+                        **cofiring_params
                     )
                     
-                    # Save co-firing results
+                    # Save co-firing results - both standard and matrix formats
                     cofiring_result.save_to_csv(cofiring_csv_path, use_alt=False)
+                    cofiring_result.save_to_csv(cofiring_matrix_path, use_alt=True)
                     
                     if progress_callback_analysis_done:
                         progress_callback_analysis_done()
@@ -162,6 +194,61 @@ def run_batch_automation(session_paths: list, parameter_file: str, output_path: 
                         progress_callback_analysis("Co-firing (skipped - file exists)")
                     if progress_callback_analysis_done:
                         progress_callback_analysis_done()
+            
+            # Run advanced/FPR analysis if enabled and parameters are present
+            if enabled_outputs['advanced'] and params['advanced']['num_shuffles'] is not None:
+                # Check if at least one shuffling type is enabled
+                if not params['advanced']['temporal'] and not params['advanced']['spatial']:
+                    if progress_callback_analysis:
+                        progress_callback_analysis("Advanced (skipped - no shuffling enabled)")
+                    if progress_callback_analysis_done:
+                        progress_callback_analysis_done()
+                else:
+                    advanced_csv_path = os.path.join(session_output_path, "advanced_results.xlsx")
+                    
+                    # Skip if output file already exists
+                    if not os.path.exists(advanced_csv_path):
+                        if progress_callback_analysis:
+                            progress_callback_analysis("Advanced")
+                        
+                        # Build parameters for shuffle_advanced
+                        advanced_params = {
+                            'temporal': params['advanced']['temporal'],
+                            'spatial': params['advanced']['spatial'],
+                            'shuffling': {
+                                'window_size': params['advanced']['window_size'],
+                                'readout': params['advanced']['readout'],
+                                'fpr': params['advanced']['fpr']
+                            },
+                            'anchor': params['advanced'].get('scaling', 'None')  # Anchor parameter
+                        }
+                        
+                        advanced_result = shuffle_advanced(
+                            session=session,
+                            target_cells=target_cells,
+                            comparison_cells=comparison_cells,
+                            n=params['advanced']['num_shuffles'],
+                            **advanced_params
+                        )
+                        
+                        # Save advanced results if analysis succeeded
+                        if advanced_result is not None:
+                            advanced_result.save_to_excel(advanced_csv_path)
+                        
+                        if progress_callback_analysis_done:
+                            progress_callback_analysis_done()
+                    else:
+                        if progress_callback_analysis:
+                            progress_callback_analysis("Advanced (skipped - file exists)")
+                        if progress_callback_analysis_done:
+                            progress_callback_analysis_done()
+            
+            # Event-based analysis - not yet implemented
+            if enabled_outputs['event_based']:
+                if progress_callback_analysis:
+                    progress_callback_analysis("Event-based (not yet implemented)")
+                if progress_callback_analysis_done:
+                    progress_callback_analysis_done()
             
             results['successful'].append(session_path)
             

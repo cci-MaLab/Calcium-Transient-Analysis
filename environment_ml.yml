@@ -19,5 +19,6 @@ dependencies:
   - pyvistaqt
   - rechunker
   - colorcet
+  - xlsxwriter
   - pip:
     - local-attention
