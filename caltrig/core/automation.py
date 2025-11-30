@@ -4,8 +4,10 @@ Automation logic for batch processing analyses across multiple sessions.
 
 import json
 import os
+import pandas as pd
 from .backend import DataInstance
 from .shuffling import shuffle_cofiring, shuffle_advanced
+from .exploration_statistics import generate_general_statistics, generate_local_statistics
 
 
 def load_parameters(parameter_file: str) -> dict:
@@ -116,7 +118,9 @@ def run_batch_automation(session_paths: list, parameter_file: str, output_path: 
         enabled_outputs = {
             'cofiring': True,
             'advanced': True,
-            'event_based': True
+            'event_based': True,
+            'general_stats': True,
+            'local_stats': True
         }
     
     results = {
@@ -249,6 +253,52 @@ def run_batch_automation(session_paths: list, parameter_file: str, output_path: 
                     progress_callback_analysis("Event-based (not yet implemented)")
                 if progress_callback_analysis_done:
                     progress_callback_analysis_done()
+            
+            # General statistics
+            if enabled_outputs.get('general_stats', False):
+                general_stats_path = os.path.join(session_output_path, "general_statistics.xlsx")
+                
+                # Skip if output file already exists
+                if not os.path.exists(general_stats_path):
+                    if progress_callback_analysis:
+                        progress_callback_analysis("General Statistics")
+                    
+                    # Generate general statistics using the same cell selection
+                    general_stats_df = generate_general_statistics(session, target_cells)
+                    general_stats_df.to_excel(general_stats_path, index=True, engine='xlsxwriter')
+                    
+                    if progress_callback_analysis_done:
+                        progress_callback_analysis_done()
+                else:
+                    if progress_callback_analysis:
+                        progress_callback_analysis("General Statistics (skipped - file exists)")
+                    if progress_callback_analysis_done:
+                        progress_callback_analysis_done()
+            
+            # Local statistics (one sheet per cell)
+            if enabled_outputs.get('local_stats', False):
+                local_stats_path = os.path.join(session_output_path, "local_statistics.xlsx")
+                
+                # Skip if output file already exists
+                if not os.path.exists(local_stats_path):
+                    if progress_callback_analysis:
+                        progress_callback_analysis("Local Statistics")
+                    
+                    # Generate local statistics for each cell and save to multi-sheet Excel
+                    with pd.ExcelWriter(local_stats_path, engine='xlsxwriter') as writer:
+                        for unit_id in target_cells:
+                            local_stats_df = generate_local_statistics(session, unit_id)
+                            # Use sheet name "Cell X" (Excel has 31 char limit)
+                            sheet_name = f"Cell {unit_id}"
+                            local_stats_df.to_excel(writer, sheet_name=sheet_name, index=True)
+                    
+                    if progress_callback_analysis_done:
+                        progress_callback_analysis_done()
+                else:
+                    if progress_callback_analysis:
+                        progress_callback_analysis("Local Statistics (skipped - file exists)")
+                    if progress_callback_analysis_done:
+                        progress_callback_analysis_done()
             
             results['successful'].append(session_path)
             

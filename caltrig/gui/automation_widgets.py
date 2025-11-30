@@ -155,6 +155,14 @@ class AutomationDialog(QDialog):
         self.chk_event_based.setChecked(True)
         layout.addWidget(self.chk_event_based)
         
+        self.chk_general_stats = QCheckBox("General Statistics")
+        self.chk_general_stats.setChecked(True)
+        layout.addWidget(self.chk_general_stats)
+        
+        self.chk_local_stats = QCheckBox("Local Statistics")
+        self.chk_local_stats.setChecked(True)
+        layout.addWidget(self.chk_local_stats)
+        
         layout.addStretch()
         
         group.setLayout(layout)
@@ -330,7 +338,9 @@ class AutomationDialog(QDialog):
         enabled_outputs = {
             'cofiring': self.chk_cofiring.isChecked(),
             'advanced': self.chk_advanced.isChecked(),
-            'event_based': self.chk_event_based.isChecked()
+            'event_based': self.chk_event_based.isChecked(),
+            'general_stats': self.chk_general_stats.isChecked(),
+            'local_stats': self.chk_local_stats.isChecked()
         }
         
         try:

@@ -224,6 +224,17 @@ class GeneralStatsWidget(StatsWidget):
         self.iti_win = GeneralVizWidget(data, "ITI")
         self.iti_win.setWindowTitle("ITI Box Plot")
         self.iti_win.show()
+    
+    def save_to_excel(self, filepath):
+        """
+        Save the general statistics table to an Excel file.
+        
+        Parameters
+        ----------
+        filepath : str
+            Path to save the Excel file
+        """
+        self.pd_table.to_excel(filepath, index=True, engine='xlsxwriter')
 
     def pandas_to_table(self):
         super().pandas_to_table()
@@ -351,26 +362,32 @@ class LocalStatsWidget(StatsWidget):
         self.iti_msec = []
         self.total_amplitude_list = []
         for i, transient in enumerate(transients):
-            rising_start = transient[0]+1
-            rising_stop = transient[1]+1
+            # 0-based indices for array access
+            start_idx = transient[0]
+            stop_idx = transient[1]
+            
+            # 1-based indices for display
+            rising_start = start_idx + 1
+            rising_stop = stop_idx
+            
             rising_total_frames = rising_stop - rising_start
-            rising_start_seconds = timestamps[rising_start-1] / 1000
-            rising_stop_seconds = timestamps[rising_stop-1] / 1000
+            rising_start_seconds = timestamps[start_idx] / 1000
+            rising_stop_seconds = timestamps[stop_idx-1] / 1000
             rising_total_seconds = rising_stop_seconds - rising_start_seconds
 
             if previous_transient == -1:
                 interval_frames = "N/A"
                 interval_seconds = "N/A"
-                previous_transient = transient[0]+1
+                previous_transient = start_idx
             else:
-                interval_frames = transient[0]+1 - previous_transient
-                interval_seconds = (timestamps[transient[0]] - timestamps[previous_transient]) / 1000
+                interval_frames = rising_start - (previous_transient + 1)
+                interval_seconds = (timestamps[start_idx] - timestamps[previous_transient]) / 1000
                 self.iti_msec.append(interval_seconds * 1000)
                 interval_seconds = str(round(interval_seconds, 3))
-                previous_transient = transient[0]+1
+                previous_transient = start_idx
 
-            peak_amplitude = self.DFF.sel(frame=slice(rising_start, rising_stop)).max().values.item()
-            total_amplitude = self.DFF.sel(frame=slice(rising_start, rising_stop)).sum().values.item()
+            peak_amplitude = self.DFF.sel(frame=slice(start_idx, stop_idx)).max().values.item()
+            total_amplitude = self.DFF.sel(frame=slice(start_idx, stop_idx)).sum().values.item()
             self.total_amplitude_list.append(total_amplitude)
             
             self.pd_table.at[i+1, "Rising-Start(frames)"] = rising_start
@@ -402,6 +419,17 @@ class LocalStatsWidget(StatsWidget):
     def generate_fft_frequency(self):
         self.fft_win = localFrequencyWidget(self.DFF.values)
         self.fft_win.show()
+    
+    def save_to_excel(self, filepath):
+        """
+        Save the local statistics table to an Excel file.
+        
+        Parameters
+        ----------
+        filepath : str
+            Path to save the Excel file
+        """
+        self.pd_table.to_excel(filepath, index=True, engine='xlsxwriter')
         
     def closeEvent(self, event):
         super(LocalStatsWidget, self).closeEvent(event)
@@ -575,3 +603,162 @@ def save_figure(fig):
         file_path += ext
 
     fig.savefig(file_path)
+
+
+def generate_general_statistics(session, unit_ids):
+    """
+    Generate general statistics for all cells without GUI.
+    
+    Parameters
+    ----------
+    session : DataInstance
+        The session object containing the data
+    unit_ids : list
+        List of unit IDs to include in statistics
+        
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame containing general statistics for all cells
+    """
+    E = session.data['E']
+    
+    pd_table = pd.DataFrame(index=unit_ids, columns=["Cell Size(pixel)", "Location (x,y)", "Total Ca2+ transient #", 
+                                   "Average Frequency (Hz)", "Average Peak Amplitude (ΔF/F)", "Average Rising (# of frames)",
+                                   "Average Rising Time (seconds)", "Average Ca2+ transient-interval (# of frames)", "Average interval (seconds)",
+                                   "Std(ΔF/F)", "MAD(ΔF/F)"])
+    
+    # Get data for all cells
+    sizes = session.get_cell_sizes()
+    total_transients = session.get_total_transients()
+    timestamps = E.coords["timestamp(ms)"].values
+    total_time = timestamps[-1] - timestamps[0]
+    average_frequency = total_transients / total_time * 1000
+    average_amplitude = session.get_average_peak_dff()
+    total_rising_frames = session.get_total_rising_frames()
+    average_rising_frames = total_rising_frames / total_transients
+    frames_per_second = len(timestamps) / total_time * 1000
+    average_rising_time = average_rising_frames / frames_per_second
+    transient_frames = session.get_transient_frames()
+    std_dff = session.get_std()
+    mad_dff = session.get_mad()
+    
+    for id in unit_ids:
+        # 1.) Cell Size
+        pd_table.at[id, "Cell Size(pixel)"] = sizes.sel(unit_id=id).item()
+        # 2.) Location (x,y)
+        pd_table.at[id, "Location (x,y)"] = (round(session.centroids[id][0]), round(session.centroids[id][1]))
+        # 3.) Total Ca2+ transient #
+        pd_table.at[id, "Total Ca2+ transient #"] = int(total_transients.sel(unit_id=id).item())
+
+        # 4.) Average Frequency (Hz)
+        pd_table.at[id, "Average Frequency (Hz)"] = round(average_frequency.sel(unit_id=id).item(), 5)
+
+        # 5.) Average Peak Amplitude (ΔF/F)
+        if average_amplitude.get(id, None) is None:
+            pd_table.at[id, "Average Peak Amplitude (ΔF/F)"] = np.NaN
+        else:
+            pd_table.at[id, "Average Peak Amplitude (ΔF/F)"] = str(round(average_amplitude[id], 3))
+
+        # 6.) Average Rising (# of frames)
+        if average_rising_frames.sel(unit_id=id).isnull().item():
+            pd_table.at[id, "Average Rising (# of frames)"] = np.NaN
+        else:
+            pd_table.at[id, "Average Rising (# of frames)"] = str(round(average_rising_frames.sel(unit_id=id).item()))
+
+        # 7.) Average Rising Time (seconds)
+        if average_rising_time.sel(unit_id=id).isnull().item():
+            pd_table.at[id, "Average Rising Time (seconds)"] = np.NaN
+        else:
+            pd_table.at[id, "Average Rising Time (seconds)"] = str(round(average_rising_time.sel(unit_id=id).item(), 3))
+
+        # 8.) Average Ca2+ transient-interval (# of frames)
+        pd_table.at[id, "Average Ca2+ transient-interval (# of frames)"] = session.get_mean_iei_per_cell(transient_frames, id, total_transients)
+            
+        # 9.) Average interval (seconds)
+        pd_table.at[id, "Average interval (seconds)"] = session.get_mean_iei_per_cell(transient_frames, id, total_transients, frame_rate=frames_per_second)
+
+        # 10.) Std(ΔF/F)
+        pd_table.at[id, "Std(ΔF/F)"] = round(std_dff.sel(unit_id=id).item(), 3)
+
+        # 11.) MAD(ΔF/F)
+        pd_table.at[id, "MAD(ΔF/F)"] = round(mad_dff.sel(unit_id=id).item(), 3)
+    
+    return pd_table
+
+
+def generate_local_statistics(session, unit_id):
+    """
+    Generate local statistics for a single cell without GUI.
+    
+    Parameters
+    ----------
+    session : DataInstance
+        The session object containing the data
+    unit_id : int
+        The unit ID for which to generate statistics
+        
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame containing local statistics for the cell
+    """
+    total_transients = int(session.get_total_transients(unit_id=unit_id).item())
+    
+    E = session.data['E'].sel(unit_id=unit_id).values
+    DFF = session.data['DFF'].sel(unit_id=unit_id)
+    timestamps = session.data['E'].coords["timestamp(ms)"].values
+    
+    transients = E.nonzero()[0]
+    if transients.any():
+        # Split up the indices into groups
+        transients = np.split(transients, np.where(np.diff(transients) != 1)[0]+1)
+        # Now Split the indices into pairs of first and last indices
+        transients = [(indices_group[0], indices_group[-1]+1) for indices_group in transients]
+    
+    pd_table = pd.DataFrame(index=range(1, total_transients+1), columns=["Rising-Start(frames)", "Rising-Stop(frames)", "Total # of Rising Frames",
+                                    "Rising-Start(seconds)", "Rising-Stop(seconds)", "Duration (seconds)",
+                                    "Interval with Previous Transient (frames)", "Interval with Previous Transient (seconds)",
+                                    "Peak Amplitude (ΔF/F)", "Total Amplitude (ΔF/F)"])
+    
+    previous_transient = -1
+    # Fill out the table with data
+    for i, transient in enumerate(transients):
+        # 0-based indices for array access
+        start_idx = transient[0]
+        stop_idx = transient[1]
+        
+        # 1-based indices for display
+        rising_start = start_idx + 1
+        rising_stop = stop_idx
+        
+        rising_total_frames = rising_stop - rising_start
+        rising_start_seconds = timestamps[start_idx] / 1000
+        rising_stop_seconds = timestamps[stop_idx-1] / 1000
+        rising_total_seconds = rising_stop_seconds - rising_start_seconds
+
+        if previous_transient == -1:
+            interval_frames = "N/A"
+            interval_seconds = "N/A"
+            previous_transient = start_idx
+        else:
+            interval_frames = rising_start - (previous_transient + 1)
+            interval_seconds = (timestamps[start_idx] - timestamps[previous_transient]) / 1000
+            interval_seconds = str(round(interval_seconds, 3))
+            previous_transient = start_idx
+
+        peak_amplitude = DFF.sel(frame=slice(start_idx, stop_idx)).max().values.item()
+        total_amplitude = DFF.sel(frame=slice(start_idx, stop_idx)).sum().values.item()
+        
+        pd_table.at[i+1, "Rising-Start(frames)"] = rising_start
+        pd_table.at[i+1, "Rising-Stop(frames)"] = rising_stop
+        pd_table.at[i+1, "Total # of Rising Frames"] = rising_total_frames
+        pd_table.at[i+1, "Rising-Start(seconds)"] = round(rising_start_seconds, 3)
+        pd_table.at[i+1, "Rising-Stop(seconds)"] = round(rising_stop_seconds, 3)
+        pd_table.at[i+1, "Duration (seconds)"] = round(rising_total_seconds, 3)
+        pd_table.at[i+1, "Interval with Previous Transient (frames)"] = interval_frames
+        pd_table.at[i+1, "Interval with Previous Transient (seconds)"] = interval_seconds
+        pd_table.at[i+1, "Peak Amplitude (ΔF/F)"] = round(peak_amplitude, 3)
+        pd_table.at[i+1, "Total Amplitude (ΔF/F)"] = round(total_amplitude, 3)
+    
+    return pd_table
