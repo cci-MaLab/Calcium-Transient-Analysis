@@ -33,6 +33,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QLabel, QMenuBar, QAction, QStyle, QApplication, QTextEdit, QPushButton, QDialog, QLineEdit, QDoubleSpinBox
 from PyQt5.QtCore import pyqtSignal, Qt
 from scipy.spatial import cKDTree
+from scipy import stats
 from collections import defaultdict
 
 
@@ -1807,3 +1808,399 @@ def calculate_z_score(original_values: np.ndarray, shuffled_array: np.ndarray) -
     
     z_score = (original_mean - shuffled_mean) / shuffled_std
     return z_score
+
+
+def generate_event_based_statistics_for_export(original_data: Dict, shuffled_data_list: List[Dict], 
+                                               event_indices: List[int], selected_cells: List[int]) -> pd.DataFrame:
+    """
+    Generate event-based statistics formatted for Excel export (temporal shuffling).
+    
+    Creates a DataFrame with columns:
+    - Cells: "All" or specific cell ID
+    - Event: Event name (e.g., "Event 1")
+    - Average Amplitude Z-score, Original, Shuffled
+    - Average Frequency Z-score, Original, Shuffled
+    - Average Total Amplitude Z-score, Original, Shuffled
+    
+    Parameters
+    ----------
+    original_data : Dict
+        Original event-based data (cell_id -> DataFrame)
+    shuffled_data_list : List[Dict]
+        List of shuffled event-based data results
+    event_indices : List[int]
+        List of event frame indices
+    selected_cells : List[int]
+        List of cell IDs included in analysis
+        
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with statistics for each cell and event
+    """
+    rows = []
+    
+    # Get event column names from first cell's data
+    if not original_data or not selected_cells:
+        return pd.DataFrame()
+    
+    first_cell_id = list(original_data.keys())[0]
+    event_columns = list(original_data[first_cell_id].columns)
+    metrics = ["Average Amplitude", "Frequency", "Total Amplitude"]
+    
+    # Process each event
+    for event_col in event_columns:
+        # Calculate "All" (aggregated across all cells)
+        for metric in metrics:
+            # Collect original values across all cells for this event/metric
+            original_values = []
+            for cell_id in selected_cells:
+                if cell_id in original_data and event_col in original_data[cell_id].columns:
+                    val = original_data[cell_id].loc[metric, event_col]
+                    if not np.isnan(val):
+                        original_values.append(val)
+            
+            # Collect shuffled values across all cells for this event/metric
+            shuffled_values = []
+            for shuffled_data in shuffled_data_list:
+                shuffle_vals = []
+                for cell_id in selected_cells:
+                    if cell_id in shuffled_data and event_col in shuffled_data[cell_id].columns:
+                        val = shuffled_data[cell_id].loc[metric, event_col]
+                        if not np.isnan(val):
+                            shuffle_vals.append(val)
+                if shuffle_vals:
+                    shuffled_values.append(np.mean(shuffle_vals))
+            
+            if original_values and shuffled_values:
+                original_mean = np.mean(original_values)
+                shuffled_mean = np.mean(shuffled_values)
+                shuffled_std = np.std(shuffled_values)
+                z_score = (original_mean - shuffled_mean) / shuffled_std if shuffled_std > 0 else 0.0
+            else:
+                original_mean = 0.0
+                shuffled_mean = 0.0
+                z_score = 0.0
+            
+            # Store in temporary dict
+            if event_col not in [row.get('Event') for row in rows if row.get('Cells') == 'All']:
+                # Create new row for this event
+                rows.append({
+                    'Cells': 'All',
+                    'Event': event_col,
+                    f'{metric} Z-score': z_score,
+                    f'{metric} Original': original_mean,
+                    f'{metric} Shuffled': shuffled_mean
+                })
+            else:
+                # Update existing row
+                for row in rows:
+                    if row['Cells'] == 'All' and row['Event'] == event_col:
+                        row[f'{metric} Z-score'] = z_score
+                        row[f'{metric} Original'] = original_mean
+                        row[f'{metric} Shuffled'] = shuffled_mean
+                        break
+        
+        # Process each individual cell
+        for cell_id in selected_cells:
+            if cell_id not in original_data:
+                continue
+                
+            for metric in metrics:
+                # Get original value for this cell/event/metric
+                if event_col in original_data[cell_id].columns and metric in original_data[cell_id].index:
+                    original_value = original_data[cell_id].loc[metric, event_col]
+                else:
+                    original_value = 0.0
+                
+                # Collect shuffled values for this cell/event/metric
+                shuffled_values = []
+                for shuffled_data in shuffled_data_list:
+                    if cell_id in shuffled_data and event_col in shuffled_data[cell_id].columns:
+                        val = shuffled_data[cell_id].loc[metric, event_col]
+                        if not np.isnan(val):
+                            shuffled_values.append(val)
+                
+                if shuffled_values:
+                    shuffled_mean = np.mean(shuffled_values)
+                    shuffled_std = np.std(shuffled_values)
+                    z_score = (original_value - shuffled_mean) / shuffled_std if shuffled_std > 0 else 0.0
+                else:
+                    shuffled_mean = 0.0
+                    z_score = 0.0
+                
+                # Find or create row for this cell/event
+                cell_str = str(cell_id)
+                existing_row = None
+                for row in rows:
+                    if row['Cells'] == cell_str and row['Event'] == event_col:
+                        existing_row = row
+                        break
+                
+                if existing_row is None:
+                    rows.append({
+                        'Cells': cell_str,
+                        'Event': event_col,
+                        f'{metric} Z-score': z_score,
+                        f'{metric} Original': original_value,
+                        f'{metric} Shuffled': shuffled_mean
+                    })
+                else:
+                    existing_row[f'{metric} Z-score'] = z_score
+                    existing_row[f'{metric} Original'] = original_value
+                    existing_row[f'{metric} Shuffled'] = shuffled_mean
+    
+    # Create DataFrame with proper column order
+    df = pd.DataFrame(rows)
+    
+    if df.empty:
+        return df
+    
+    # Reorder columns
+    column_order = ['Cells', 'Event']
+    for metric in metrics:
+        column_order.extend([
+            f'{metric} Z-score',
+            f'{metric} Original',
+            f'{metric} Shuffled'
+        ])
+    
+    df = df[column_order]
+    
+    return df
+
+
+def generate_spatial_statistics_for_export(statistics: Dict, significance_threshold: float = 0.05) -> pd.DataFrame:
+    """
+    Generate spatial NNR clustering statistics formatted for Excel export.
+    
+    Creates a DataFrame with columns:
+    - Event: Event name
+    - Metric: Metric name (Average Amplitude, Frequency, Total Amplitude)
+    - NNR Original: Original nearest neighbor ratio
+    - NNR Shuffled Mean: Mean NNR from shuffled data
+    - NNR Shuffled Std: Standard deviation of shuffled NNR
+    - Z-Score: Z-score comparing original to shuffled
+    - Number of High Cells: Count of high-activity cells identified
+    - NN All Cells: Baseline nearest neighbor distance for all cells
+    - Interpretation: Text interpretation based on z-score
+    
+    Parameters
+    ----------
+    statistics : Dict
+        Statistics dictionary from calculate_event_shuffling_statistics
+    significance_threshold : float
+        P-value threshold for significance (default: 0.05, corresponds to |z| > 1.96)
+        
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with spatial clustering statistics
+    """
+    if "spatial_metrics" not in statistics:
+        return pd.DataFrame()
+    
+    spatial_metrics = statistics["spatial_metrics"]
+    if not spatial_metrics or "nnr_clustering" not in spatial_metrics:
+        return pd.DataFrame()
+    
+    nnr_results = spatial_metrics["nnr_clustering"]
+    
+    # Calculate z-score threshold from significance level
+    # For two-tailed test: p=0.05 -> z=1.96, p=0.01 -> z=2.576
+    z_threshold = stats.norm.ppf(1 - significance_threshold / 2)
+    
+    rows = []
+    
+    for key, data in nnr_results.items():
+        # Parse event and metric from key (format: "Event X::Metric Name")
+        event_name, metric_name = key.split("::")
+        
+        # Determine interpretation
+        z_score = data['z_score']
+        if abs(z_score) < z_threshold:
+            interpretation = "Random"
+        elif z_score < -z_threshold:
+            interpretation = "Clustered"
+        else:
+            interpretation = "Dispersed"
+        
+        rows.append({
+            'Event': event_name,
+            'Metric': metric_name,
+            'NNR Original': data['original'],
+            'NNR Shuffled Mean': data['shuffled_mean'],
+            'NNR Shuffled Std': data['shuffled_std'],
+            'Z-Score': data['z_score'],
+            'Number of High Cells': data['n_high_cells'],
+            'NN All Cells': data['nn_all_cells'],
+            'Interpretation': interpretation
+        })
+    
+    df = pd.DataFrame(rows)
+    
+    # Sort by Event then Metric
+    if not df.empty:
+        df = df.sort_values(['Event', 'Metric'])
+    
+    return df
+
+
+def generate_event_based_statistics_for_export(original_data: Dict, shuffled_data_list: List[Dict], 
+                                               event_indices: List[int], selected_cells: List[int]) -> pd.DataFrame:
+    """
+    Generate event-based statistics formatted for Excel export.
+    
+    Creates a DataFrame with columns:
+    - Cells: "All" or specific cell ID
+    - Event: Event name (e.g., "Event 1")
+    - Average Amplitude Z-score, Original, Shuffled
+    - Average Frequency Z-score, Original, Shuffled
+    - Average Total Amplitude Z-score, Original, Shuffled
+    
+    Parameters
+    ----------
+    original_data : Dict
+        Original event-based data (cell_id -> DataFrame)
+    shuffled_data_list : List[Dict]
+        List of shuffled event-based data results
+    event_indices : List[int]
+        List of event frame indices
+    selected_cells : List[int]
+        List of cell IDs included in analysis
+        
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with statistics for each cell and event
+    """
+    rows = []
+    
+    # Get event column names from first cell's data
+    if not original_data or not selected_cells:
+        return pd.DataFrame()
+    
+    first_cell_id = list(original_data.keys())[0]
+    event_columns = list(original_data[first_cell_id].columns)
+    metrics = ["Average Amplitude", "Frequency", "Total Amplitude"]
+    
+    # Process each event
+    for event_col in event_columns:
+        # Calculate "All" (aggregated across all cells)
+        for metric in metrics:
+            # Collect original values across all cells for this event/metric
+            original_values = []
+            for cell_id in selected_cells:
+                if cell_id in original_data and event_col in original_data[cell_id].columns:
+                    val = original_data[cell_id].loc[metric, event_col]
+                    if not np.isnan(val):
+                        original_values.append(val)
+            
+            # Collect shuffled values across all cells for this event/metric
+            shuffled_values = []
+            for shuffled_data in shuffled_data_list:
+                shuffle_vals = []
+                for cell_id in selected_cells:
+                    if cell_id in shuffled_data and event_col in shuffled_data[cell_id].columns:
+                        val = shuffled_data[cell_id].loc[metric, event_col]
+                        if not np.isnan(val):
+                            shuffle_vals.append(val)
+                if shuffle_vals:
+                    shuffled_values.append(np.mean(shuffle_vals))
+            
+            if original_values and shuffled_values:
+                original_mean = np.mean(original_values)
+                shuffled_mean = np.mean(shuffled_values)
+                shuffled_std = np.std(shuffled_values)
+                z_score = (original_mean - shuffled_mean) / shuffled_std if shuffled_std > 0 else 0.0
+            else:
+                original_mean = 0.0
+                shuffled_mean = 0.0
+                z_score = 0.0
+            
+            # Store in temporary dict
+            if event_col not in [row.get('Event') for row in rows if row.get('Cells') == 'All']:
+                # Create new row for this event
+                rows.append({
+                    'Cells': 'All',
+                    'Event': event_col,
+                    f'{metric} Z-score': z_score,
+                    f'{metric} Original': original_mean,
+                    f'{metric} Shuffled': shuffled_mean
+                })
+            else:
+                # Update existing row
+                for row in rows:
+                    if row['Cells'] == 'All' and row['Event'] == event_col:
+                        row[f'{metric} Z-score'] = z_score
+                        row[f'{metric} Original'] = original_mean
+                        row[f'{metric} Shuffled'] = shuffled_mean
+                        break
+        
+        # Process each individual cell
+        for cell_id in selected_cells:
+            if cell_id not in original_data:
+                continue
+                
+            for metric in metrics:
+                # Get original value for this cell/event/metric
+                if event_col in original_data[cell_id].columns and metric in original_data[cell_id].index:
+                    original_value = original_data[cell_id].loc[metric, event_col]
+                else:
+                    original_value = 0.0
+                
+                # Collect shuffled values for this cell/event/metric
+                shuffled_values = []
+                for shuffled_data in shuffled_data_list:
+                    if cell_id in shuffled_data and event_col in shuffled_data[cell_id].columns:
+                        val = shuffled_data[cell_id].loc[metric, event_col]
+                        if not np.isnan(val):
+                            shuffled_values.append(val)
+                
+                if shuffled_values:
+                    shuffled_mean = np.mean(shuffled_values)
+                    shuffled_std = np.std(shuffled_values)
+                    z_score = (original_value - shuffled_mean) / shuffled_std if shuffled_std > 0 else 0.0
+                else:
+                    shuffled_mean = 0.0
+                    z_score = 0.0
+                
+                # Find or create row for this cell/event
+                cell_str = str(cell_id)
+                existing_row = None
+                for row in rows:
+                    if row['Cells'] == cell_str and row['Event'] == event_col:
+                        existing_row = row
+                        break
+                
+                if existing_row is None:
+                    rows.append({
+                        'Cells': cell_str,
+                        'Event': event_col,
+                        f'{metric} Z-score': z_score,
+                        f'{metric} Original': original_value,
+                        f'{metric} Shuffled': shuffled_mean
+                    })
+                else:
+                    existing_row[f'{metric} Z-score'] = z_score
+                    existing_row[f'{metric} Original'] = original_value
+                    existing_row[f'{metric} Shuffled'] = shuffled_mean
+    
+    # Create DataFrame with proper column order
+    df = pd.DataFrame(rows)
+    
+    if df.empty:
+        return df
+    
+    # Reorder columns
+    column_order = ['Cells', 'Event']
+    for metric in metrics:
+        column_order.extend([
+            f'{metric} Z-score',
+            f'{metric} Original',
+            f'{metric} Shuffled'
+        ])
+    
+    df = df[column_order]
+    
+    return df

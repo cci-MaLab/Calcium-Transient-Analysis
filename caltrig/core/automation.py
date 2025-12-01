@@ -5,9 +5,13 @@ Automation logic for batch processing analyses across multiple sessions.
 import json
 import os
 import pandas as pd
+import numpy as np
 from .backend import DataInstance
 from .shuffling import shuffle_cofiring, shuffle_advanced
 from .exploration_statistics import generate_general_statistics, generate_local_statistics
+from .event_based_shuffling import (event_based_shuffle_analysis, 
+                                    generate_event_based_statistics_for_export,
+                                    generate_spatial_statistics_for_export)
 
 
 def load_parameters(parameter_file: str) -> dict:
@@ -72,6 +76,19 @@ def load_parameters(parameter_file: str) -> dict:
     params['event_based']['num_shuffles'] = event_data.get("num_shuffles")
     params['event_based']['amplitude_anchored'] = event_data.get("amplitude_anchored", False)
     params['event_based']['shuffle_type'] = event_data.get("shuffle_type", "spatial")
+    
+    # Spatial analysis parameters (optional)
+    spatial_analysis = event_data.get("spatial_analysis", {})
+    if spatial_analysis:
+        params['event_based']['spatial_analysis'] = {
+            'nnr_significance_threshold': spatial_analysis.get('nnr_significance_threshold', 0.05),
+            'high_cell_selection_method': spatial_analysis.get('high_cell_selection_method', 'zscore'),
+            'high_cell_z_threshold': spatial_analysis.get('high_cell_z_threshold', 1.5),
+            'high_cell_range_start': spatial_analysis.get('high_cell_range_start', 0.1),
+            'high_cell_range_end': spatial_analysis.get('high_cell_range_end', 0.9)
+        }
+    else:
+        params['event_based']['spatial_analysis'] = None
     
     return params
 
@@ -247,12 +264,75 @@ def run_batch_automation(session_paths: list, parameter_file: str, output_path: 
                         if progress_callback_analysis_done:
                             progress_callback_analysis_done()
             
-            # Event-based analysis - not yet implemented
-            if enabled_outputs['event_based']:
-                if progress_callback_analysis:
-                    progress_callback_analysis("Event-based (not yet implemented)")
-                if progress_callback_analysis_done:
-                    progress_callback_analysis_done()
+            # Event-based analysis (temporal OR spatial based on shuffle_type parameter)
+            if enabled_outputs.get('event_based', False) and params['event_based']['num_shuffles'] is not None:
+                # Check if event type exists first
+                event_type = params['event_based']['event_type']
+                shuffle_type = params['event_based']['shuffle_type']
+                
+                if event_type and event_type in session.data and session.data[event_type] is not None:
+                    # Extract event indices
+                    events = np.argwhere(session.data[event_type].values == 1)
+                    if events.size > 0:
+                        events = np.unique(events[events[:, 0] > 50], axis=0) - params['event_based']['lag']
+                        
+                        if events.size > 0:
+                            # Determine output filename based on shuffle type
+                            if shuffle_type == "spatial":
+                                event_based_path = os.path.join(session_output_path, "event_based_spatial_results.xlsx")
+                                analysis_name = "Event-based (Spatial)"
+                            else:  # temporal
+                                event_based_path = os.path.join(session_output_path, "event_based_temporal_results.xlsx")
+                                analysis_name = "Event-based (Temporal)"
+                            
+                            if not os.path.exists(event_based_path):
+                                if progress_callback_analysis:
+                                    progress_callback_analysis(analysis_name)
+                                
+                                try:
+                                    result = event_based_shuffle_analysis(
+                                        session=session,
+                                        selected_cells=target_cells,
+                                        event_type=event_type,
+                                        window_size=params['event_based']['window_size'],
+                                        lag=params['event_based']['lag'],
+                                        num_subwindows=params['event_based']['num_subwindows'],
+                                        num_shuffles=params['event_based']['num_shuffles'],
+                                        amplitude_anchored=params['event_based']['amplitude_anchored'],
+                                        shuffle_type=shuffle_type
+                                    )
+                                    
+                                    if result is not None:
+                                        # Generate appropriate statistics based on shuffle type
+                                        if shuffle_type == "spatial":
+                                            # Spatial: generate NNR clustering statistics
+                                            spatial_params = params['event_based'].get('spatial_analysis', {})
+                                            significance_threshold = spatial_params.get('nnr_significance_threshold', 0.05) if spatial_params else 0.05
+                                            stats_df = generate_spatial_statistics_for_export(
+                                                result.parameters['statistics'],
+                                                significance_threshold=significance_threshold
+                                            )
+                                        else:
+                                            # Temporal: generate per-cell/event statistics
+                                            stats_df = generate_event_based_statistics_for_export(
+                                                result.original_data,
+                                                result.shuffled_data,
+                                                events.tolist(),
+                                                target_cells
+                                            )
+                                        
+                                        stats_df.to_excel(event_based_path, index=False, engine='xlsxwriter')
+                                        result.close()
+                                except Exception as e:
+                                    print(f"Error in {shuffle_type} event-based analysis: {e}")
+                                
+                                if progress_callback_analysis_done:
+                                    progress_callback_analysis_done()
+                            else:
+                                if progress_callback_analysis:
+                                    progress_callback_analysis(f"{analysis_name} (skipped - file exists)")
+                                if progress_callback_analysis_done:
+                                    progress_callback_analysis_done()
             
             # General statistics
             if enabled_outputs.get('general_stats', False):
