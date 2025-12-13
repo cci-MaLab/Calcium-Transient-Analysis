@@ -270,6 +270,8 @@ def run_batch_automation(session_paths: list, parameter_file: str, output_path: 
                 event_type = params['event_based']['event_type']
                 shuffle_type = params['event_based']['shuffle_type']
                 
+                event_processed = False  # Track if we actually process the event
+                
                 if event_type and event_type in session.data and session.data[event_type] is not None:
                     # Extract event indices
                     events = np.argwhere(session.data[event_type].values == 1)
@@ -326,13 +328,18 @@ def run_batch_automation(session_paths: list, parameter_file: str, output_path: 
                                 except Exception as e:
                                     print(f"Error in {shuffle_type} event-based analysis: {e}")
                                 
-                                if progress_callback_analysis_done:
-                                    progress_callback_analysis_done()
+                                event_processed = True
                             else:
                                 if progress_callback_analysis:
                                     progress_callback_analysis(f"{analysis_name} (skipped - file exists)")
-                                if progress_callback_analysis_done:
-                                    progress_callback_analysis_done()
+                                event_processed = True
+                
+                # Always call the done callback if event-based was enabled
+                if not event_processed and progress_callback_analysis:
+                    progress_callback_analysis("Event-based (skipped - no valid events)")
+                
+                if progress_callback_analysis_done:
+                    progress_callback_analysis_done()
             
             # General statistics
             if enabled_outputs.get('general_stats', False):

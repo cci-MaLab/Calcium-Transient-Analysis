@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
                              QListWidget, QFileDialog, QLineEdit, QGroupBox, QMessageBox,
-                             QListWidgetItem, QAbstractItemView, QProgressDialog, QProgressBar, QCheckBox)
+                             QListWidgetItem, QAbstractItemView, QProgressBar, QCheckBox,
+                             QFrame, QApplication)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon
 import json
@@ -163,6 +164,46 @@ class AutomationDialog(QDialog):
         self.chk_local_stats.setChecked(True)
         layout.addWidget(self.chk_local_stats)
         
+        # Add progress section
+        progress_frame = QFrame()
+        progress_frame.setFrameShape(QFrame.Box)
+        progress_frame.setFrameShadow(QFrame.Sunken)
+        progress_frame.setStyleSheet("QFrame { background-color: #f8f8f8; margin-top: 10px; padding: 10px; }")
+        progress_layout = QVBoxLayout(progress_frame)
+        
+        progress_title = QLabel("Progress")
+        progress_title.setStyleSheet("font-weight: bold;")
+        progress_layout.addWidget(progress_title)
+        
+        # Runs progress (future feature)
+        self.runs_label = QLabel("Runs: Not started")
+        self.runs_label.setStyleSheet("font-size: 10px;")
+        progress_layout.addWidget(self.runs_label)
+        self.runs_progress = QProgressBar()
+        self.runs_progress.setMaximum(1)
+        self.runs_progress.setValue(0)
+        self.runs_progress.setEnabled(False)
+        progress_layout.addWidget(self.runs_progress)
+        
+        # Sessions progress
+        self.sessions_label = QLabel("Sessions: Not started")
+        self.sessions_label.setStyleSheet("font-size: 10px;")
+        progress_layout.addWidget(self.sessions_label)
+        self.sessions_progress = QProgressBar()
+        self.sessions_progress.setMaximum(100)
+        self.sessions_progress.setValue(0)
+        progress_layout.addWidget(self.sessions_progress)
+        
+        # Outputs/Analyses progress
+        self.outputs_label = QLabel("Outputs: Not started")
+        self.outputs_label.setStyleSheet("font-size: 10px;")
+        progress_layout.addWidget(self.outputs_label)
+        self.outputs_progress = QProgressBar()
+        self.outputs_progress.setMaximum(100)
+        self.outputs_progress.setValue(0)
+        progress_layout.addWidget(self.outputs_progress)
+        
+        layout.addWidget(progress_frame)
         layout.addStretch()
         
         group.setLayout(layout)
@@ -311,30 +352,10 @@ class AutomationDialog(QDialog):
             QMessageBox.warning(self, "No Parameters", "Please select a parameter file.")
             return
         
-        # Create progress dialog
-        progress = QProgressDialog("Starting automation...", "Cancel", 0, 100, self)
-        progress.setWindowTitle("Automation Progress")
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.setMinimumWidth(400)
+        # Disable run button during execution
+        self.btn_run.setEnabled(False)
         
-        # Track progress with labels
-        session_label = QLabel("Session: Initializing...")
-        analysis_label = QLabel("Analysis: Waiting...")
-        
-        def update_session(current, total, session_name):
-            session_label.setText(f"Session: {session_name} ({current}/{total})")
-            progress.setLabelText(f"Session: {session_name} ({current}/{total})\n{analysis_label.text()}")
-            progress.setValue(int((current / total) * 100))
-        
-        def update_analysis(analysis_type):
-            analysis_label.setText(f"Analysis: {analysis_type}")
-            progress.setLabelText(f"{session_label.text()}\n{analysis_label.text()}")
-        
-        def analysis_complete():
-            pass  # Could update if needed
-        
-        # Get which outputs are enabled
+        # Get which outputs are enabled and count them
         enabled_outputs = {
             'cofiring': self.chk_cofiring.isChecked(),
             'advanced': self.chk_advanced.isChecked(),
@@ -342,6 +363,39 @@ class AutomationDialog(QDialog):
             'general_stats': self.chk_general_stats.isChecked(),
             'local_stats': self.chk_local_stats.isChecked()
         }
+        
+        total_outputs = sum(enabled_outputs.values())
+        completed_outputs = [0]  # Use list to allow modification in nested function
+        
+        # Reset progress bars
+        self.runs_progress.setValue(1)
+        self.runs_label.setText("Runs: 1/1")
+        self.sessions_progress.setValue(0)
+        self.sessions_label.setText("Sessions: Starting...")
+        self.outputs_progress.setMaximum(total_outputs)
+        self.outputs_progress.setValue(0)
+        self.outputs_label.setText(f"Outputs: 0/{total_outputs}")
+        
+        # Track progress with callbacks
+        def update_session(current, total, session_name):
+            self.sessions_label.setText(f"Sessions: {session_name} ({current}/{total})")
+            self.sessions_progress.setMaximum(total)
+            self.sessions_progress.setValue(current)
+            # Reset outputs progress for new session
+            completed_outputs[0] = 0
+            self.outputs_progress.setValue(0)
+            self.outputs_label.setText(f"Outputs: 0/{total_outputs}")
+            QApplication.processEvents()
+        
+        def update_analysis(analysis_type):
+            self.outputs_label.setText(f"Outputs: {completed_outputs[0]}/{total_outputs} - {analysis_type}")
+            QApplication.processEvents()
+        
+        def analysis_complete():
+            completed_outputs[0] += 1
+            self.outputs_progress.setValue(completed_outputs[0])
+            self.outputs_label.setText(f"Outputs: {completed_outputs[0]}/{total_outputs}")
+            QApplication.processEvents()
         
         try:
             results = run_batch_automation(
@@ -353,8 +407,6 @@ class AutomationDialog(QDialog):
                 progress_callback_analysis=update_analysis,
                 progress_callback_analysis_done=analysis_complete
             )
-            
-            progress.close()
             
             # Show results
             success_count = len(results['successful'])
@@ -382,7 +434,12 @@ class AutomationDialog(QDialog):
             )
             import traceback
             traceback.print_exc()
-        pass
+        finally:
+            # Re-enable run button
+            self.btn_run.setEnabled(True)
+            # Update progress labels to show completion
+            self.sessions_label.setText("Sessions: Complete")
+            self.outputs_label.setText(f"Outputs: Complete ({total_outputs}/{total_outputs})")
     
     def get_automation_config(self):
         """Get the current automation configuration"""
