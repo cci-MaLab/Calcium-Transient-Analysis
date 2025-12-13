@@ -64,8 +64,8 @@ class SaveSessionSettingsDialog(QDialog):
             "• General settings (which cells to analyze)\n"
             "• 3D Visualization settings\n"
             "• Advanced 3D Visualization settings\n"
-            "• Event-based Shuffling settings\n"
-            "• Cell groups (ROI parameters - session-independent)\n\n"
+            "• Event-based Shuffling settings (including spatial analysis)\n"
+            "• Cell groups (ROI parameters for session-independent restoration)\n\n"
             "Choose a location to save. Saving will happen immediately and this window will close."
         )
         desc_label.setWordWrap(True)
@@ -170,6 +170,13 @@ class SaveSessionSettingsDialog(QDialog):
             w = safe_get(widget_name)
             try:
                 return bool(w.isChecked()) if w is not None else default
+            except Exception:
+                return default
+
+        def safe_float(widget_name, default=None):
+            txt = safe_text(widget_name, None)
+            try:
+                return float(txt) if txt is not None and txt != "" else default
             except Exception:
                 return default
 
@@ -307,6 +314,13 @@ class SaveSessionSettingsDialog(QDialog):
             else:
                 e_shuffle_type = "temporal" if shuffle_temporal else None
 
+            # Spatial analysis parameters (nested under Event based Shuffling)
+            e_nnr_threshold = safe_float("event_based_nnr_threshold_input", 0.05)
+            e_high_cell_method = safe_current_text("event_based_high_cell_method_dropdown", "zscore")
+            e_high_cell_z = safe_float("event_based_high_cell_z_input", 1.5)
+            e_high_cell_range_start = safe_float("event_based_high_cell_range_start_input", 0.1)
+            e_high_cell_range_end = safe_float("event_based_high_cell_range_end_input", 0.9)
+
             settings["Event based Shuffling"] = {
                 "event_type": e_event_type,
                 "window_size": e_window_size,
@@ -315,22 +329,26 @@ class SaveSessionSettingsDialog(QDialog):
                 "num_shuffles": e_num_shuffles,
                 "amplitude_anchored": e_amplitude_anchored,
                 "shuffle_type": e_shuffle_type,
+                "spatial_analysis": {
+                    "nnr_significance_threshold": e_nnr_threshold,
+                    "high_cell_selection_method": e_high_cell_method or "zscore",
+                    "high_cell_z_threshold": e_high_cell_z,
+                    "high_cell_range_start": e_high_cell_range_start,
+                    "high_cell_range_end": e_high_cell_range_end,
+                }
             }
         except Exception:
             pass
 
-        # 4) Groups (if any exist, save the ROI parameters)
+        # 4) Groups (save ROI parameters if they exist)
         try:
-            if hasattr(owner, 'session') and owner.session is not None:
-                cell_ids_to_groups = getattr(owner.session, 'cell_ids_to_groups', {})
-                group_roi_params = getattr(owner, 'group_roi_params', {})
-                
-                if cell_ids_to_groups and group_roi_params:
-                    # Save ROI parameters for each group
-                    settings["Groups"] = {}
-                    for group_id in owner.session.get_group_ids():
-                        if group_id in group_roi_params:
-                            settings["Groups"][str(group_id)] = group_roi_params[group_id]
+            group_roi_params = getattr(owner, 'group_roi_params', {})
+            
+            if group_roi_params:
+                # Save ROI parameters for all groups
+                settings["Group ROI Parameters"] = {}
+                for group_id, roi_params in group_roi_params.items():
+                    settings["Group ROI Parameters"][str(group_id)] = roi_params
         except Exception:
             pass
 
@@ -546,7 +564,7 @@ class LoadSessionSettingsDialog(QDialog):
                 pass
 
         # Groups - restore from ROI parameters if present
-        groups_data = (data or {}).get("Groups", {})
+        groups_data = (data or {}).get("Group ROI Parameters", {})
         if groups_data and hasattr(owner, 'session') and owner.session is not None:
             try:
                 # Clear existing groups
@@ -569,20 +587,15 @@ class LoadSessionSettingsDialog(QDialog):
                     size = roi_params.get('size', [100, 100])
                     angle = roi_params.get('angle', 0)
                     
-                    # Convert pos and size to proper format
-                    from PyQt5.QtCore import QPointF
-                    pos_point = QPointF(pos[0], pos[1])
-                    size_point = QPointF(size[0], size[1])
-                    
                     # Find cells within this ROI
                     ids = set()
                     for centroid in owner.session.centroids_to_cell_ids.keys():
                         cell_id = owner.session.centroids_to_cell_ids[centroid]
-                        if roi_type == "ellipse":
-                            if owner.within_ellipse(centroid, pos_point, size_point, angle):
+                        if roi_type == "EllipseROI":
+                            if owner.within_ellipse(centroid, pos, size, angle):
                                 ids.add(cell_id)
-                        elif roi_type == "rectangle":
-                            if owner.within_rectangle(centroid, pos_point, size_point, angle):
+                        elif roi_type == "RectROI":
+                            if owner.within_rectangle(centroid, pos, size, angle):
                                 ids.add(cell_id)
                     
                     # Add cells to group
@@ -590,11 +603,13 @@ class LoadSessionSettingsDialog(QDialog):
                         owner.session.add_cell_id_group(list(ids), group_id)
                 
                 # Refresh the dropdown options to include restored groups
-                try:
-                    unique_groups = owner.session.get_group_ids()
-                    owner.reset_which_cells(unique_groups)
-                except Exception:
-                    pass
+                # Only refresh if at least one group was created
+                if owner.session.cell_ids_to_groups:
+                    try:
+                        unique_groups = owner.session.get_group_ids()
+                        owner.reset_which_cells(unique_groups)
+                    except Exception as e:
+                        print(f"Warning: Could not refresh group dropdowns: {e}")
             except Exception as e:
                 print(f"Error loading groups: {e}")
                 pass

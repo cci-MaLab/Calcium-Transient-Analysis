@@ -1778,17 +1778,9 @@ class CaltrigWidget(QWidget):
         angle = roi.angle()
         roi_type = roi.__class__.__name__
         
-        # Determine type string
-        if roi_type == "EllipseROI":
-            type_str = "ellipse"
-        elif roi_type == "RectROI":
-            type_str = "rectangle"
-        else:
-            type_str = "unknown"
-        
-        # Save ROI parameters
+        # Save ROI parameters (use the class name directly for consistency with loading)
         self.group_roi_params[group_id] = {
-            "type": type_str,
+            "type": roi_type,
             "pos": [pos.x(), pos.y()],
             "size": [size.x(), size.y()],
             "angle": angle
@@ -3719,20 +3711,28 @@ class CaltrigWidget(QWidget):
         
     
     def reset_which_cells(self, unique_groups):
+        # Disconnect all signals before updating to prevent cascading updates
+        self.cmb_3D_which_cells.currentIndexChanged.disconnect()
+        self.cmb_global_which_cells.currentIndexChanged.disconnect()
+        self.cmb_shuffle_which_cells.currentIndexChanged.disconnect()
+        self.cmb_3D_advanced_which_cells.currentIndexChanged.disconnect()
+        self.cmb_event_based_which_cells.currentIndexChanged.disconnect()
+        
+        # Update all dropdowns
         self.reset_which_cells_local(unique_groups, self.cmb_3D_which_cells)
         self.reset_which_cells_local(unique_groups, self.cmb_global_which_cells)
-        self.cmb_shuffle_which_cells.currentIndexChanged.disconnect()
         self.reset_which_cells_local(unique_groups, self.cmb_shuffle_which_cells)
-        self.cmb_shuffle_which_cells.currentIndexChanged.connect(self.refresh_cell_list)
-        self.cmb_3D_advanced_which_cells.currentIndexChanged.disconnect()
         self.reset_which_cells_local(unique_groups, self.cmb_3D_advanced_which_cells)
-        self.cmb_3D_advanced_which_cells.currentIndexChanged.connect(self.refresh_cell_list_advanced)
-        
-        # Add event-based cell list refresh (matching the pattern)
-        self.cmb_event_based_which_cells.currentIndexChanged.disconnect()
         self.reset_which_cells_local(unique_groups, self.cmb_event_based_which_cells)
+        
+        # Reconnect all signals
+        self.cmb_3D_which_cells.currentIndexChanged.connect(self.sync_which_cells_dropdowns)
+        self.cmb_global_which_cells.currentIndexChanged.connect(self.sync_which_cells_dropdowns)
+        self.cmb_shuffle_which_cells.currentIndexChanged.connect(self.refresh_cell_list)
+        self.cmb_3D_advanced_which_cells.currentIndexChanged.connect(self.refresh_cell_list_advanced)
         self.cmb_event_based_which_cells.currentIndexChanged.connect(self.refresh_event_based_cell_list)
 
+        # Refresh all lists
         self.refresh_cell_list()
         self.refresh_cell_list_advanced()
         self.refresh_event_based_cell_list()
