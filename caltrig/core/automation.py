@@ -107,8 +107,8 @@ def load_parameters(parameter_file: str) -> dict:
 
 def run_batch_automation(session_paths: list, parameter_file: str, output_path: str = None,
                         enabled_outputs: dict = None,
-                        progress_callback_session=None, progress_callback_analysis=None, 
-                        progress_callback_analysis_done=None):
+                        progress_callback_session=None, progress_callback_combination=None,
+                        progress_callback_analysis=None, progress_callback_analysis_done=None):
     """
     Run automated analysis across multiple sessions.
     
@@ -130,6 +130,8 @@ def run_batch_automation(session_paths: list, parameter_file: str, output_path: 
         If None, all outputs are enabled
     progress_callback_session : callable, optional
         Callback function(current, total, session_name) to update session progress
+    progress_callback_combination : callable, optional
+        Callback function(current, total) to update parameter combination progress
     progress_callback_analysis : callable, optional
         Callback function(analysis_type) to update current analysis type
     progress_callback_analysis_done : callable, optional
@@ -178,16 +180,15 @@ def run_batch_automation(session_paths: list, parameter_file: str, output_path: 
             session_output_path = os.path.join(output_path, session_name)
             os.makedirs(session_output_path, exist_ok=True)
             
+            # Update session progress
+            if progress_callback_session:
+                progress_callback_session(session_idx, total_sessions, session_name)
+            
             # Loop through all parameter combinations
             for combo_idx, combo_params in enumerate(combinations, 1):
-                # Update progress - show combination progress if multiple combinations, else session progress
-                if progress_callback_session:
-                    if use_combination_folders:
-                        # Multiple combinations: show which combination we're on
-                        progress_callback_session(combo_idx, len(combinations), session_name)
-                    else:
-                        # Single combination: show which session we're on (backward compatible)
-                        progress_callback_session(session_idx, total_sessions, session_name)
+                # Update combination progress (if using grid search)
+                if progress_callback_combination and use_combination_folders:
+                    progress_callback_combination(combo_idx, len(combinations))
                 
                 # Determine output path for this combination
                 if use_combination_folders:

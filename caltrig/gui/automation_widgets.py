@@ -175,15 +175,14 @@ class AutomationDialog(QDialog):
         progress_title.setStyleSheet("font-weight: bold;")
         progress_layout.addWidget(progress_title)
         
-        # Runs progress (future feature)
-        self.runs_label = QLabel("Runs: Not started")
-        self.runs_label.setStyleSheet("font-size: 10px;")
-        progress_layout.addWidget(self.runs_label)
-        self.runs_progress = QProgressBar()
-        self.runs_progress.setMaximum(1)
-        self.runs_progress.setValue(0)
-        self.runs_progress.setEnabled(False)
-        progress_layout.addWidget(self.runs_progress)
+        # Combinations progress (for grid search)
+        self.combinations_label = QLabel("Combinations: Not started")
+        self.combinations_label.setStyleSheet("font-size: 10px;")
+        progress_layout.addWidget(self.combinations_label)
+        self.combinations_progress = QProgressBar()
+        self.combinations_progress.setMaximum(100)
+        self.combinations_progress.setValue(0)
+        progress_layout.addWidget(self.combinations_progress)
         
         # Sessions progress
         self.sessions_label = QLabel("Sessions: Not started")
@@ -368,8 +367,8 @@ class AutomationDialog(QDialog):
         completed_outputs = [0]  # Use list to allow modification in nested function
         
         # Reset progress bars
-        self.runs_progress.setValue(1)
-        self.runs_label.setText("Runs: 1/1")
+        self.combinations_progress.setValue(0)
+        self.combinations_label.setText("Combinations: Not started")
         self.sessions_progress.setValue(0)
         self.sessions_label.setText("Sessions: Starting...")
         self.outputs_progress.setMaximum(total_outputs)
@@ -381,7 +380,16 @@ class AutomationDialog(QDialog):
             self.sessions_label.setText(f"Sessions: {session_name} ({current}/{total})")
             self.sessions_progress.setMaximum(total)
             self.sessions_progress.setValue(current)
-            # Reset outputs progress for new session
+            # Reset combination progress for new session
+            self.combinations_progress.setValue(0)
+            self.combinations_label.setText("Combinations: Not started")
+            QApplication.processEvents()
+        
+        def update_combination(current, total):
+            self.combinations_label.setText(f"Combinations: {current}/{total}")
+            self.combinations_progress.setMaximum(total)
+            self.combinations_progress.setValue(current)
+            # Reset outputs progress for new combination
             completed_outputs[0] = 0
             self.outputs_progress.setValue(0)
             self.outputs_label.setText(f"Outputs: 0/{total_outputs}")
@@ -404,6 +412,7 @@ class AutomationDialog(QDialog):
                 self.output_path,
                 enabled_outputs=enabled_outputs,
                 progress_callback_session=update_session,
+                progress_callback_combination=update_combination,
                 progress_callback_analysis=update_analysis,
                 progress_callback_analysis_done=analysis_complete
             )
@@ -438,6 +447,7 @@ class AutomationDialog(QDialog):
             # Re-enable run button
             self.btn_run.setEnabled(True)
             # Update progress labels to show completion
+            self.combinations_label.setText("Combinations: Complete")
             self.sessions_label.setText("Sessions: Complete")
             self.outputs_label.setText(f"Outputs: Complete ({total_outputs}/{total_outputs})")
     
