@@ -145,9 +145,8 @@ def run_batch_automation(session_paths: list, parameter_file: str, output_path: 
     # Load parameters (preserves lists for grid search)
     params = load_parameters(parameter_file)
     
-    # Expand parameters into all combinations
-    combinations, varying_params = expand_parameters(params)
-    use_combination_folders = len(combinations) > 1
+    # Expand parameters into combinations by output category
+    combinations_by_category = expand_parameters(params)
     
     # Use current directory if no output path specified
     if output_path is None:
@@ -183,251 +182,293 @@ def run_batch_automation(session_paths: list, parameter_file: str, output_path: 
             # Update session progress
             if progress_callback_session:
                 progress_callback_session(session_idx, total_sessions, session_name)
+                
+            # Process each output type independently
+            output_types = [
+                ('cofiring', 'cofiring'),
+                ('advanced', 'advanced'),
+                ('event_based', 'event_based')
+            ]
             
-            # Loop through all parameter combinations
-            for combo_idx, combo_params in enumerate(combinations, 1):
-                # Update combination progress (if using grid search)
-                if progress_callback_combination and use_combination_folders:
-                    progress_callback_combination(combo_idx, len(combinations))
+            for output_key, output_category in output_types:
+                if not enabled_outputs.get(output_key, False):
+                    continue
                 
-                # Determine output path for this combination
-                if use_combination_folders:
-                    # Generate descriptive folder name from varying parameters
-                    combo_folder_name = generate_combination_folder_name(combo_params, varying_params)
-                    combo_output_path = os.path.join(session_output_path, combo_folder_name)
-                    os.makedirs(combo_output_path, exist_ok=True)
+                if output_category not in combinations_by_category:
+                    continue
+                
+                combinations, varying_params = combinations_by_category[output_category]
+                use_combination_folders = len(combinations) > 1
+                
+                # Create output category folder: session/cofiring/ or session/advanced/
+                category_output_path = os.path.join(session_output_path, output_category)
+                os.makedirs(category_output_path, exist_ok=True)
+                
+                # Loop through combinations for this output type
+                for combo_idx, combo_params in enumerate(combinations, 1):
+                    # Update combination progress
+                    if progress_callback_combination and use_combination_folders:
+                        progress_callback_combination(combo_idx, len(combinations))
                     
-                    # Save parameter manifest
-                    save_combination_manifest(combo_output_path, combo_params, combo_idx, varying_params)
-                else:
-                    # Single combination - use session folder directly (backward compatible)
-                    combo_output_path = session_output_path
-                
-                # Get cell IDs based on which_cells setting
-                which_cells = combo_params['general']['which_cells']
-                unit_ids = session.get_cell_ids(which_cells)
-                
-                # Convert to list for shuffling functions
-                target_cells = list(unit_ids)
-                comparison_cells = list(unit_ids)
-                
-                # Apply verified_only filter if specified
-                if combo_params['cofiring'].get('verified_only', False):
-                    target_cells = session.prune_non_verified(target_cells)
-                    comparison_cells = session.prune_non_verified(comparison_cells)
-                
-                # Run co-firing analysis if enabled and parameters are present
-                if enabled_outputs['cofiring'] and combo_params['cofiring']['num_shuffles'] is not None:
-                    cofiring_csv_path = os.path.join(combo_output_path, "cofiring_results.xlsx")
-                    cofiring_matrix_path = os.path.join(combo_output_path, "cofiring_results_matrix.xlsx")
-                
-                    # Skip if output file already exists
-                    if not os.path.exists(cofiring_csv_path):
-                        if progress_callback_analysis:
-                            progress_callback_analysis("Co-firing")
+                    # Determine output path for this combination
+                    if use_combination_folders:
+                        # Generate folder name from varying parameters
+                        combo_folder_name = generate_combination_folder_name(combo_params, varying_params)
+                        combo_output_path = os.path.join(category_output_path, combo_folder_name)
+                        os.makedirs(combo_output_path, exist_ok=True)
                         
-                        # Build parameters for shuffle_cofiring
-                        cofiring_params = {
-                            'temporal': combo_params['cofiring']['temporal'],
-                            'spatial': combo_params['cofiring']['spatial'],
-                            'cofiring': {
-                                'window_size': combo_params['cofiring']['window_size'],
-                                'share_a': False,  # Default values
-                                'share_b': False,
-                                'direction': 'Both'
-                            }
-                        }
-                        
-                        cofiring_result = shuffle_cofiring(
-                            session=session,
-                            target_cells=target_cells,
-                            comparison_cells=comparison_cells,
-                            n=combo_params['cofiring']['num_shuffles'],
-                            **cofiring_params
-                        )
-                    
-                        # Save co-firing results - both standard and matrix formats
-                        cofiring_result.save_to_csv(cofiring_csv_path, use_alt=False)
-                        cofiring_result.save_to_csv(cofiring_matrix_path, use_alt=True)
-                        
-                        if progress_callback_analysis_done:
-                            progress_callback_analysis_done()
+                        # Save parameter manifest
+                        save_combination_manifest(combo_output_path, combo_params, combo_idx, varying_params)
                     else:
-                        if progress_callback_analysis:
-                            progress_callback_analysis("Co-firing (skipped - file exists)")
-                        if progress_callback_analysis_done:
-                            progress_callback_analysis_done()
-            
-                # Run advanced/FPR analysis if enabled and parameters are present
-                if enabled_outputs['advanced'] and combo_params['advanced']['num_shuffles'] is not None:
-                    # Check if at least one shuffling type is enabled
-                    if not combo_params['advanced']['temporal'] and not combo_params['advanced']['spatial']:
-                        if progress_callback_analysis:
-                            progress_callback_analysis("Advanced (skipped - no shuffling enabled)")
-                        if progress_callback_analysis_done:
-                            progress_callback_analysis_done()
-                    else:
-                        advanced_csv_path = os.path.join(combo_output_path, "advanced_results.xlsx")
+                        # Single combination - use category folder directly
+                        combo_output_path = category_output_path
+                    
+                    # Get cell IDs based on which_cells setting for this combination
+                    which_cells = combo_params['general']['which_cells']
+                    unit_ids = session.get_cell_ids(which_cells)
+                    
+                    # Validate that cells were found
+                    if len(unit_ids) == 0:
+                        print(f"WARNING: No cells found for '{which_cells}' in session {session_name}. Skipping this combination.")
+                        continue
+                    
+                    # Convert to list for shuffling functions
+                    target_cells = list(unit_ids)
+                    comparison_cells = list(unit_ids)
+                    
+                    # Run the specific analysis for this output type
+                    if output_category == 'cofiring':
+                        # Apply verified_only filter if specified
+                        if combo_params['cofiring'].get('verified_only', False):
+                            target_cells = session.prune_non_verified(target_cells)
+                            comparison_cells = session.prune_non_verified(comparison_cells)
                         
-                        # Skip if output file already exists
-                        if not os.path.exists(advanced_csv_path):
-                            if progress_callback_analysis:
-                                progress_callback_analysis("Advanced")
-                            
-                            # Build parameters for shuffle_advanced
-                            advanced_params = {
-                                'temporal': combo_params['advanced']['temporal'],
-                                'spatial': combo_params['advanced']['spatial'],
-                                'shuffling': {
-                                    'window_size': combo_params['advanced']['window_size'],
-                                    'readout': combo_params['advanced']['readout'],
-                                    'fpr': combo_params['advanced']['fpr']
-                                },
-                                'anchor': combo_params['advanced'].get('scaling', 'None')  # Anchor parameter
-                            }
-                            
-                            advanced_result = shuffle_advanced(
-                                session=session,
-                                target_cells=target_cells,
-                                comparison_cells=comparison_cells,
-                                n=combo_params['advanced']['num_shuffles'],
-                                **advanced_params
-                            )
-                            
-                            # Save advanced results if analysis succeeded
-                            if advanced_result is not None:
-                                advanced_result.save_to_excel(advanced_csv_path)
-                            
-                            if progress_callback_analysis_done:
-                                progress_callback_analysis_done()
-                        else:
-                            if progress_callback_analysis:
-                                progress_callback_analysis("Advanced (skipped - file exists)")
-                            if progress_callback_analysis_done:
-                                progress_callback_analysis_done()
-            
-                # Event-based analysis (temporal OR spatial based on shuffle_type parameter)
-                if enabled_outputs.get('event_based', False) and combo_params['event_based']['num_shuffles'] is not None:
-                    # Check if event type exists first
-                    event_type = combo_params['event_based']['event_type']
-                    shuffle_type = combo_params['event_based']['shuffle_type']
-                    
-                    event_processed = False  # Track if we actually process the event
-                    
-                    if event_type and event_type in session.data and session.data[event_type] is not None:
-                        # Extract event indices
-                        events = np.argwhere(session.data[event_type].values == 1)
-                        if events.size > 0:
-                            events = np.unique(events[events[:, 0] > 50], axis=0) - combo_params['event_based']['lag']
-                            
-                            if events.size > 0:
-                                # Determine output filename based on shuffle type
-                                if shuffle_type == "spatial":
-                                    event_based_path = os.path.join(combo_output_path, "event_based_spatial_results.xlsx")
-                                    analysis_name = "Event-based (Spatial)"
-                                else:  # temporal
-                                    event_based_path = os.path.join(combo_output_path, "event_based_temporal_results.xlsx")
-                                    analysis_name = "Event-based (Temporal)"
+                        # Run co-firing analysis if parameters are present
+                        if combo_params['cofiring'].get('num_shuffles') is not None:
+                            cofiring_csv_path = os.path.join(combo_output_path, "cofiring_results.xlsx")
+                            cofiring_matrix_path = os.path.join(combo_output_path, "cofiring_results_matrix.xlsx")
+                        
+                            # Skip if output file already exists
+                            if not os.path.exists(cofiring_csv_path):
+                                if progress_callback_analysis:
+                                    progress_callback_analysis("Co-firing")
                                 
-                                if not os.path.exists(event_based_path):
+                                # Build parameters for shuffle_cofiring
+                                cofiring_params = {
+                                    'temporal': combo_params['cofiring']['temporal'],
+                                    'spatial': combo_params['cofiring']['spatial'],
+                                    'cofiring': {
+                                        'window_size': combo_params['cofiring']['window_size'],
+                                        'share_a': False,  # Default values
+                                        'share_b': False,
+                                        'direction': 'Both'
+                                    }
+                                }
+                                
+                                cofiring_result = shuffle_cofiring(
+                                    session=session,
+                                    target_cells=target_cells,
+                                    comparison_cells=comparison_cells,
+                                    n=combo_params['cofiring']['num_shuffles'],
+                                    **cofiring_params
+                                )
+                            
+                                # Save co-firing results - both standard and matrix formats
+                                cofiring_result.save_to_csv(cofiring_csv_path, use_alt=False)
+                                cofiring_result.save_to_csv(cofiring_matrix_path, use_alt=True)
+                                
+                                if progress_callback_analysis_done:
+                                    progress_callback_analysis_done()
+                            else:
+                                if progress_callback_analysis:
+                                    progress_callback_analysis("Co-firing (skipped - file exists)")
+                                if progress_callback_analysis_done:
+                                    progress_callback_analysis_done()
+                    elif output_category == 'advanced':
+                        # Run advanced/FPR analysis if parameters are present
+                        if combo_params['advanced'].get('num_shuffles') is not None:
+                            # Check if at least one shuffling type is enabled
+                            if not combo_params['advanced']['temporal'] and not combo_params['advanced']['spatial']:
+                                if progress_callback_analysis:
+                                    progress_callback_analysis("Advanced (skipped - no shuffling enabled)")
+                                if progress_callback_analysis_done:
+                                    progress_callback_analysis_done()
+                            else:
+                                advanced_csv_path = os.path.join(combo_output_path, "advanced_results.xlsx")
+                                
+                                # Skip if output file already exists
+                                if not os.path.exists(advanced_csv_path):
                                     if progress_callback_analysis:
-                                        progress_callback_analysis(analysis_name)
+                                        progress_callback_analysis("Advanced")
                                     
-                                    try:
-                                        result = event_based_shuffle_analysis(
-                                            session=session,
-                                            selected_cells=target_cells,
-                                            event_type=event_type,
-                                            window_size=combo_params['event_based']['window_size'],
-                                            lag=combo_params['event_based']['lag'],
-                                            num_subwindows=combo_params['event_based']['num_subwindows'],
-                                            num_shuffles=combo_params['event_based']['num_shuffles'],
-                                            amplitude_anchored=combo_params['event_based']['amplitude_anchored'],
-                                            shuffle_type=shuffle_type
-                                        )
-                                        
-                                        if result is not None:
-                                            # Generate appropriate statistics based on shuffle type
-                                            if shuffle_type == "spatial":
-                                                # Spatial: generate NNR clustering statistics
-                                                spatial_params = combo_params['event_based'].get('spatial_analysis', {})
-                                                significance_threshold = spatial_params.get('nnr_significance_threshold', 0.05) if spatial_params else 0.05
-                                                stats_df = generate_spatial_statistics_for_export(
-                                                    result.parameters['statistics'],
-                                                    significance_threshold=significance_threshold
-                                                )
-                                            else:
-                                                # Temporal: generate per-cell/event statistics
-                                                stats_df = generate_event_based_statistics_for_export(
-                                                    result.original_data,
-                                                    result.shuffled_data,
-                                                    events.tolist(),
-                                                    target_cells
-                                                )
-                                            
-                                            stats_df.to_excel(event_based_path, index=False, engine='xlsxwriter')
-                                            result.close()
-                                    except Exception as e:
-                                        print(f"Error in {shuffle_type} event-based analysis: {e}")
+                                    # Build parameters for shuffle_advanced
+                                    advanced_params = {
+                                        'temporal': combo_params['advanced']['temporal'],
+                                        'spatial': combo_params['advanced']['spatial'],
+                                        'shuffling': {
+                                            'window_size': combo_params['advanced']['window_size'],
+                                            'readout': combo_params['advanced']['readout'],
+                                            'fpr': combo_params['advanced']['fpr']
+                                        },
+                                        'anchor': combo_params['advanced'].get('scaling', 'None')  # Anchor parameter
+                                    }
                                     
-                                    event_processed = True
+                                    advanced_result = shuffle_advanced(
+                                        session=session,
+                                        target_cells=target_cells,
+                                        comparison_cells=comparison_cells,
+                                        n=combo_params['advanced']['num_shuffles'],
+                                        **advanced_params
+                                    )
+                                    
+                                    # Save advanced results if analysis succeeded
+                                    if advanced_result is not None:
+                                        advanced_result.save_to_excel(advanced_csv_path)
+                                    
+                                    if progress_callback_analysis_done:
+                                        progress_callback_analysis_done()
                                 else:
                                     if progress_callback_analysis:
-                                        progress_callback_analysis(f"{analysis_name} (skipped - file exists)")
-                                    event_processed = True
+                                        progress_callback_analysis("Advanced (skipped - file exists)")
+                                    if progress_callback_analysis_done:
+                                        progress_callback_analysis_done()
                     
-                    # Always call the done callback if event-based was enabled
-                    if not event_processed and progress_callback_analysis:
-                        progress_callback_analysis("Event-based (skipped - no valid events)")
+                    elif output_category == 'event_based':
+                        # Event-based analysis (temporal OR spatial based on shuffle_type parameter)
+                        if combo_params['event_based'].get('num_shuffles') is not None:
+                            # Check if event type exists first
+                            event_type = combo_params['event_based']['event_type']
+                            shuffle_type = combo_params['event_based']['shuffle_type']
+                            
+                            event_processed = False  # Track if we actually process the event
+                            
+                            if event_type and event_type in session.data and session.data[event_type] is not None:
+                                # Extract event indices
+                                events = np.argwhere(session.data[event_type].values == 1)
+                                if events.size > 0:
+                                    events = np.unique(events[events[:, 0] > 50], axis=0) - combo_params['event_based']['lag']
+                                    
+                                    if events.size > 0:
+                                        # Determine output filename based on shuffle type
+                                        if shuffle_type == "spatial":
+                                            event_based_path = os.path.join(combo_output_path, "event_based_spatial_results.xlsx")
+                                            analysis_name = "Event-based (Spatial)"
+                                        else:  # temporal
+                                            event_based_path = os.path.join(combo_output_path, "event_based_temporal_results.xlsx")
+                                            analysis_name = "Event-based (Temporal)"
+                                        
+                                        if not os.path.exists(event_based_path):
+                                            if progress_callback_analysis:
+                                                progress_callback_analysis(analysis_name)
+                                            
+                                            try:
+                                                result = event_based_shuffle_analysis(
+                                                    session=session,
+                                                    selected_cells=target_cells,
+                                                    event_type=event_type,
+                                                    window_size=combo_params['event_based']['window_size'],
+                                                    lag=combo_params['event_based']['lag'],
+                                                    num_subwindows=combo_params['event_based']['num_subwindows'],
+                                                    num_shuffles=combo_params['event_based']['num_shuffles'],
+                                                    amplitude_anchored=combo_params['event_based']['amplitude_anchored'],
+                                                    shuffle_type=shuffle_type
+                                                )
+                                                
+                                                if result is not None:
+                                                    # Generate appropriate statistics based on shuffle type
+                                                    if shuffle_type == "spatial":
+                                                        # Spatial: generate NNR clustering statistics
+                                                        spatial_params = combo_params['event_based'].get('spatial_analysis', {})
+                                                        significance_threshold = spatial_params.get('nnr_significance_threshold', 0.05) if spatial_params else 0.05
+                                                        stats_df = generate_spatial_statistics_for_export(
+                                                            result.parameters['statistics'],
+                                                            significance_threshold=significance_threshold
+                                                        )
+                                                    else:
+                                                        # Temporal: generate per-cell/event statistics
+                                                        stats_df = generate_event_based_statistics_for_export(
+                                                            result.original_data,
+                                                            result.shuffled_data,
+                                                            events.tolist(),
+                                                            target_cells
+                                                        )
+                                                    
+                                                    stats_df.to_excel(event_based_path, index=False, engine='xlsxwriter')
+                                                    result.close()
+                                            except Exception as e:
+                                                print(f"Error in {shuffle_type} event-based analysis: {e}")
+                                            
+                                            event_processed = True
+                                        else:
+                                            if progress_callback_analysis:
+                                                progress_callback_analysis(f"{analysis_name} (skipped - file exists)")
+                                            event_processed = True
+                            
+                            # Always call the done callback if event-based was enabled
+                            if not event_processed and progress_callback_analysis:
+                                progress_callback_analysis("Event-based (skipped - no valid events)")
+                            
+                            if progress_callback_analysis_done:
+                                progress_callback_analysis_done()
+            
+            # Run general and local statistics once per session (not per combination)
+            # Use the first combination's which_cells or default to "All Cells"
+            default_which_cells = "All Cells"
+            if 'cofiring' in combinations_by_category and combinations_by_category['cofiring'][0]:
+                default_which_cells = combinations_by_category['cofiring'][0][0]['general']['which_cells']
+            elif 'advanced' in combinations_by_category and combinations_by_category['advanced'][0]:
+                default_which_cells = combinations_by_category['advanced'][0][0]['general']['which_cells']
+            elif 'event_based' in combinations_by_category and combinations_by_category['event_based'][0]:
+                default_which_cells = combinations_by_category['event_based'][0][0]['general']['which_cells']
+            
+            unit_ids = session.get_cell_ids(default_which_cells)
+            stats_target_cells = list(unit_ids)
+            
+            # General statistics
+            if enabled_outputs.get('general_stats', False):
+                general_stats_path = os.path.join(session_output_path, "general_statistics.xlsx")
+                
+                # Skip if output file already exists
+                if not os.path.exists(general_stats_path):
+                    if progress_callback_analysis:
+                        progress_callback_analysis("General Statistics")
+                    
+                    # Generate general statistics using the same cell selection
+                    general_stats_df = generate_general_statistics(session, stats_target_cells)
+                    general_stats_df.to_excel(general_stats_path, index=True, engine='xlsxwriter')
                     
                     if progress_callback_analysis_done:
                         progress_callback_analysis_done()
+                else:
+                    if progress_callback_analysis:
+                        progress_callback_analysis("General Statistics (skipped - file exists)")
+                    if progress_callback_analysis_done:
+                        progress_callback_analysis_done()
             
-                # General statistics
-                if enabled_outputs.get('general_stats', False):
-                    general_stats_path = os.path.join(combo_output_path, "general_statistics.xlsx")
-                    
-                    # Skip if output file already exists
-                    if not os.path.exists(general_stats_path):
-                        if progress_callback_analysis:
-                            progress_callback_analysis("General Statistics")
-                        
-                        # Generate general statistics using the same cell selection
-                        general_stats_df = generate_general_statistics(session, target_cells)
-                        general_stats_df.to_excel(general_stats_path, index=True, engine='xlsxwriter')
-                        
-                        if progress_callback_analysis_done:
-                            progress_callback_analysis_done()
-                    else:
-                        if progress_callback_analysis:
-                            progress_callback_analysis("General Statistics (skipped - file exists)")
-                        if progress_callback_analysis_done:
-                            progress_callback_analysis_done()
+            # Local statistics (one sheet per cell)
+            if enabled_outputs.get('local_stats', False):
+                local_stats_path = os.path.join(session_output_path, "local_statistics.xlsx")
                 
-                # Local statistics (one sheet per cell)
-                if enabled_outputs.get('local_stats', False):
-                    local_stats_path = os.path.join(combo_output_path, "local_statistics.xlsx")
+                # Skip if output file already exists
+                if not os.path.exists(local_stats_path):
+                    if progress_callback_analysis:
+                        progress_callback_analysis("Local Statistics")
                     
-                    # Skip if output file already exists
-                    if not os.path.exists(local_stats_path):
-                        if progress_callback_analysis:
-                            progress_callback_analysis("Local Statistics")
-                        
-                        # Generate local statistics for each cell and save to multi-sheet Excel
-                        with pd.ExcelWriter(local_stats_path, engine='xlsxwriter') as writer:
-                            for unit_id in target_cells:
-                                local_stats_df = generate_local_statistics(session, unit_id)
-                                # Use sheet name "Cell X" (Excel has 31 char limit)
-                                sheet_name = f"Cell {unit_id}"
-                                local_stats_df.to_excel(writer, sheet_name=sheet_name, index=True)
-                        
-                        if progress_callback_analysis_done:
-                            progress_callback_analysis_done()
-                    else:
-                        if progress_callback_analysis:
-                            progress_callback_analysis("Local Statistics (skipped - file exists)")
-                        if progress_callback_analysis_done:
-                            progress_callback_analysis_done()
+                    # Generate local statistics for each cell and save to multi-sheet Excel
+                    with pd.ExcelWriter(local_stats_path, engine='xlsxwriter') as writer:
+                        for unit_id in stats_target_cells:
+                            local_stats_df = generate_local_statistics(session, unit_id)
+                            # Use sheet name "Cell X" (Excel has 31 char limit)
+                            sheet_name = f"Cell {unit_id}"
+                            local_stats_df.to_excel(writer, sheet_name=sheet_name, index=True)
+                    
+                    if progress_callback_analysis_done:
+                        progress_callback_analysis_done()
+                else:
+                    if progress_callback_analysis:
+                        progress_callback_analysis("Local Statistics (skipped - file exists)")
+                    if progress_callback_analysis_done:
+                        progress_callback_analysis_done()
             
             results['successful'].append(session_path)
             

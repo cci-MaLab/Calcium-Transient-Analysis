@@ -544,6 +544,7 @@ class DataInstance:
         self.changed_events = False # This is necessary to in the case of recalculating values for sda_widgets
         self.noise_values = {}
         self.cell_ids_to_groups = {} # This differs from self.group as it is used for preselected groups by the user
+        self.load_cell_groups() # Load cell groups from JSON if it exists
         # Create the default image
         self.clustering_result = {"basic": {"image": np.stack((self.data['A'].sum("unit_id").values,)*3, axis=-1)}}
 
@@ -1457,6 +1458,82 @@ class DataInstance:
 
         return got_data
 
+    def save_cell_groups(self) -> str:
+        """
+        Save current cell groups to session_group_ids.json in the session's data folder.
+        
+        Called automatically whenever groups are added/removed in the GUI.
+        Converts internal format {cell_id: [group_ids]} to JSON format {group_name: [cell_ids]}.
+        
+        Returns
+        -------
+        str
+            Path to the saved file
+        """
+        import json
+        
+        # Convert from internal format to JSON format
+        # Internal: {cell_id: [group_id1, group_id2]}
+        # JSON: {group_name: [cell_id1, cell_id2]}
+        groups_json = {}
+        for cell_id, group_ids in self.cell_ids_to_groups.items():
+            for group_id in group_ids:
+                group_name = f"Group {group_id}"
+                if group_name not in groups_json:
+                    groups_json[group_name] = []
+                groups_json[group_name].append(int(cell_id))
+        
+        # Sort cell IDs in each group for consistency
+        for group_name in groups_json:
+            groups_json[group_name].sort()
+        
+        # Save to JSON file in the data folder
+        json_path = os.path.join(self.cnmf_path, "session_group_ids.json")
+        with open(json_path, 'w') as f:
+            json.dump(groups_json, f, indent=2)
+        
+        return json_path
+    
+    def load_cell_groups(self):
+        """
+        Load cell groups from session_group_ids.json if it exists.
+        
+        Called during __init__ to auto-load existing groups when opening a session.
+        Converts JSON format {group_name: [cell_ids]} to internal format {cell_id: [group_ids]}.
+        Populates self.cell_ids_to_groups.
+        """
+        import json
+        
+        json_path = os.path.join(self.cnmf_path, "session_group_ids.json")
+        
+        if not os.path.exists(json_path):
+            return
+        
+        try:
+            with open(json_path, 'r') as f:
+                groups_json = json.load(f)
+            
+            # Convert from JSON format to internal format
+            # JSON: {group_name: [cell_id1, cell_id2]}
+            # Internal: {cell_id: [group_id1, group_id2]}
+            self.cell_ids_to_groups = {}
+            for group_name, cell_ids in groups_json.items():
+                # Extract group ID from group name (e.g., "Group 1" -> "1")
+                if group_name.startswith("Group "):
+                    group_id = group_name[6:]  # Remove "Group " prefix
+                else:
+                    group_id = group_name
+                
+                for cell_id in cell_ids:
+                    if cell_id not in self.cell_ids_to_groups:
+                        self.cell_ids_to_groups[cell_id] = [group_id]
+                    else:
+                        self.cell_ids_to_groups[cell_id].append(group_id)
+        
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"Error loading cell groups from {json_path}: {e}")
+            self.cell_ids_to_groups = {}
+
     def add_cell_id_group(self, cell_ids: List, group_id: str):
         """
         Allocate specific cell ids to a group id
@@ -1484,6 +1561,9 @@ class DataInstance:
                 self.cell_ids_to_groups[id] = [group_id]
             else:
                 self.cell_ids_to_groups[id] += [group_id]
+        
+        # Auto-save after adding group
+        self.save_cell_groups()
     
     def remove_cell_id_group(self, cell_id_group: List):
         """
@@ -1497,6 +1577,9 @@ class DataInstance:
         for id in cell_id_group:
             if id in self.cell_ids_to_groups:
                 del self.cell_ids_to_groups[id]
+        
+        # Auto-save after removing group
+        self.save_cell_groups()
 
     def get_group_ids(self):
         all_group_ids = []

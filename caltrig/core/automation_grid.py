@@ -198,12 +198,12 @@ def generate_combination_folder_name(params_dict: dict, varying_params: set = No
     return folder_name
 
 
-def expand_parameters(params: dict) -> tuple[list[dict], set]:
+def expand_parameters(params: dict) -> dict:
     """
-    Expand parameters into all combinations for grid search.
+    Expand parameters into combinations for grid search, separated by output category.
     
-    Parameters with list values are expanded into combinations using Cartesian product.
-    Parameters with single values are kept constant across all combinations.
+    Parameters with list values are expanded within each output category independently.
+    Returns separate combinations for each output type to avoid exponential cross-category explosion.
     
     Parameters
     ----------
@@ -213,93 +213,118 @@ def expand_parameters(params: dict) -> tuple[list[dict], set]:
         
     Returns
     -------
-    combinations : list[dict]
-        List of parameter dicts, one per combination
-    varying_params : set
-        Set of (category, param_name) tuples indicating which parameters vary
+    results : dict
+        Dict mapping output category to (combinations, varying_params) tuple:
+        {
+            'cofiring': ([combo_dicts], {varying_param_tuples}),
+            'advanced': ([combo_dicts], {varying_param_tuples}),
+            'event_based': ([combo_dicts], {varying_param_tuples})
+        }
         
     Examples
     --------
     >>> params = {
+    ...     'general': {'which_cells': ['All Cells', 'Verified Cells', 'High Activity']},
     ...     'cofiring': {'window_size': [1000, 2000], 'num_shuffles': 100},
     ...     'advanced': {'window_size': 500}
     ... }
-    >>> combos, varying = expand_parameters(params)
-    >>> len(combos)
-    2
-    >>> varying
-    {('cofiring', 'window_size')}
+    >>> results = expand_parameters(params)
+    >>> len(results['cofiring'][0])  # 3 which_cells × 2 window sizes = 6
+    6
+    >>> len(results['advanced'][0])  # 3 which_cells × 1 window size = 3
+    3
     """
     from itertools import product
     
-    # Identify which parameters are lists (to be expanded)
-    expandable_params = {}
-    fixed_params = {}
-    varying_params = set()
+    # Extract which_cells from general (applies to all output categories)
+    general_params = params.get('general', {})
+    which_cells_values = general_params.get('which_cells', 'All Cells')
     
-    for category in params:
-        if params[category] is None:
+    # Normalize which_cells to list
+    if not isinstance(which_cells_values, list):
+        which_cells_values = [which_cells_values]
+    elif len(which_cells_values) == 1:
+        which_cells_values = [which_cells_values[0]]
+    
+    results = {}
+    
+    # Process each output category independently
+    for output_category in ['cofiring', 'advanced', 'event_based']:
+        if output_category not in params or params[output_category] is None:
             continue
-            
-        expandable_params[category] = {}
-        fixed_params[category] = {}
         
-        for param_name, value in params[category].items():
+        category_params = params[output_category]
+        
+        # Identify expandable and fixed params for this category
+        expandable_params = {}
+        fixed_params = {}
+        varying_params = set()
+        
+        # Include which_cells if it has multiple values
+        if len(which_cells_values) > 1:
+            expandable_params['which_cells'] = which_cells_values
+            varying_params.add(('general', 'which_cells'))
+        else:
+            fixed_params['which_cells'] = which_cells_values[0]
+        
+        # Process category-specific parameters
+        for param_name, value in category_params.items():
             # Skip nested dicts (like spatial_analysis)
             if isinstance(value, dict):
-                fixed_params[category][param_name] = value
+                fixed_params[param_name] = value
                 continue
             
             # Check if it's a list with multiple values
             if isinstance(value, list) and len(value) > 1:
-                expandable_params[category][param_name] = value
-                varying_params.add((category, param_name))
+                expandable_params[param_name] = value
+                varying_params.add((output_category, param_name))
             else:
                 # Single value or single-item list - treat as constant
                 if isinstance(value, list) and len(value) == 1:
-                    fixed_params[category][param_name] = value[0]
+                    fixed_params[param_name] = value[0]
                 else:
-                    fixed_params[category][param_name] = value
-    
-    # Generate all combinations using Cartesian product
-    combinations = []
-    
-    # Collect all expandable parameter names and their values
-    param_keys = []  # List of (category, param_name) tuples
-    param_values = []  # List of value lists
-    
-    for category in expandable_params:
-        for param_name, values in expandable_params[category].items():
-            param_keys.append((category, param_name))
-            param_values.append(values)
-    
-    # Create cartesian product
-    if param_values:
-        for combo_values in product(*param_values):
-            # Start with fixed params
-            combo = {}
-            for category in params:
-                if category in fixed_params:
-                    combo[category] = dict(fixed_params[category])
-                else:
-                    combo[category] = {}
+                    fixed_params[param_name] = value
+        
+        # Generate combinations for this category
+        combinations = []
+        
+        if expandable_params:
+            # Collect param names and values
+            param_names = list(expandable_params.keys())
+            param_value_lists = [expandable_params[name] for name in param_names]
             
-            # Add this combination's varying values
-            for (category, param_name), value in zip(param_keys, combo_values):
-                combo[category][param_name] = value
-            
+            # Create cartesian product
+            for combo_values in product(*param_value_lists):
+                combo = {
+                    'general': {},
+                    output_category: dict(fixed_params)
+                }
+                
+                # Add varying values
+                for param_name, value in zip(param_names, combo_values):
+                    if param_name == 'which_cells':
+                        combo['general']['which_cells'] = value
+                    else:
+                        combo[output_category][param_name] = value
+                
+                # Add fixed which_cells if not varying
+                if 'which_cells' not in combo['general']:
+                    combo['general']['which_cells'] = fixed_params.get('which_cells', 'All Cells')
+                
+                combinations.append(combo)
+        else:
+            # No expandable parameters - single combination
+            combo = {
+                'general': {'which_cells': fixed_params.get('which_cells', 'All Cells')},
+                output_category: dict(fixed_params)
+            }
+            # Remove which_cells from category params
+            combo[output_category].pop('which_cells', None)
             combinations.append(combo)
-    else:
-        # No expandable parameters, return single combination with all fixed params
-        combo = {}
-        for category in params:
-            if category in fixed_params:
-                combo[category] = dict(fixed_params[category])
-            else:
-                combo[category] = {}
-        combinations = [combo]
+        
+        results[output_category] = (combinations, varying_params)
     
-    return combinations, varying_params
+    return results
 
 
 def save_combination_manifest(output_path: str, params: dict, combination_idx: int, 
