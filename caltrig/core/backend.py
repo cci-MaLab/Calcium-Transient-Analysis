@@ -1487,8 +1487,9 @@ class DataInstance:
         for group_name in groups_json:
             groups_json[group_name].sort()
         
-        # Save to JSON file in the data folder
-        json_path = os.path.join(self.cnmf_path, "session_group_ids.json")
+        # Save to JSON file in the parent folder (session folder, not inside minian)
+        parent_path = os.path.dirname(self.cnmf_path)
+        json_path = os.path.join(parent_path, "session_group_ids.json")
         with open(json_path, 'w') as f:
             json.dump(groups_json, f, indent=2)
         
@@ -1504,7 +1505,8 @@ class DataInstance:
         """
         import json
         
-        json_path = os.path.join(self.cnmf_path, "session_group_ids.json")
+        parent_path = os.path.dirname(self.cnmf_path)
+        json_path = os.path.join(parent_path, "session_group_ids.json")
         
         if not os.path.exists(json_path):
             return
